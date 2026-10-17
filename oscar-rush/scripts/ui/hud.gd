@@ -21,6 +21,8 @@ var _bar: Control
 var _hint: Label
 var _banner: Label
 var _shown_hp := 100.0
+## Boss 房里关掉底部按键提示（那里放 Boss 血条）
+var show_hint := true
 
 
 static func font() -> FontFile:
@@ -88,7 +90,7 @@ func _process(delta: float) -> void:
 		if (p as Node2D).get_global_transform_with_canvas().origin.y > _hint.position.y - 6.0:
 			low = true
 			break
-	_hint.modulate.a = move_toward(_hint.modulate.a, 0.0 if low else 1.0, delta * 5.0)
+	_hint.modulate.a = move_toward(_hint.modulate.a, 0.0 if (low or not show_hint) else 1.0, delta * 5.0)
 
 
 func show_banner(text: String) -> void:

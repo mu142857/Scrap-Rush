@@ -14,8 +14,12 @@ const SPAWNS := [
 	["res://scripts/enemies/flea.gd", Vector2(780, 118), {}],
 ]
 
+## 自动截图的时间表整个进程只跑一次（马灯碎了关卡会重载这个场景）
+static var _ran := false
+
 var level: Node2D
 var out_dir := ""
+var _t0 := 0
 var _i := 0
 var _steps: Array = [
 	# [秒, 动作, 参数]
@@ -26,7 +30,7 @@ var _steps: Array = [
 	[2.6, "release", "solo_attack"],
 	[2.75, "shot", "03_fire"],
 	[3.5, "shot", "04_after"],
-	[3.8, "teleport", Vector2(309, 118)],
+	[3.8, "teleport", Vector2(307, 118)],
 	[3.85, "kettle_warn", null],
 	[4.2, "shot", "05_kettle_warn"],
 	[4.75, "shot", "06_steam"],
@@ -61,16 +65,23 @@ func _ready() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--enemyshots="):
 			out_dir = arg.trim_prefix("--enemyshots=")
-	if out_dir != "":
+	if out_dir != "" and not _ran:
+		_ran = true
+		_t0 = Engine.get_process_frames()
 		process_mode = Node.PROCESS_MODE_ALWAYS
 		DirAccess.make_dir_recursive_absolute(out_dir)
+		# 截图时马灯不会碎，不然关卡重来，后面的镜头就乱了
+		Run.crystal_max = 1000.0
+		Run.crystal_hp = 1000.0
+		Run.level_start_hp = 1000.0
+		Run.emotion = 0.0
 	else:
 		set_process(false)
 
 
 func _process(_delta: float) -> void:
 	# --fixed-fps 60 下按画面帧数算时间
-	var t := Engine.get_process_frames() / 60.0
+	var t := (Engine.get_process_frames() - _t0) / 60.0
 	while _i < _steps.size() and t >= _steps[_i][0]:
 		_run(_steps[_i], t)
 		_i += 1
@@ -99,8 +110,9 @@ func _run(step: Array, t: float) -> void:
 
 func _shot(name: String, t: float) -> void:
 	var pl: Node2D = get_tree().get_nodes_in_group("player")[0]
-	var line := "[enemytest] %s t=%.2f player=%s v=%s emotion=%.0f |" % [
-		name, t, pl.global_position.round(), (pl as CharacterBody2D).velocity.round(), Run.emotion]
+	var line := "[enemytest] %s t=%.2f drawn=%d ts=%.2f player=%s v=%s emotion=%.0f |" % [
+		name, t, Engine.get_frames_drawn(), Engine.time_scale, pl.global_position.round(),
+		(pl as CharacterBody2D).velocity.round(), Run.emotion]
 	for e in get_tree().get_nodes_in_group("enemy"):
 		if e is EnemyBase:
 			line += " %s%s st=%s f=%d hp=%.0f%s" % [e.get_script().resource_path.get_file().get_basename(),

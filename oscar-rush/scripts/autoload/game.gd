@@ -2,6 +2,8 @@ extends Node
 ## 打击反馈和杂项工具：震屏、顿帧、闪屏、音效、光照贴图、火花。
 ## 照 Phage 的 systems/game.gd 改的，镜头本身拆到了 GameCamera。
 
+const TITLE_SCENE := "res://scenes/title.tscn"
+
 var shake := 0.0
 
 var _flash_rect: ColorRect
@@ -27,6 +29,15 @@ func _ready() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	var k := event as InputEventKey
 	if k == null or not k.pressed or k.echo:
+		return
+	# Esc：关卡里回开始界面（开始界面自己处理 Esc）
+	if k.physical_keycode == KEY_ESCAPE:
+		var cur := get_tree().current_scene
+		if cur and cur.scene_file_path != TITLE_SCENE:
+			Engine.time_scale = 1.0
+			get_tree().paused = false
+			get_tree().change_scene_to_file(TITLE_SCENE)
+			get_viewport().set_input_as_handled()
 		return
 	if k.physical_keycode == KEY_F11 or (k.physical_keycode == KEY_ENTER and k.alt_pressed):
 		var full := DisplayServer.window_get_mode() >= DisplayServer.WINDOW_MODE_FULLSCREEN

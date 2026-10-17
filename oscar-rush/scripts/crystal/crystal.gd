@@ -7,7 +7,8 @@ extends CharacterBody2D
 
 const GRAVITY := 900.0
 const PICK_RANGE := 18.0
-const LIGHT_RADIUS := 90.0
+## 2026-10-17 画面放大 2 倍后从 90 改成 64，不然整屏都被照亮，没有黑暗了
+const LIGHT_RADIUS := 64.0
 ## 提灯的手，相对主角脚底；x 乘主角朝向
 const HAND := Vector2(6, -11)
 const HOOK_HEIGHT := 9.0

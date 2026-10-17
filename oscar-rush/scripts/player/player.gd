@@ -47,7 +47,8 @@ const CHARGE_TIME := 0.8
 const CHARGE_UPGRADE := 0.15
 const CHARGE_TIME_MIN := 0.35
 const SHOT_COOLDOWN := 0.12
-const AIM_RANGE := 160.0
+## 比屏幕半宽（2 倍放大后 120）略小，不锁屏幕外的怪
+const AIM_RANGE := 115.0
 ## 身后的敌人按距离 ×1.8 算，面朝的方向优先
 const BEHIND_PENALTY := 1.8
 # —— 挨打 ——
@@ -104,6 +105,7 @@ var _release_flash := 0.0
 var _target: Node2D = null
 ## 画面上把精灵对齐到整像素：物理位置保留小数，只有显示取整（照 Phage）
 var _snap := Vector2.ZERO
+var _push := Vector2.ZERO
 
 var _body: Sprite2D
 var _strip: Sprite2D
@@ -254,6 +256,10 @@ func _physics_process(delta: float) -> void:
 
 	var fall_speed := velocity.y
 	move_and_slide()
+	# 外力（Boss 吸气之类）按位移直接挪，不进 velocity，免得被走路的加减速抵消
+	if _push != Vector2.ZERO:
+		move_and_collide(_push * delta)
+		_push = Vector2.ZERO
 	if not on_floor and is_on_floor() and fall_speed > 140.0:
 		Game.sfx("land", -14.0 + clampf((fall_speed - 140.0) / 30.0, 0.0, 8.0), 1.0, 0.1)
 		Game.dust(get_parent(), global_position, 3 + int(clampf((fall_speed - 140.0) / 60.0, 0.0, 4.0)))
@@ -470,6 +476,11 @@ func _crystal_input() -> void:
 			best_d = d
 	if best:
 		best.pick_up(self)
+
+
+## 外力，像素/秒。每帧都要重新调用（Boss 吸气时一直往炉门拽）
+func push(v: Vector2) -> void:
+	_push += v
 
 
 ## 被敌人碰到。返回 true 表示这一下算数（不在无敌时间里）

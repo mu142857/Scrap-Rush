@@ -5,16 +5,20 @@ extends Camera2D
 ## - 跳起来时镜头不上下晃（照 Phage：只跟落地时的高度）
 ## - 往下掉得快时镜头提前往下看 60 像素，先看到落点
 ## - 多人时跟所有人的中心，提灯的人权重加倍
+## - 2026-10-17：画面放大 2 倍（和开始界面一样），屏幕上只看到 240×135 个游戏像素，
+##   站在上层看不到底层。3~4 人时退到 1.5 倍，免得有人被挤出画面。下面的距离都是游戏像素。
 
-const LOOK_AHEAD := 60.0
+const ZOOM := 2.0
+const ZOOM_CROWD := 1.5
+const LOOK_AHEAD := 36.0
 const LOOK_AHEAD_SPEED := 3.0
-const FOCUS_OFFSET := Vector2(0, 15)
+const FOCUS_OFFSET := Vector2(0, 8)
 const FOLLOW_X_SPEED := 9.0
 const FOLLOW_Y_SPEED := 5.0
 const FALL_CATCHUP := 16.0
-const FALL_LOOK_DOWN := 60.0
+const FALL_LOOK_DOWN := 40.0
 const FALL_LOOK_SPEED := 160.0
-const EDGE_MARGIN := 24.0
+const EDGE_MARGIN := 12.0
 
 var bounds := Rect2(0, 0, 480, 270)
 
@@ -25,6 +29,8 @@ var _has_ground := false
 
 
 func _ready() -> void:
+	var z := ZOOM if _players().size() <= 2 else ZOOM_CROWD
+	zoom = Vector2(z, z)
 	make_current()
 
 
@@ -53,12 +59,13 @@ func _process(delta: float) -> void:
 	pos.y = lerpf(pos.y, target.y, 1.0 - exp(-y_speed * delta))
 
 	# 保底：不管镜头追得多慢，玩家都不能出画面
-	var half := get_viewport_rect().size * 0.5
+	var half := get_viewport_rect().size * 0.5 / zoom
 	for p in players:
 		var feet := p.global_position.y
 		pos.y = clampf(pos.y, feet - half.y + EDGE_MARGIN, feet - 20.0 + half.y - EDGE_MARGIN)
 	global_position = _clamp_to_bounds(pos, half)
-	offset = (Vector2(randf_range(-1, 1), randf_range(-1, 1)) * Game.shake).round()
+	# 震屏按屏幕像素算，放大以后除回去，力度和以前一样
+	offset = (Vector2(randf_range(-1, 1), randf_range(-1, 1)) * Game.shake / zoom.x * 2.0).round() / 2.0
 
 
 func _target_position() -> Vector2:
@@ -85,7 +92,7 @@ func _target_position() -> Vector2:
 			target_y = lead.global_position.y - FALL_CATCHUP
 	else:
 		target_y = focus.y
-	var half := get_viewport_rect().size * 0.5
+	var half := get_viewport_rect().size * 0.5 / zoom
 	return _clamp_to_bounds(Vector2(focus.x + _look, target_y + _look_down) + FOCUS_OFFSET, half)
 
 

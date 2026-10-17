@@ -42,11 +42,26 @@ const POLYS := [
 	],
 ]
 const SPAWN := Vector2(90, 118)
-const CRAWLERS: Array[Vector2] = [
-	Vector2(320, 118), Vector2(600, 118),
-	Vector2(260, 208), Vector2(540, 208), Vector2(820, 208),
-	Vector2(160, 407), Vector2(380, 414),
-	Vector2(600, 343), Vector2(720, 343),
+## 遭遇战之间的走廊里留两只会复活的爬虫，其余的怪都在遭遇战里
+const CRAWLERS: Array[Vector2] = [Vector2(525, 118), Vector2(555, 208)]
+## 遭遇战（Encounter）：left/right 是两扇闸门的 x，ceil 是天花板，floor_l/floor_r 是两扇闸门脚下的地面。
+## 沿路线依次是：上层两场 → 中层两场（往左走）→ 底层一场 → 最底层桥上的最后一场。
+## 每场最后一波出一个精英怪（布谷鸟钟、收银机、缝纫机、吸尘器、自动钢琴），带一两只小怪；
+## 桥上那场先打四波小怪，最后蒸汽压路机单独出场（第一关最强的精英怪）。
+const ENCOUNTERS := [
+	{"left": 230, "right": 450, "ceil": 0, "floor_l": 118, "floor_r": 118, "hazards": [],
+	 "waves": [["crawler", "crawler"], ["shaver", "crawler"], ["cuckoo", "flea"]]},
+	{"left": 600, "right": 860, "ceil": 0, "floor_l": 118, "floor_r": 118, "hazards": [["kettle", Vector2(730, 118)]],
+	 "waves": [["moth", "moth"], ["flea", "flea", "crawler"], ["register", "shaver", "moth"]]},
+	{"left": 640, "right": 880, "ceil": 136, "floor_l": 208, "floor_r": 208, "hazards": [["kettle", Vector2(760, 208)]],
+	 "waves": [["crawler", "shaver", "crawler"], ["moth", "moth", "flea"], ["sewing", "shaver", "flea"]]},
+	{"left": 230, "right": 470, "ceil": 136, "floor_l": 208, "floor_r": 208, "hazards": [],
+	 "waves": [["flea", "flea"], ["moth", "moth", "moth"], ["vacuum", "shaver", "crawler"]]},
+	{"left": 110, "right": 390, "ceil": 222, "floor_l": 407, "floor_r": 414, "hazards": [["kettle", Vector2(308, 405)]],
+	 "waves": [["crawler", "crawler", "shaver"], ["moth", "flea", "moth"], ["piano", "shaver", "flea"]]},
+	{"left": 455, "right": 802, "ceil": 222, "floor_l": 343, "floor_r": 343, "hazards": [],
+	 "waves": [["crawler", "crawler", "flea"], ["moth", "moth", "shaver"], ["flea", "flea", "shaver", "shaver"],
+		["moth", "moth", "shaver", "shaver", "crawler"], ["roller"]]},
 ]
 ## 路线提示：有玩家走进 zone 就在 at 处亮出一块提示牌。
 ## 路线：上层往右 → 右端跳下 → 中层往左 → 左端跳下 → 底层往右打 Boss
@@ -117,6 +132,17 @@ func _ready() -> void:
 		var c := Crawler.new()
 		c.position = pos
 		add_child(c)
+
+	for d in ENCOUNTERS:
+		var enc := Encounter.new()
+		enc.left = minf(d["left"], d["right"])
+		enc.right = maxf(d["left"], d["right"])
+		enc.ceil_y = d["ceil"]
+		enc.floor_left = d["floor_l"] if d["left"] < d["right"] else d["floor_r"]
+		enc.floor_right = d["floor_r"] if d["left"] < d["right"] else d["floor_l"]
+		enc.waves = d["waves"]
+		enc.hazards = d["hazards"]
+		add_child(enc)
 
 	var first: Player = null
 	for i in Run.players.size():

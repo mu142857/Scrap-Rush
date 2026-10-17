@@ -177,6 +177,167 @@ def crack():
     return x
 
 
+# —— 开始界面 ——
+# 换选项：老式拨档开关"嗒"
+def ui_move():
+    d = 0.06
+    click = highpass(noise(d), 0.5) * decay(int(SR * d), 140)
+    tone = np.sin(2 * np.pi * 1450 * t(d)) * decay(int(SR * d), 60)
+    return click * 0.6 + tone * 0.5
+
+
+# 确认：继电器吸合"咔哒"加一声上扬的电子音
+def ui_confirm():
+    d = 0.35
+    x = np.zeros(int(SR * d))
+    clack = highpass(noise(0.03), 0.4) * decay(int(SR * 0.03), 150)
+    x[:len(clack)] += clack
+    s = int(SR * 0.04)
+    up = sweep(660, 1320, d - 0.04) * decay(int(SR * (d - 0.04)), 9)
+    x[s:s + len(up)] += up * 0.6
+    return x
+
+
+# 返回：往下走的电子音
+def ui_back():
+    d = 0.18
+    return sweep(900, 380, d) * decay(int(SR * d), 14)
+
+
+# 标题亮起：老灯管通电，先"嗒"一声，接着 50Hz 的嗡嗡声慢慢消失
+def title_on():
+    d = 1.2
+    n = int(SR * d)
+    x = np.zeros(n)
+    for off in [0.0, 0.09, 0.16]:  # 灯管闪了三下才亮稳
+        s = int(SR * off)
+        c = highpass(noise(0.025), 0.4) * decay(int(SR * 0.025), 120)
+        x[s:s + len(c)] += c * 0.8
+    hum = np.sign(np.sin(2 * np.pi * 50 * t(d))) * 0.25 + np.sin(2 * np.pi * 100 * t(d)) * 0.25
+    hum = lowpass(hum, 0.15)
+    env_h = np.minimum(t(d) / 0.18, 1.0) * np.exp(-t(d) * 2.5)
+    x += hum * env_h
+    return x
+
+
+# 多人加入：两声往上的提示音
+def join():
+    d = 0.22
+    a = np.sin(2 * np.pi * 880 * t(0.09)) * decay(int(SR * 0.09), 30)
+    b = np.sin(2 * np.pi * 1320 * t(0.13)) * decay(int(SR * 0.13), 22)
+    return np.concatenate([a, b])
+
+
+# 多人退出：两声往下
+def leave():
+    a = np.sin(2 * np.pi * 1100 * t(0.08)) * decay(int(SR * 0.08), 30)
+    b = np.sin(2 * np.pi * 660 * t(0.12)) * decay(int(SR * 0.12), 22)
+    return np.concatenate([a, b])
+
+
+# —— 第一关 Boss「司炉」 ——
+# 蒸汽汽笛：两个不协和的音一起响，像老火车
+def whistle():
+    d = 1.4
+    tt = t(d)
+    vib = 1 + 0.004 * np.sin(2 * np.pi * 5 * tt)
+    a = np.sin(2 * np.pi * np.cumsum(np.full(len(tt), 466.0) * vib) / SR)
+    b = np.sin(2 * np.pi * np.cumsum(np.full(len(tt), 587.0) * vib) / SR)
+    air = highpass(noise(d), 0.3) * 0.25
+    e = np.minimum(tt / 0.08, 1.0) * np.minimum((d - tt) / 0.4, 1.0)
+    return (a * 0.5 + b * 0.4 + air) * e
+
+
+# 爆炸：低频闷响 + 碎片噪声
+def boom():
+    d = 0.9
+    thump = sweep(120, 35, d) * decay(int(SR * d), 5)
+    debris = lowpass(noise(d), 0.25) * decay(int(SR * d), 6)
+    return thump + debris * 0.7
+
+
+# 铆钉齐射：一串金属"叮"
+def rivets():
+    d = 0.35
+    x = np.zeros(int(SR * d))
+    for i in range(6):
+        s = int(SR * i * 0.012)
+        f = 2400 + i * 180
+        seg = np.sin(2 * np.pi * f * t(d - i * 0.012)) * decay(int(SR * (d - i * 0.012)), 30)
+        x[s:s + len(seg)] += seg * 0.5
+    x[:int(SR * 0.03)] += highpass(noise(0.03), 0.4) * decay(int(SR * 0.03), 100)
+    return x
+
+
+# 烟囱喷余烬："噗"
+def embers():
+    d = 0.45
+    puff = lowpass(noise(d), 0.12) * decay(int(SR * d), 9)
+    crackle = np.zeros(int(SR * d))
+    for _ in range(14):
+        s = rng.integers(0, int(SR * (d - 0.02)))
+        c = highpass(noise(0.01), 0.6) * decay(int(SR * 0.01), 300)
+        crackle[s:s + len(c)] += c * 0.5
+    return puff + crackle
+
+
+# 蒸汽喷口：一大股"嘶——"
+def vent():
+    d = 1.1
+    air = lowpass(highpass(noise(d), 0.1), 0.5)
+    e = np.minimum(t(d) / 0.04, 1.0) * np.exp(-t(d) * 2.2)
+    return air * e
+
+
+# 铲煤：铁铲刮地
+def scrape():
+    d = 0.6
+    grind = highpass(noise(d), 0.2) * (0.6 + 0.4 * np.sin(2 * np.pi * 37 * t(d)))
+    tone = np.sin(2 * np.pi * 180 * t(d)) * 0.3
+    return (grind + tone) * env(int(SR * d), 0.02, 0.2)
+
+
+# 炉门吸气：低沉的轰鸣，2 秒，可以循环
+def suction():
+    d = 2.0
+    n = int(SR * d)
+    rumble = lowpass(noise(d), 0.03) * 2.5
+    roar = lowpass(noise(d), 0.15) * (0.5 + 0.2 * np.sin(2 * np.pi * 3 * t(d)))
+    x = rumble + roar
+    f = int(SR * 0.05)
+    x[:f] *= np.linspace(0, 1, f)
+    x[-f:] *= np.linspace(1, 0, f)
+    return x
+
+
+# 闸门砸下："哐"
+def clang():
+    d = 0.8
+    x = np.zeros(int(SR * d))
+    for f, k in [(180, 6), (412, 8), (733, 10), (1210, 14)]:
+        x += np.sin(2 * np.pi * f * t(d)) * decay(int(SR * d), k)
+    x += lowpass(noise(d), 0.2) * decay(int(SR * d), 20) * 1.5
+    return x
+
+
+# 压力表归零："叮"
+def ding():
+    d = 1.0
+    x = np.sin(2 * np.pi * 1760 * t(d)) + 0.4 * np.sin(2 * np.pi * 4400 * t(d))
+    return x * decay(int(SR * d), 4)
+
+
+# 警报：两音交替的老式警笛，1 秒
+def alarm():
+    d = 1.0
+    tt = t(d)
+    f = np.where((tt * 4).astype(int) % 2 == 0, 660.0, 520.0)
+    sq = np.sign(np.sin(2 * np.pi * np.cumsum(f) / SR))
+    return lowpass(sq, 0.25) * env(len(tt), 0.01, 0.05)
+
+
 if __name__ == "__main__":
-    for fn in [charge, ready, shoot, hit, scrap, jump, land, jet, lantern_pick, lantern_drop, hurt, crack]:
+    for fn in [charge, ready, shoot, hit, scrap, jump, land, jet, lantern_pick, lantern_drop, hurt, crack,
+               ui_move, ui_confirm, ui_back, title_on, join, leave,
+               whistle, boom, rivets, embers, vent, scrape, suction, clang, ding, alarm]:
         write(fn.__name__, fn())
