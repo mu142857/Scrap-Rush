@@ -1,7 +1,7 @@
 class_name Orb
 extends Area2D
 ## 闪光灯打出去的小光球。
-## 蓄满：直线飞、略微追踪、伤害 100、打中有顿帧。
+## 蓄满：直线飞、略微追踪、伤害 100、打中有顿帧，能穿透（一路上每只怪各打一次，撞墙才停）。
 ## 没蓄满：伤害按比例，受重力，蓄得越少掉得越快，可以当手雷往下抛。
 
 const FULL_SPEED := 280.0
@@ -21,6 +21,8 @@ var color := Color.WHITE
 var _life := 0.0
 var _done := false
 var _trail: Array[Vector2] = []
+## 蓄满弹穿透时已经打过的怪
+var _hit: Array[Node] = []
 
 
 func setup(p: Player, pos: Vector2, dir: Vector2, charge: float, tgt: Node2D, col: Color) -> void:
@@ -78,15 +80,23 @@ func _physics_process(delta: float) -> void:
 func _on_body_entered(body: Node) -> void:
 	if _done:
 		return
-	_done = true
 	if body.is_in_group("enemy") and body.has_method("hurt"):
+		if _hit.has(body):
+			return
+		_hit.append(body)
 		body.call("hurt", damage, velocity.normalized(), full)
-		Game.sfx("hit", -2.0 if full else -8.0, 1.0, 0.1)
+		Game.sfx("hit", -2.0 if full else -8.0, 1.0 + 0.12 * (_hit.size() - 1), 0.1)
 		Game.sparks(get_parent(), global_position, color.lerp(Color.WHITE, 0.5), 10 if full else 5, 90.0)
 		if full:
 			Game.add_shake(2.0)
-			Game.hitstop(0.05)
+			if _hit.size() == 1:
+				Game.hitstop(0.05)
+			# 穿过去接着飞：追踪的目标打过了就不再拐弯
+			target = null
+			return
+		_done = true
 	else:
+		_done = true
 		Game.sparks(get_parent(), global_position, color, 4, 40.0)
 	queue_free()
 

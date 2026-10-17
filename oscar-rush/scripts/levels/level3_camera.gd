@@ -64,7 +64,7 @@ func _process(delta: float) -> void:
 	global_position = global_position.lerp(target, 1.0 - exp(-LOCK_SPEED * delta))
 	if global_position.distance_to(target) < 0.25:
 		global_position = target
-	offset = (Vector2(randf_range(-1, 1), randf_range(-1, 1)) * Game.shake / zoom.x * 2.0).round() / 2.0
+	offset = Game.shake_offset(zoom.x)
 
 
 func _apply_zoom(delta: float) -> void:

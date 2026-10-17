@@ -5,7 +5,8 @@ extends Node2D
 ## （每只先在落点冒火花、响一声，0.45 秒后才掉，不会凭空砸在人头上）→ 一波死光，歇一下来下一波
 ## → 最后一波打完，闸门升起，场子中间掉 1 个零件。
 ## 每场最后一波放一个精英怪（种类名在 ELITES 里）；脚本还没写好的种类自动跳过。
-## 关卡重来（R 或马灯碎了）会重载整个场景，遭遇战自然回到没打过的状态。
+## 打完一场就是一个存档点（Run.save_checkpoint）：马灯碎了或按 R，重载整个场景，人站回最近打完那场的出口一侧，
+## 存档点之前打完的遭遇战直接是打完的样子（闸门不落、不再掉零件），会照常发 finished（比如第一关的桥照样伸出来）。
 ## 用法：new() 以后填 left/right/ceil_y/floor_left/floor_right/waves/hazards，再 add_child 进关卡。
 
 ## 打完（闸门升起的那一刻）发出
@@ -73,6 +74,9 @@ var _gap := 0.0
 var _gates: Array[Gate] = []
 var _label: Label
 var _label_t := 0.0
+## 进场时主角在场子哪一边：打完后存档点放在另一边（出口那侧）
+var _entered_left := true
+var _key := ""
 
 
 func _ready() -> void:
@@ -83,6 +87,11 @@ func _ready() -> void:
 			get_parent().add_child.call_deferred(e)
 	_gates.append(_add_gate(left, floor_left))
 	_gates.append(_add_gate(right, floor_right))
+	_key = "%d:%d:%d" % [roundi(left), roundi(right), roundi(ceil_y)]
+	if Run.is_cleared(_key):
+		started = true
+		cleared = true
+		finished.emit.call_deferred()
 
 	_label = Label.new()
 	_label.label_settings = Hud.small_text(LABEL_COLOR)
@@ -134,6 +143,9 @@ func _player_inside() -> bool:
 
 func _start() -> void:
 	started = true
+	var players := get_tree().get_nodes_in_group("player")
+	if not players.is_empty():
+		_entered_left = (players[0] as Node2D).global_position.x < (left + right) / 2.0
 	for g in _gates:
 		g.slam()
 	Game.add_shake(4.0)
@@ -231,6 +243,11 @@ func _finish() -> void:
 	var part := Part.new()
 	part.position = Vector2((left + right) / 2.0, ceil_y + 20.0)
 	get_parent().add_child.call_deferred(part)
+	# 存档点：场子里出口那一侧，离闸门 28 像素，悬空 16 像素落下来（不会卡进地里）
+	var exit_right := _entered_left
+	var x := right - 28.0 if exit_right else left + 28.0
+	var y := (floor_right if exit_right else floor_left) - 16.0
+	Run.save_checkpoint(_key, Vector2(x, y))
 
 
 func _show_label(text: String) -> void:

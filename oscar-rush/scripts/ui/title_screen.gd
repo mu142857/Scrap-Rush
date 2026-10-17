@@ -7,7 +7,7 @@ extends Node2D
 ## 带调试参数（--autotest / --probe / --arc / --tour / --fx / --players）启动时直接进关卡，
 ## 免得这些测试脚本被开始界面挡住。
 
-const LEVEL_SCENE := "res://scenes/test_level.tscn"
+const LEVEL_SCENE := "res://scenes/weapon_select.tscn"  # 新开一局先选武器，选完才进第一关（weapon_select.gd）
 ## 开发用：命令行带 --boss 直接进第一关 Boss 房
 const BOSS_SCENE := "res://scenes/boss1.tscn"
 ## 开发者模式在 scripts/debug/dev_mode.gd（全局，任何场景按 F8 开面板，再按数字跳关）。
@@ -37,13 +37,14 @@ const CAM_DRIFT := 8.0
 const WARM := Color8(255, 211, 138)
 const DIM := Color(0.55, 0.55, 0.6)
 const LIT := Color(1, 1, 1)
-const OPTION_TOP := 108.0
-const OPTION_STEP := 20.0
+const OPTION_TOP := 100.0
+const OPTION_STEP := 19.0
 
-var _options: Array[String] = ["START", "CO-OP", "QUIT"]
+var _options: Array[String] = ["START", "CO-OP", "SETTINGS", "QUIT"]
 var _option_hints: Array[String] = [
 	"One player. Carry the lantern home.",
 	"2-4 players, one screen. Keyboard halves or gamepads.",
+	"Volume, fullscreen, pixel scaling, screen shake, controls.",
 	"",
 ]
 
@@ -83,35 +84,16 @@ func _ready() -> void:
 			var shots: Node = load("res://scripts/debug/title_shots.gd").new()
 			shots.set("out_dir", arg.trim_prefix("--titleshots="))
 			add_child(shots)
+	# 网页版关不掉页面，不放 QUIT
 	if OS.has_feature("web"):
-		_options.resize(2)
-		_option_hints.resize(2)
-	_add_menu_keys()
+		_options.resize(3)
+		_option_hints.resize(3)
 	_build_world()
 	_build_ui()
 	_animate_in()
 
 
-## W/S、手柄摇杆也能上下选，C 也能确认（默认的 ui_* 只有方向键、回车、空格和十字键）
-func _add_menu_keys() -> void:
-	var extra := {
-		"ui_up": [KEY_W],
-		"ui_down": [KEY_S],
-		"ui_accept": [KEY_C],
-	}
-	for action in extra:
-		for code in extra[action]:
-			var ev := InputEventKey.new()
-			ev.physical_keycode = code
-			if not InputMap.action_has_event(action, ev):
-				InputMap.action_add_event(action, ev)
-	for pair in [["ui_up", -1.0], ["ui_down", 1.0]]:
-		var m := InputEventJoypadMotion.new()
-		m.axis = JOY_AXIS_LEFT_Y
-		m.axis_value = pair[1]
-		m.device = -1
-		if not InputMap.action_has_event(pair[0], m):
-			InputMap.action_add_event(pair[0], m)
+## W/S、左摇杆、C 这些菜单键在 Settings 自动加载里统一加了
 
 
 func _build_world() -> void:
@@ -325,11 +307,32 @@ func _confirm() -> void:
 			_start_game()
 		"CO-OP":
 			_enter_lobby()
+		"SETTINGS":
+			_open_settings()
 		"QUIT":
 			Game.sfx("ui_back", -6.0)
 			_busy = true
 			await _fade_to(1.0, 0.4)
 			get_tree().quit()
+
+
+func _open_settings() -> void:
+	_busy = true
+	Game.sfx("ui_confirm", -8.0)
+	# 标题和选项先藏起来，免得从设置的半透明底下透出来叠在一起
+	var hidden: Array[CanvasItem] = [_title, _sub, _hint]
+	hidden.append_array(_option_labels)
+	for c in hidden:
+		c.visible = false
+	var menu := SettingsMenu.new()
+	_ui.add_child(menu)
+	await menu.closed
+	for c in hidden:
+		c.visible = true
+	# 关设置那一下的返回键 / 确认键别漏到菜单
+	await get_tree().process_frame
+	_busy = false
+	_refresh()
 
 
 func _start_game() -> void:

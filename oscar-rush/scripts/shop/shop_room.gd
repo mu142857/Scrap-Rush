@@ -35,16 +35,17 @@ const CREW_SEATS := [
 	{"pos": Vector2(290, 252), "face": -1, "crate": false},
 ]
 const NAMES := {
-	"charge": ["QUICK CHARGE", "charge time -0.15s"],
+	"charge": ["QUICK CHARGE", "faster charge / fire rate / hammer cooldown"],
 	"fuel": ["BIG TANK", "rocket fuel +0.35s"],
 	"plating": ["PLATING", "blocks a hit every %ds"],
 	"damping": ["DAMPER", "emotion rises 20% slower"],
 	"repair": ["REPAIR LANTERN", "lantern +25"],
 	"refresh": ["REFRESH", "new weapons & mutations"],
-	"hammer": ["STEAM HAMMER", "smash: shockwave both ways"],
+	"flash": ["FLASH LAMP", "hold to charge, full shot pierces"],
+	"hammer": ["STEAM HAMMER", "steam blast all around you"],
 	"tongs": ["SHOCK TONGS", "arc jumps 3 (5 when full)"],
 	"horn": ["GRAMOPHONE HORN", "pierces, knocks back hard"],
-	"rivet": ["RIVET GUN", "hold to fire faster"],
+	"rivet": ["RIVET GUN", "hold to fire nonstop"],
 	"rage": ["RAGE", "more emotion, more damage"],
 	"slave": ["SLAVE FLASH", "the lantern shoots along"],
 	"echo": ["TAPE ECHO", "attacks repeat at 50%"],
@@ -241,7 +242,8 @@ func _update_all() -> void:
 		st.info = _info(st)
 		match st.id:
 			"weapon", "mutation":
-				st.icon = st.item if st.item != "" else "part"
+				# 闪光灯没有单独的货架图标，借快充的灯泡
+				st.icon = ("charge" if st.item == "flash" else st.item) if st.item != "" else "part"
 				st.get_child(0).visible = st.item != ""
 			"charge", "fuel", "plating", "damping":
 				st.pips = Upgrades.level(st.id)
@@ -278,7 +280,7 @@ func _info(st: ShopStand) -> Dictionary:
 				return {"title": n[0], "detail": "COMING SOON", "dim": true}
 			var price: int = Upgrades.PRICE[st.id]
 			var swap := ""
-			if st.id == "weapon" and Upgrades.weapon != "flash":
+			if st.id == "weapon":
 				swap = "  (drops %s)" % NAMES[Upgrades.weapon][0]
 			elif st.id == "mutation" and Upgrades.mutation != "":
 				swap = "  (drops %s)" % NAMES[Upgrades.mutation][0]

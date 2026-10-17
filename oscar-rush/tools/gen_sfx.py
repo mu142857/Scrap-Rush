@@ -415,9 +415,41 @@ def tvon():
     return (whine + hum) * np.minimum(tt / 0.8, 1.0) * env(len(tt), 0.01, 0.3)
 
 
+# 铆钉枪：短促的"哒"，金属撞针 + 一点气声。一秒十几发，要短、不刺耳
+def rivet_shot():
+    d = 0.07
+    n = int(SR * d)
+    click = highpass(noise(d), 0.4) * decay(n, 90)
+    ping = np.sin(2 * np.pi * 1850 * t(d)) * decay(n, 60) * 0.5
+    thump = np.sin(2 * np.pi * 180 * t(d)) * decay(n, 50) * 0.6
+    return click * 0.8 + ping + thump
+
+
+# 蒸汽锤：一声闷砸 + 一大团蒸汽"嘶——"往外喷
+def steam_blast():
+    d = 0.75
+    n = int(SR * d)
+    slam = np.sin(2 * np.pi * sweep_freq(90, 45, d) * t(d)) * decay(n, 9) * 1.0
+    hiss = highpass(noise(d), 0.15) * env(n, 0.01, 0.4) * decay(n, 3.5) * 0.7
+    clank = (np.sin(2 * np.pi * 620 * t(d)) + np.sin(2 * np.pi * 1130 * t(d))) * decay(n, 30) * 0.35
+    return slam + hiss + clank
+
+
+def sweep_freq(f0, f1, dur):
+    return np.geomspace(f0, f1, int(SR * dur))
+
+
+# 蒸汽锤冷却好了：一声轻轻的汽阀"噗"
+def blast_ready():
+    d = 0.18
+    n = int(SR * d)
+    return lowpass(noise(d), 0.3) * env(n, 0.005, 0.12) * 0.6 + np.sin(2 * np.pi * 880 * t(d)) * decay(n, 25) * 0.4
+
+
 if __name__ == "__main__":
     for fn in [charge, ready, shoot, hit, scrap, jump, land, jet, lantern_pick, lantern_drop, hurt, crack,
                ui_move, ui_confirm, ui_back, title_on, join, leave,
                whistle, boom, rivets, embers, vent, scrape, suction, clang, ding, alarm,
-               bell, dial, buzz, busy, voice, tvclick, static, tvoff, tvon]:
+               bell, dial, buzz, busy, voice, tvclick, static, tvoff, tvon,
+               rivet_shot, steam_blast, blast_ready]:
         write(fn.__name__, fn())

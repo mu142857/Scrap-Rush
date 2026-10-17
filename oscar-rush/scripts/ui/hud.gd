@@ -23,6 +23,9 @@ var _banner: Label
 var _shown_hp := 100.0
 ## Boss 房里关掉底部按键提示（那里放 Boss 血条）
 var show_hint := true
+## 马灯血量低于这个比例，血条红着闪
+const LOW_HP := 0.3
+var _coach: Coach
 
 
 static func font() -> FontFile:
@@ -70,6 +73,11 @@ func _ready() -> void:
 	_banner.visible = false
 	add_child(_banner)
 
+	_coach = Coach.new()
+	add_child(_coach)
+	# 情绪指针表、全屏老电视滤镜、马灯光圈和回血特效（scripts/ui/emotion_fx.gd）
+	add_child(EmotionFx.new())
+
 	_shown_hp = Run.crystal_hp
 	Run.crystal_changed.connect(_on_crystal_changed)
 	_update_hint()
@@ -90,7 +98,11 @@ func _process(delta: float) -> void:
 		if (p as Node2D).get_global_transform_with_canvas().origin.y > _hint.position.y - 6.0:
 			low = true
 			break
-	_hint.modulate.a = move_toward(_hint.modulate.a, 0.0 if (low or not show_hint) else 1.0, delta * 5.0)
+	var hide := low or not show_hint or _coach.busy()
+	_hint.modulate.a = move_toward(_hint.modulate.a, 0.0 if hide else 1.0, delta * 5.0)
+	# 马灯快灭了：血条一直红着闪
+	if Run.crystal_hp / Run.crystal_max < LOW_HP:
+		_bar.queue_redraw()
 
 
 func show_banner(text: String) -> void:
@@ -103,9 +115,15 @@ func show_banner(text: String) -> void:
 
 func _update_hint() -> void:
 	var s := Run.players[0]["input"] as String
-	_hint.text = "%s Move   %s Jump (hold in air: fly)   Hold %s: charge, release: shoot   %s Drop/pick lantern   R Restart" % [
-		Controls.key_name(s, "move"), Controls.key_name(s, "jump"),
-		Controls.key_name(s, "attack"), Controls.key_name(s, "crystal")]
+	var atk := Controls.key_name(s, "attack")
+	var attack_text := "Hold %s: charge, release: shoot" % atk
+	match Upgrades.weapon:
+		"rivet":
+			attack_text = "Hold %s: fire" % atk
+		"hammer":
+			attack_text = "%s: steam blast" % atk
+	_hint.text = "%s Move   %s Jump (hold in air: fly)   %s   %s Drop/pick lantern   R Restart" % [
+		Controls.key_name(s, "move"), Controls.key_name(s, "jump"), attack_text, Controls.key_name(s, "crystal")]
 
 
 func _draw_bar() -> void:
@@ -127,4 +145,9 @@ func _draw_bar() -> void:
 	_bar.draw_rect(bar.grow(1), Color(0.03, 0.03, 0.045))
 	_bar.draw_rect(bar, Color(0.16, 0.14, 0.14))
 	_bar.draw_rect(Rect2(bar.position, Vector2(bar.size.x * shown, bar.size.y)), Color(0.95, 0.9, 0.85))
-	_bar.draw_rect(Rect2(bar.position, Vector2(bar.size.x * ratio, bar.size.y)), WARM)
+	var fill := WARM
+	if ratio < LOW_HP:
+		var k := 0.5 + 0.5 * sin(Time.get_ticks_msec() / 1000.0 * 9.0)
+		fill = WARM.lerp(Color(1.0, 0.25, 0.18), k)
+		_bar.draw_rect(bar.grow(1), Color(1.0, 0.25, 0.18, 0.5 * k), false)
+	_bar.draw_rect(Rect2(bar.position, Vector2(bar.size.x * ratio, bar.size.y)), fill)

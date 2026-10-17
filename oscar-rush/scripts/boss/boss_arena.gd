@@ -62,6 +62,9 @@ var _debug := false
 var _retrying := false
 var _card: Label
 var _card_sub: Label
+## 上一次在哪个 Boss 房重来过：同一个房间重来时开场走快速版（不再打名字、镜头直接退远），省得每次看 5 秒
+static var _retried_scene := ""
+var _quick := false
 
 
 func _configure() -> void:
@@ -77,6 +80,8 @@ func _build_extras() -> void:
 
 
 func _ready() -> void:
+	_quick = _retried_scene != "" and _retried_scene == scene_file_path
+	_retried_scene = ""
 	_configure()
 	Run.start_level()
 	Run.crystal_broken.connect(_on_crystal_broken)
@@ -223,12 +228,12 @@ func _process(delta: float) -> void:
 		0:
 			if lead:
 				_cam.position = _cam.position.lerp(_enter_cam_pos(), 1.0 - exp(-8.0 * delta))
-				if lead.global_position.x > trigger_x:
+				if lead.global_position.x > trigger_x or _quick:
 					_begin_intro()
 		3:
 			if lead and lead.global_position.x > arena.size.x + 4.0:
 				_leave()
-	_cam.offset = (Vector2(randf_range(-1, 1), randf_range(-1, 1)) * Game.shake / _cam.zoom.x * 2.0).round() / 2.0
+	_cam.offset = Game.shake_offset(_cam.zoom.x)
 
 	# 转灯：一盏光绕着灯座转
 	_lamp_angle += delta * _lamp_speed
@@ -263,13 +268,22 @@ func _begin_intro() -> void:
 	Game.add_shake(6.0)
 	Game.sparks(self, Vector2(wall, floor_y - 2), Color(1, 0.8, 0.4), 10, 90.0)
 	# 镜头退到能看全整个房间
+	var zoom_t := 0.5 if _quick else 1.2
 	var cam := create_tween().set_parallel(true)
-	cam.tween_property(_cam, "zoom", Vector2(zoom_fight, zoom_fight), 1.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	cam.tween_property(_cam, "position", arena.get_center(), 1.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	cam.tween_property(_cam, "zoom", Vector2(zoom_fight, zoom_fight), zoom_t).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	cam.tween_property(_cam, "position", arena.get_center(), zoom_t).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	_lamp_speed = 3.0
 	for l in _lamps:
 		l.energy = lamp_energy
 	Game.sfx("alarm", -10.0)
+	if _quick:
+		# 重来：Boss 直接醒，名字不再打一遍
+		boss.call("wake")
+		await get_tree().create_timer(1.2).timeout
+		_bar.appear()
+		_state = 2
+		boss.call("start_fight")
+		return
 	await get_tree().create_timer(0.7).timeout
 	boss.call("wake")
 	await get_tree().create_timer(0.6).timeout
@@ -365,6 +379,7 @@ func _retry() -> void:
 	if _retrying:
 		return
 	_retrying = true
+	_retried_scene = scene_file_path
 	Engine.time_scale = 1.0
 	Run.retry_level()
 	get_tree().reload_current_scene()

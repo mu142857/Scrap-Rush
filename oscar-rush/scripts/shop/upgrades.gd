@@ -5,7 +5,8 @@ extends RefCounted
 
 const MAX_LEVEL := 3
 const GEAR: Array[String] = ["charge", "fuel", "plating", "damping"]
-const WEAPONS: Array[String] = ["hammer", "tongs", "horn", "rivet"]
+## 能拿到的武器（开局三选一，商店里摆另外两把可以换）。电击钳、留声机喇叭还没做，先不上架
+const WEAPONS: Array[String] = ["flash", "rivet", "hammer"]
 const MUTATIONS: Array[String] = ["rage", "slave", "echo", "dynamo"]
 const PRICE := {"gear": 1, "repair": 1, "mutation": 2, "weapon": 3, "refresh": 1}
 const REPAIR_AMOUNT := 25.0
@@ -16,11 +17,11 @@ const DAMPING_PER_LEVEL := 0.2
 
 ## 已经做进游戏的武器和变异。没做的照样摆出来，但标 COMING SOON、买不了，免得卖出去没效果。
 ## 做好一把就把名字加进来。
-static var implemented_weapons: Array[String] = []
+static var implemented_weapons: Array[String] = ["flash", "rivet", "hammer"]
 static var implemented_mutations: Array[String] = []
 
 static var levels := {"charge": 0, "fuel": 0, "plating": 0, "damping": 0}
-## 身上的武器（"flash" 是开局的闪光灯）和变异（"" 没有）
+## 身上的武器（开局在 weapon_select 里选，默认闪光灯）和变异（"" 没有）
 static var weapon := "flash"
 static var mutation := ""
 static var _plating_ready := 0.0

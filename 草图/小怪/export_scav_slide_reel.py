@@ -160,6 +160,7 @@ def proj_frames():
 
 # ---------------------------------------------------------------- 胶片盘（草图 22×13，盘心 (14, 6)，半径 6）
 # 帧：0、1、2 滚动（三个孔各转 40°，往左滚是逆时针；后面拖的胶片尾巴一甩一甩）、3 没在滚（草图待机，落地前用）
+#     4~7：0~3 的亮边层（不吃压暗，暗处也看得清）
 REEL_C = (14, 6)
 
 
@@ -186,8 +187,32 @@ def reel_roll(k):
     return g.rgba()
 
 
+def reel_glow(body):
+    """亮边层：脚本用不吃场景压暗的 Sprite 叠在盘子上，暗处也看得见轮廓和孔位。
+    按本体的颜色挑像素：外圈一圈亮、左上的高光更亮、缠着的胶片微微发亮；孔、盘心、红灯留空，
+    所以暗处看到的是一圈亮边里三个黑孔在转。"""
+    cx, cy = REEL_C
+    out = np.zeros_like(body)
+    rim, hi, film = (110, 102, 94, 190), (168, 160, 151, 220), (112, 88, 72, 170)
+    for y in range(body.shape[0]):
+        for x in range(body.shape[1]):
+            if body[y, x, 3] == 0:
+                continue
+            c = tuple(int(v) for v in body[y, x, :3])
+            d = ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5
+            if c == RGB[8]:
+                out[y, x] = hi
+            elif c == RGB[6] and d > 5.0:
+                out[y, x] = rim
+            elif c in (RGB["r1"], RGB["r2"]):
+                out[y, x] = film
+    return out
+
+
 def reel_frames():
-    return [reel_roll(0), reel_roll(1), reel_roll(2), small.reel(0)]
+    """0~3 本体（同上），4~7 对应的亮边层。"""
+    body = [reel_roll(0), reel_roll(1), reel_roll(2), small.reel(0)]
+    return body + [reel_glow(b) for b in body]
 
 
 def check_led(name, img, w, n, led):
@@ -211,7 +236,7 @@ def main():
     Image.fromarray(rl).save(OUT / "film_reel.png")
     print("scavenger", sc.shape[1], "x", sc.shape[0], "帧宽", scw, "帧数 6", "红灯", SCAV_LED)
     print("slide_projector", pr.shape[1], "x", pr.shape[0], "帧宽", prw, "帧数 4", "红灯", proj_led)
-    print("film_reel", rl.shape[1], "x", rl.shape[0], "帧宽", rlw, "帧数 4", "红灯", REEL_C)
+    print("film_reel", rl.shape[1], "x", rl.shape[0], "帧宽", rlw, "帧数 8（4 本体 + 4 亮边）", "红灯", REEL_C)
     check_led("scavenger", sc, scw, 6, SCAV_LED)
     check_led("slide_projector", pr, prw, 3, proj_led)                 # 开火帧镜头往后坐了 1 格
     check_led("film_reel", rl, rlw, 4, REEL_C)

@@ -18,6 +18,7 @@ config/icon="res://icon.svg"
 [autoload]
 
 Controls="*res://scripts/autoload/controls.gd"
+Settings="*res://scripts/autoload/settings.gd"
 Run="*res://scripts/autoload/run.gd"
 Game="*res://scripts/autoload/game.gd"
 
@@ -41,6 +42,7 @@ window/stretch/mode="canvas_items"
 [physics]
 
 common/physics_ticks_per_second=120
+common/physics_interpolation=true
 common/max_physics_steps_per_frame=16
 3d/physics_engine="Jolt Physics"
 

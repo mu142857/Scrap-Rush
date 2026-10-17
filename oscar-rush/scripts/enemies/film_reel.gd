@@ -3,7 +3,8 @@ extends EnemyBase
 ## 胶片盘（策划案第九节 17，滚桶的）：一盘盘贴着地面滚过来，血 100。
 ## 一出生就选主角那边滚过去，撞墙反弹一次，第二次撞墙就碎。碰到伤 10，能跳过去，也能打碎。
 ## 走到台子边不停，照样滚下去。
-## 帧：0、1、2 滚动（孔位每帧转 40°，按滚过的距离换帧），3 没在滚（还在空中没落地）。
+## 帧：0、1、2 滚动（孔位每帧转 40°，按滚过的距离换帧），3 没在滚（还在空中没落地）；
+## 4~7 是 0~3 的亮边层：外圈、高光、缠着的胶片，不吃场景压暗，暗处也看得见轮廓和转动的孔。
 ## 贴图由 草图/小怪/export_scav_slide_reel.py 导出。
 
 const ROLL_SPEED := 90.0
@@ -12,15 +13,17 @@ const PX_PER_FRAME := 4.2
 const BOUNCE_HOP := -70.0
 ## 掉出关卡这么远就算碎了（不然遭遇战一直等它）
 const FALL_LIMIT := 600.0
+const BODY_FRAMES := 4
 
 var _landed := false
 var _bounces := 0
 var _roll := 0.0
+var _glow: Sprite2D
 
 
 func _setup() -> void:
 	texture_path = "res://art/enemies/film_reel.png"
-	hframes = 4
+	hframes = BODY_FRAMES * 2
 	frame_size = Vector2i(28, 13)
 	body_rect = Rect2(-6, -12, 12, 12)
 	led_pixel = Vector2i(14, 6)
@@ -30,6 +33,20 @@ func _setup() -> void:
 
 
 func _after_ready() -> void:
+	# 亮边层：和本体同一张图的后 4 帧，叠在本体上面，不吃压暗
+	_glow = Sprite2D.new()
+	_glow.texture = _sprite.texture
+	_glow.hframes = hframes
+	_glow.centered = false
+	var unshaded := CanvasItemMaterial.new()
+	unshaded.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+	_glow.material = unshaded
+	add_child(_glow)
+	move_child(_glow, _sprite.get_index() + 1)
+	_pick_dir()
+
+
+func _pick_dir() -> void:
 	var p := nearest_player()
 	if p and absf(p.global_position.x - global_position.x) > 1.0:
 		dir = 1 if p.global_position.x > global_position.x else -1
@@ -75,4 +92,14 @@ func _hit_wall() -> void:
 func _on_respawn() -> void:
 	_landed = false
 	_bounces = 0
-	_after_ready()
+	_pick_dir()
+
+
+func _update_visual() -> void:
+	super()
+	_glow.frame = frame + BODY_FRAMES
+	_glow.flip_h = _sprite.flip_h
+	_glow.offset = _sprite.offset
+	_glow.position = _sprite.position
+	# 挨打白闪时让本体的白闪露出来
+	_glow.visible = _flash < 0.3

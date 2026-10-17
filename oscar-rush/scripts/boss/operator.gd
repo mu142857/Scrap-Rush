@@ -193,7 +193,9 @@ func wake() -> void:
 	var tw := create_tween()
 	tw.tween_property(self, "position:y", HOVER_Y, 1.0).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	await tw.finished
-	_mode = "hold"
+	# 快速开场时 start_fight 可能已经先到了（_mode 已是 hover），别把它改回去
+	if _mode == "move":
+		_mode = "hold"
 
 
 func start_fight() -> void:

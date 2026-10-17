@@ -9,6 +9,8 @@ extends Camera2D
 ##   站在上层看不到底层。3~4 人时退到 1.5 倍，免得有人被挤出画面。下面的距离都是游戏像素。
 ## - "camera_focus" 组里的节点（精英怪出场动画时）把镜头往它那边拉一半，主角和它都在画面里；
 ##   不管怎么拉，玩家都不出画面
+## - 主角开了物理插值（见 Settings），镜头在渲染帧里读主角插值后的位置（_pos），
+##   不读 global_position，不然物理帧和屏幕帧对不上时主角相对画面一顿一顿地抖
 
 const ZOOM := 2.0
 const ZOOM_CROWD := 1.5
@@ -30,9 +32,14 @@ var _look := 0.0
 var _look_down := 0.0
 var _ground_y := 0.0
 var _has_ground := false
+## 主角上一个、这一个物理帧的位置（_pos 插值用）
+var _prev := {}
+var _curr := {}
 
 
 func _ready() -> void:
+	# 物理帧里排在主角后面，记到的是主角这一帧动完的位置
+	process_physics_priority = 100
 	var z := ZOOM if _players().size() <= 2 else ZOOM_CROWD
 	zoom = Vector2(z, z)
 	make_current()
@@ -65,12 +72,12 @@ func _process(delta: float) -> void:
 	# 保底：不管镜头追得多慢，玩家都不能出画面
 	var half := get_viewport_rect().size * 0.5 / zoom
 	for p in players:
-		var feet := p.global_position.y
-		pos.y = clampf(pos.y, feet - half.y + EDGE_MARGIN, feet - 20.0 + half.y - EDGE_MARGIN)
-		pos.x = clampf(pos.x, p.global_position.x - half.x + EDGE_MARGIN, p.global_position.x + half.x - EDGE_MARGIN)
+		var at := _pos(p)
+		pos.y = clampf(pos.y, at.y - half.y + EDGE_MARGIN, at.y - 20.0 + half.y - EDGE_MARGIN)
+		pos.x = clampf(pos.x, at.x - half.x + EDGE_MARGIN, at.x + half.x - EDGE_MARGIN)
 	global_position = _clamp_to_bounds(pos, half)
 	# 震屏按屏幕像素算，放大以后除回去，力度和以前一样
-	offset = (Vector2(randf_range(-1, 1), randf_range(-1, 1)) * Game.shake / zoom.x * 2.0).round() / 2.0
+	offset = Game.shake_offset(zoom.x)
 
 
 func _target_position() -> Vector2:
@@ -82,19 +89,20 @@ func _target_position() -> Vector2:
 	var weight := 0.0
 	for p in players:
 		var w := 2.0 if p.crystal else 1.0
-		focus += p.global_position * w
+		focus += _pos(p) * w
 		weight += w
 	focus /= weight
 
 	var target_y: float
 	if players.size() == 1:
 		var grounded := lead.is_on_floor()
+		var lead_y := _pos(lead).y
 		if grounded or not _has_ground:
-			_ground_y = lead.global_position.y
+			_ground_y = lead_y
 			_has_ground = true
 		target_y = _ground_y
-		if not grounded and lead.global_position.y - _ground_y > FALL_CATCHUP:
-			target_y = lead.global_position.y - FALL_CATCHUP
+		if not grounded and lead_y - _ground_y > FALL_CATCHUP:
+			target_y = lead_y - FALL_CATCHUP
 	else:
 		target_y = focus.y
 	var target_x := focus.x + _look
@@ -103,6 +111,36 @@ func _target_position() -> Vector2:
 		target_x = lerpf(target_x, (extra[0] as Node2D).global_position.x, EXTRA_FOCUS_WEIGHT)
 	var half := get_viewport_rect().size * 0.5 / zoom
 	return _clamp_to_bounds(Vector2(target_x, target_y + _look_down) + FOCUS_OFFSET, half)
+
+
+## 主角画在屏幕上的位置（物理插值以后的）。2D 节点没有 get_global_transform_interpolated，
+## 所以镜头自己在每个物理帧末尾记下主角的位置（_physics_process，排在主角后面），
+## 渲染时按 Engine.get_physics_interpolation_fraction() 在上一帧和这一帧之间插，和引擎画主角的算法一样
+func _pos(n: Node2D) -> Vector2:
+	if not _curr.has(n):
+		return n.global_position
+	return (_prev[n] as Vector2).lerp(_curr[n], Engine.get_physics_interpolation_fraction())
+
+
+func _physics_process(_delta: float) -> void:
+	var seen := {}
+	for p in _players():
+		var now := p.global_position
+		var last: Vector2 = _curr.get(p, now)
+		# 一帧挪了老远就是瞬移（出管口、重生），不插值
+		_prev[p] = now if last.distance_to(now) > 24.0 else last
+		_curr[p] = now
+		seen[p] = true
+	for k in _curr.keys():
+		if not seen.has(k):
+			_curr.erase(k)
+			_prev.erase(k)
+
+
+## 人被瞬移（出气动管、下天桥）以后调：落地高度按人现在的位置重新记，不再追旧房间的地面
+func forget_ground() -> void:
+	_has_ground = false
+	_look_down = 0.0
 
 
 func _clamp_to_bounds(pos: Vector2, half: Vector2) -> Vector2:

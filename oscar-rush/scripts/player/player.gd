@@ -49,12 +49,31 @@ const CHARGE_TIME := 0.8
 const CHARGE_UPGRADE := 0.15
 const CHARGE_TIME_MIN := 0.35
 const SHOT_COOLDOWN := 0.12
+## 三把武器（开局选，见 weapon_select.gd；商店也能换）。单体每秒伤害都在 100 左右：
+##   flash  闪光灯：按住蓄力 0.8 秒，蓄满 100 伤害、穿透一排；没蓄满会往下掉
+##   rivet  铆钉枪：按住一直连发，每 0.09 秒一颗、每颗 9 伤害，射程短，有后坐
+##   hammer 蒸汽锤：按一下，0.12 秒后以自己为中心炸一圈（半径 48、160 伤害、吹散 Boss 子弹），冷却 1.6 秒
+## 快充升级对三把都有效：蓄力更快 / 射得更快 / 冷却更短
+const RIVET_INTERVAL := 0.09
+const RIVET_UPGRADE := 0.01
+const RIVET_SPREAD := 3.0
+const RIVET_MOVE_MULT := 0.8
+const RIVET_RECOIL := 10.0
+const HAMMER_COOLDOWN := 1.6
+const HAMMER_UPGRADE := 0.2
+const HAMMER_WINDUP := 0.12
+## 蓄力圈：头顶一圈 16 个点，蓄到哪亮到哪
+const CHARGE_DOTS := 16
+const CHARGE_RING_R := 13.0
 ## 比屏幕半宽（2 倍放大后 120）略小，不锁屏幕外的怪
 const AIM_RANGE := 115.0
 ## 身后的敌人按距离 ×1.8 算，面朝的方向优先
 const BEHIND_PENALTY := 1.8
 # —— 挨打 ——
-const INVULN_TIME := 1.0
+## 2026-10-17 作者试玩嫌短：1.0 → 1.4 秒，期间明显闪烁（藏 / 发白 / 正常 三拍轮着来）
+const INVULN_TIME := 1.4
+## 无敌闪烁一拍多长
+const BLINK_STEP := 0.06
 const STUN_TIME := 0.4
 const EMOTION_HIT_CARRY := 5.0
 const EMOTION_HIT_EMPTY := 8.0
@@ -107,6 +126,11 @@ var _squash := 0.0
 var _gather := 0.0
 var _release_flash := 0.0
 var _target: Node2D = null
+var _rivet_t := 0.0
+var _rivet_n := 0
+var _muzzle := 0.0
+var _hammer_cd := 0.0
+var _hammer_windup := 0.0
 ## 画面上把精灵对齐到整像素：物理位置保留小数，只有显示取整（照 Phage）
 var _snap := Vector2.ZERO
 var _push := Vector2.ZERO
@@ -205,7 +229,7 @@ func _ready() -> void:
 	add_child(_jet_sound)
 	_charge_sound = AudioStreamPlayer.new()
 	_charge_sound.stream = Game.load_sound("charge")
-	_charge_sound.volume_db = -24.0
+	_charge_sound.volume_db = -15.0
 	add_child(_charge_sound)
 
 	_reticle = Node2D.new()
@@ -285,7 +309,7 @@ func _move_x(axis: float, delta: float, on_floor: bool) -> void:
 		facing = 1 if axis > 0.0 else -1
 	var top := CARRY_SPEED if crystal else RUN_SPEED
 	if charging:
-		top *= CHARGE_MOVE_MULT
+		top *= RIVET_MOVE_MULT if weapon() == "rivet" else CHARGE_MOVE_MULT
 	var accel := RUN_SPEED / ACCEL_TIME
 	var decel := RUN_SPEED / DECEL_TIME
 	var rate: float
@@ -421,7 +445,19 @@ func _update_jet_sound(delta: float) -> void:
 		_jet_sound.stop()
 
 
+func weapon() -> String:
+	return Upgrades.weapon
+
+
 func _attack(delta: float) -> void:
+	_muzzle = maxf(_muzzle - delta / 0.06, 0.0)
+	match weapon():
+		"rivet":
+			_attack_rivet(delta)
+			return
+		"hammer":
+			_attack_hammer(delta)
+			return
 	var held := Input.is_action_pressed(_act("attack"))
 	if held and not charging and _cooldown <= 0.0 and _stun <= 0.0:
 		charging = true
@@ -438,7 +474,9 @@ func _attack(delta: float) -> void:
 	if charge >= 1.0 and not charge_full:
 		charge_full = true
 		_ring = 1.0
-		Game.sfx("ready", -8.0)
+		_squash = 0.5
+		Game.sfx("ready", -3.0)
+		Game.sparks(get_parent(), global_position + Vector2(0, -10), Color.WHITE, 8, 70.0)
 	_target = _find_target()
 	if not held:
 		_fire()
@@ -460,6 +498,79 @@ func _fire() -> void:
 	_release_flash = 1.0 if charge_full else 0.4
 	_cancel_charge()
 	_cooldown = SHOT_COOLDOWN
+
+
+## 铆钉枪：按住就连发，不蓄力。每颗自动瞄最近的怪，带一点散布；人往后顶一下，枪口闪一下
+func _attack_rivet(delta: float) -> void:
+	_rivet_t -= delta
+	var held := Input.is_action_pressed(_act("attack"))
+	charging = held and _stun <= 0.0
+	if not charging:
+		_target = null
+		_rivet_n = 0
+		return
+	_target = _find_target()
+	if _rivet_t > 0.0:
+		return
+	_rivet_t += maxf(RIVET_INTERVAL - RIVET_UPGRADE * charge_level, 0.05)
+	if _rivet_t < 0.0:
+		_rivet_t = 0.0
+	var muzzle := global_position + Vector2(facing * 6, -10)
+	var dir := Vector2(facing, 0)
+	if _target:
+		dir = (_aim_point(_target) - muzzle).normalized()
+		if signf(dir.x) != 0.0:
+			facing = int(signf(dir.x))
+	dir = dir.rotated(deg_to_rad(randf_range(-RIVET_SPREAD, RIVET_SPREAD)))
+	var r := Rivet.new()
+	r.setup(muzzle, dir, strip_color)
+	get_parent().add_child(r)
+	_rivet_n += 1
+	_muzzle = 1.0
+	_release_flash = maxf(_release_flash, 0.35)
+	velocity.x -= dir.x * RIVET_RECOIL
+	Game.sfx("rivet_shot", -9.0, 1.0, 0.08)
+	if _rivet_n % 3 == 0:
+		Game.add_shake(0.6)
+
+
+func hammer_cooldown() -> float:
+	return maxf(HAMMER_COOLDOWN - HAMMER_UPGRADE * charge_level, 1.0)
+
+
+## 蒸汽锤：按一下，缩一下身子蓄 0.12 秒，以自己为中心炸开一圈蒸汽；之后要冷却
+func _attack_hammer(delta: float) -> void:
+	var was := _hammer_cd
+	_hammer_cd = maxf(_hammer_cd - delta, 0.0)
+	if was > 0.0 and _hammer_cd <= 0.0:
+		# 冷却好了：汽阀"噗"一声，人身上闪一下
+		Game.sfx("blast_ready", -8.0)
+		_ring = 0.6
+	if _hammer_windup > 0.0:
+		_hammer_windup -= delta
+		if _hammer_windup <= 0.0:
+			_blast()
+		return
+	if Input.is_action_just_pressed(_act("attack")) and _stun <= 0.0:
+		if _hammer_cd > 0.0:
+			Game.sfx("ui_back", -18.0, 1.6)
+			return
+		_hammer_windup = HAMMER_WINDUP
+		_squash = 1.0
+		_gather = 1.0
+		Game.sfx("scrape", -12.0, 1.8)
+
+
+func _blast() -> void:
+	var b := SteamBlast.new()
+	b.color = strip_color
+	b.position = global_position + Vector2(0, -10)
+	get_parent().add_child(b)
+	_hammer_cd = hammer_cooldown()
+	_release_flash = 1.0
+	_ring = 1.0
+	if not is_on_floor():
+		velocity.y = minf(velocity.y, -90.0)
 
 
 func _cancel_charge() -> void:
@@ -564,7 +675,9 @@ func _animate(delta: float) -> void:
 		_walk_time = 0.0
 		frame = int(_anim_time / IDLE_FRAME_TIME) % 4
 	_last_walk_frame = frame
-	var blink_hidden := _invuln > 0.0 and int(_invuln / 0.08) % 2 == 1
+	# 无敌期间三拍轮着来：藏起来 → 发白 → 正常，比只隐藏显眼，一看就知道自己现在不会挨打
+	var blink_phase := int(_invuln / BLINK_STEP) % 3 if _invuln > 0.0 else -1
+	var blink_hidden := blink_phase == 0
 	_snap = global_position.round() - global_position
 	# 缩一下：先猛地压扁，再带一点回弹恢复
 	var k := _squash
@@ -576,18 +689,22 @@ func _animate(delta: float) -> void:
 		s.flip_h = facing < 0
 		s.visible = not blink_hidden
 
-	var glow := charge if charging else 0.0
+	var glow := charge if (charging and weapon() == "flash") else 0.0
 	var pulse := 0.0
 	if charge_full:
 		pulse = 0.25 + 0.25 * sin(_anim_time * 18.0)
-	_body.modulate = Color.WHITE.lerp(Color(1.8, 1.7, 1.6), clampf(glow * 0.6 + pulse + _ring * 0.6, 0.0, 1.0))
+	_body.modulate = Color.WHITE.lerp(Color(2.0, 1.9, 1.8), clampf(glow * 0.9 + pulse + _ring * 0.6, 0.0, 1.0))
 	_strip.modulate = Color.WHITE.lerp(Color(2.4, 2.4, 2.4), clampf(glow + _ring, 0.0, 1.0))
+	if blink_phase == 1:
+		_body.modulate = Color(2.6, 2.6, 2.6)
+		_strip.modulate = Color(2.6, 2.6, 2.6)
 	_light.energy = 0.8 + glow * 1.4 + pulse + _release_flash * 2.5
 	_light.texture_scale = 1.0 + glow * 0.8 + _release_flash * 1.6
 
 
 func _draw() -> void:
 	_draw_fuel()
+	_draw_weapon()
 	if _gather > 0.0:
 		# 蓄力开始：一圈光点从外往里收
 		var gr := lerpf(3.0, 14.0, _gather)
@@ -601,6 +718,53 @@ func _draw() -> void:
 		for i in 20:
 			var a := TAU * i / 20.0
 			_px(Vector2(0, -10) + Vector2(cos(a), sin(a)) * r, col)
+
+
+func _draw_weapon() -> void:
+	match weapon():
+		"flash":
+			if not charging:
+				return
+			var c := Vector2(0, -10)
+			# 光点一直从外往里收：蓄得越多，收的点越多越快
+			var n := 4 + int(charge * 10.0)
+			for i in n:
+				var ph := fmod(_anim_time * (1.2 + charge * 1.6) + float(i) / n, 1.0)
+				var a := float(i) * 2.399 + _anim_time * 0.7
+				var rr := lerpf(24.0, 3.0, ph)
+				var q := c + Vector2(cos(a), sin(a)) * rr
+				_px(q, Color(1, 1, 1, 0.4 + 0.6 * ph))
+				_px(q - Vector2(cos(a), sin(a)), Color(strip_color, 0.5 * ph))
+			# 蓄力圈：一圈 16 个点，从正上方顺时针一个个亮起来；满了整圈变白、一闪一闪
+			var lit := int(charge * CHARGE_DOTS)
+			for i in CHARGE_DOTS:
+				var a := -PI / 2.0 + TAU * i / CHARGE_DOTS
+				var p := c + Vector2(cos(a), sin(a)) * CHARGE_RING_R
+				var col := Color(0.12, 0.12, 0.15, 0.85)
+				if charge_full:
+					col = Color.WHITE if int(_anim_time * 12.0) % 2 == 0 else strip_color
+				elif i < lit:
+					col = strip_color.lerp(Color.WHITE, float(i) / CHARGE_DOTS * 0.7)
+				# 2×2 的点，黑处也看得清
+				draw_rect(Rect2((p - Vector2.ONE).round() + _snap, Vector2(2, 2)), col)
+		"rivet":
+			if _muzzle > 0.0:
+				# 枪口火光：一个十字小星
+				var m := Vector2(facing * 8, -10)
+				var col := Color(1.0, 0.9, 0.6, _muzzle)
+				_px(m, Color(1, 1, 1, _muzzle))
+				for d in [Vector2.LEFT, Vector2.RIGHT, Vector2.UP, Vector2.DOWN]:
+					_px(m + d, col)
+				_px(m + Vector2(facing * 2, 0), col)
+		"hammer":
+			if _hammer_cd > 0.0:
+				# 冷却圈：脚下一道弧，冷却完就补满
+				var k := 1.0 - _hammer_cd / hammer_cooldown()
+				var n := 14
+				for i in n:
+					var a := PI + PI * i / (n - 1)
+					var p := Vector2(0, -1) + Vector2(cos(a) * 9.0, sin(a) * 3.0 + 3.0)
+					_px(p, strip_color if float(i) / n < k else Color(0.25, 0.25, 0.3, 0.6))
 
 
 ## 背后的小弧形油量表。满油而且没在飞就不画

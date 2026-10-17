@@ -10,8 +10,13 @@ const WIDE := 1.0
 const SCROLL_Y_SPEED := 4.0
 
 var scrolling := false
-## 坐气动管时镜头跟着胶囊走（人藏起来了）
-var chase: Node2D = null
+## 坐气动管时镜头跟着胶囊走（人藏起来了）。设回 null 时落地高度重新记：
+## 以前还按上一间房的地面追，出管口镜头先冲到主角脚下 35 像素、再拽回来，晃得厉害（作者 10-17 反馈）
+var chase: Node2D = null:
+	set(v):
+		if chase != null and v == null:
+			forget_ground()
+		chase = v
 var scroll_x := 0.0
 var scroll_y := 0.0
 
@@ -46,6 +51,7 @@ func _process(delta: float) -> void:
 		var h := get_viewport_rect().size * 0.5 / zoom
 		var p := global_position.lerp(chase.global_position + FOCUS_OFFSET * 0.5, 1.0 - exp(-12.0 * delta))
 		global_position = _clamp_to_bounds(p, h)
+		offset = Game.shake_offset(zoom.x)
 		return
 	if not scrolling:
 		super._process(delta)
@@ -53,4 +59,4 @@ func _process(delta: float) -> void:
 	var half := get_viewport_rect().size * 0.5 / zoom
 	var y := lerpf(global_position.y, scroll_y, 1.0 - exp(-SCROLL_Y_SPEED * delta))
 	global_position = _clamp_to_bounds(Vector2(scroll_x, y), half)
-	offset = (Vector2(randf_range(-1, 1), randf_range(-1, 1)) * Game.shake / zoom.x * 2.0).round() / 2.0
+	offset = Game.shake_offset(zoom.x)

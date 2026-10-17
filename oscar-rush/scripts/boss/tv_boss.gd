@@ -991,10 +991,15 @@ class Echo:
 		Game.sfx("tvclick", -4.0, 0.6)
 
 	func _physics_process(delta: float) -> void:
+		# 顿帧时 time_scale = 0、delta = 0：影子跟着整个停住，也不往轨迹里记（不然解冻后影子会跳一截）
+		if delta <= 0.0:
+			return
 		_t += delta
 		if is_instance_valid(target):
 			_trail.append(target.global_position)
-		var lag := int(DELAY / get_physics_process_delta_time())
+		# 延迟按物理帧数算，和这一帧的 delta 无关
+		# （以前是 int(DELAY / delta)：delta = 0 时是无穷大，x86 电脑上转成整数变成极大的负数，下面取下标越界崩溃）
+		var lag := maxi(1, roundi(DELAY * Engine.physics_ticks_per_second))
 		if _trail.size() > lag:
 			var pos: Vector2 = _trail[_trail.size() - 1 - lag]
 			global_position = pos

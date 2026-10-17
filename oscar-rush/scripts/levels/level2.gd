@@ -353,9 +353,11 @@ func _ride(t: Dictionary) -> void:
 		p.velocity = vel
 		p.visible = true
 		p.process_mode = Node.PROCESS_MODE_INHERIT
+		p.reset_physics_interpolation()
 	if is_instance_valid(_crystal):
 		_crystal.visible = true
 		_crystal.process_mode = Node.PROCESS_MODE_INHERIT
+		_crystal.reset_physics_interpolation()
 	Game.sfx("suction", -8.0, 0.8)
 	Game.sparks(self, out + Vector2(0, -6), Color8(220, 220, 230), 10, 80.0)
 	Game.add_shake(2.0)
@@ -398,6 +400,7 @@ func _end_bridge() -> void:
 	_state = POST
 	_burn.visible = false
 	_cam.scrolling = false
+	_cam.forget_ground()
 	_cam.set_wide(false)
 	for w in _wanderers:
 		if is_instance_valid(w):
@@ -459,12 +462,14 @@ func _burn_edge(players: Array[Player]) -> void:
 			if p.hurt(Vector2(edge - 30.0, p.global_position.y), BURN_DAMAGE) and p.crystal == null:
 				Run.damage_crystal(BURN_DAMAGE)
 			p.global_position.x = edge + 30.0
+			p.reset_physics_interpolation()
 			p.velocity = Vector2(150.0, -140.0)
 			Game.sparks(self, Vector2(edge, p.global_position.y - 6.0), Color8(255, 170, 70), 10, 80.0)
 	if is_instance_valid(_crystal) and _crystal.carrier == null and _crystal.global_position.x < edge + 6.0:
 		_crystal.take_hit(Vector2(edge - 30.0, _crystal.global_position.y), BURN_DAMAGE)
 		var p := players[0]
 		_crystal.global_position = p.global_position
+		_crystal.reset_physics_interpolation()
 		_crystal.pick_up(p)
 	for w in _wanderers.duplicate():
 		if is_instance_valid(w) and w.global_position.x < edge - 12.0:
@@ -485,6 +490,8 @@ func _fell(p: Player) -> void:
 		p.global_position = D.SPAWN
 	else:
 		p.global_position = Vector2(clampf(x, D.B_X0 + 20.0, D.B_X0 + 200.0), D.BRIDGE_Y - 4.0)
+	p.reset_physics_interpolation()
+	_cam.forget_ground()
 	p.velocity = Vector2.ZERO
 	Game.flash(Color(1, 0.9, 0.7), 0.4, 0.5)
 

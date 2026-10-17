@@ -5,8 +5,15 @@ extends Node
 const TITLE_SCENE := "res://scenes/title.tscn"
 
 var shake := 0.0
+## 震屏叠加上限（add_shake 取最大值不累加，这里再封顶）
+const MAX_SHAKE := 6.0
+## 震屏方向每秒换几次。每个渲染帧都换（120/144 帧）会变成高频乱抖，看着发晕
+const SHAKE_HZ := 30.0
+var _shake_dir := Vector2.ZERO
+var _shake_t := 0.0
 ## 开发用无敌（F1，见 scripts/debug/dev_mode.gd）：主角不受伤，马灯不掉血
 var invincible := false
+var pause_menu: PauseMenu
 
 var _flash_rect: ColorRect
 var _flash_tween: Tween
@@ -26,35 +33,40 @@ func _ready() -> void:
 	_flash_rect.color = Color(1, 1, 1, 0)
 	layer.add_child(_flash_rect)
 	add_child(load("res://scripts/debug/dev_mode.gd").new())        # F8 开发者模式
+	pause_menu = PauseMenu.new()                                     # Esc / 手柄 Start 暂停
+	add_child(pause_menu)
 
 
-## F11 或 Alt+Enter 切换全屏（默认全屏）
+## F11 或 Alt+Enter 切换全屏（默认全屏），切完记进设置。
+## Esc 由暂停菜单（scripts/ui/pause_menu.gd）管：关卡里打开暂停，开始界面自己处理 Esc。
 func _unhandled_input(event: InputEvent) -> void:
 	var k := event as InputEventKey
 	if k == null or not k.pressed or k.echo:
 		return
-	# Esc：关卡里回开始界面（开始界面自己处理 Esc）
-	if k.physical_keycode == KEY_ESCAPE:
-		var cur := get_tree().current_scene
-		if cur and cur.scene_file_path != TITLE_SCENE:
-			Engine.time_scale = 1.0
-			get_tree().paused = false
-			get_tree().change_scene_to_file(TITLE_SCENE)
-			get_viewport().set_input_as_handled()
-		return
 	if k.physical_keycode == KEY_F11 or (k.physical_keycode == KEY_ENTER and k.alt_pressed):
 		var full := DisplayServer.window_get_mode() >= DisplayServer.WINDOW_MODE_FULLSCREEN
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED if full else DisplayServer.WINDOW_MODE_FULLSCREEN)
+		Settings.sync_fullscreen()
 		get_viewport().set_input_as_handled()
 
 
 func _process(delta: float) -> void:
 	# delta 已经乘过 time_scale，顿帧时震屏停在原地
 	shake = move_toward(shake, 0.0, delta * 30.0)
+	_shake_t -= delta
+	if _shake_t <= 0.0:
+		_shake_t = 1.0 / SHAKE_HZ
+		_shake_dir = Vector2(randf_range(-1, 1), randf_range(-1, 1))
 
 
+## 乘上设置里的震屏强度（关 / 轻 / 强），再封顶 MAX_SHAKE
 func add_shake(amount: float) -> void:
-	shake = maxf(shake, amount)
+	shake = minf(maxf(shake, amount * Settings.shake_scale()), MAX_SHAKE)
+
+
+## 镜头的震屏偏移（游戏像素）。按屏幕像素算，放大以后除回去，取到半像素。所有镜头都用这个
+func shake_offset(zoom: float) -> Vector2:
+	return (_shake_dir * shake / zoom * 2.0).round() / 2.0
 
 
 ## 时间完全停 duration 秒，再在 recover 秒内缓回正常速度
