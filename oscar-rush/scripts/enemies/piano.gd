@@ -4,37 +4,46 @@ extends EliteBase
 ## 基本站着不动，偶尔朝主角挪一小步。一个阶段，两招轮着放，都先冒红色"!"：
 ## - 琴键浪：从钢琴脚下开始，地面上 8 根琴键柱依次顶起来，像浪一样朝主角推过去，要跳过去。
 ## - 和弦：在主角脚下和左右各 30 像素先出落点标记，0.5 秒后同时顶起 3 根更高的柱子，要走开。
+## - 琶音（2026-10-17 加）：朝主角连弹 5 个音，每个音飞出一颗发光的音符，抛物线落下，音一个比一个高。
+##   空中的威胁，和地上的两招配合，不能只靠跳。三招轮着放。
+## 前摇（2026-10-17 试玩嫌不明显）：预警时琴身抖、一闪一闪发红；琴键浪在预警时就把整排琴键的位置
+## 在地上淡淡标出来，提前知道浪会推到哪。
 ## 琴键柱是地上的东西，用代码画（内部类 KeyColumn），每根顶起之前地面先闪一下。
 ## 贴图 piano.png（草图/精英怪/export_piano_vacuum.py 导出）：
 ## 0~3 待机（穿孔纸卷往上走），4 预警（琴键抬起一半），5、6 放招（琴键轮流翘起来）。
 
-enum State { IDLE, SHUFFLE, WAVE_WARN, WAVE, CHORD_WARN, CHORD, RECOVER }
+enum State { IDLE, SHUFFLE, WAVE_WARN, WAVE, CHORD_WARN, CHORD, ARP_WARN, ARP, RECOVER }
 
-const IDLE_TIME := Vector2(1.3, 1.9)
+## 2026-10-17 第二次试玩嫌太难，整体降了一档：歇得更久、预警更长、琴键更少更慢、伤害更低、血更少
+const IDLE_TIME := Vector2(2.0, 2.6)
 const ROLL_FRAME_TIME := 0.16
 ## 偶尔挪一下：每隔几轮招式挪 0.5 秒
 const SHUFFLE_EVERY := 3
 const SHUFFLE_TIME := 0.5
 const SHUFFLE_SPEED := 28.0
 ## 琴键浪
-const WAVE_WARN := 0.6
-const WAVE_KEYS := 8
-const WAVE_GAP := 0.12
-const WAVE_HEIGHT := 14.0
+const WAVE_WARN := 0.8
+const WAVE_KEYS := 6
+const WAVE_GAP := 0.16
+const WAVE_HEIGHT := 12.0
 const WAVE_UP := 0.4
 const WAVE_WIDTH := 8.0
 ## 每根之间的间距在这个范围里，按主角离得多远来定，让第 8 根刚好越过主角
 const WAVE_SPACING := Vector2(12.0, 20.0)
-const WAVE_DAMAGE := 10.0
+const WAVE_DAMAGE := 8.0
 ## 和弦
-const CHORD_WARN := 0.5
-const CHORD_MARK := 0.5
-const CHORD_SPREAD := 30.0
+const CHORD_WARN := 0.6
+const CHORD_MARK := 0.8
+const CHORD_SPREAD := 36.0
 const CHORD_HEIGHT := 26.0
 const CHORD_UP := 0.5
 const CHORD_WIDTH := 10.0
-const CHORD_DAMAGE := 12.0
-const RECOVER_TIME := 0.7
+const CHORD_DAMAGE := 9.0
+const RECOVER_TIME := 1.1
+## 琶音
+const ARP_WARN := 0.9
+const ARP_NOTES := 5
+const ARP_GAP := 0.18
 ## 琴键浪的音：五声音阶往上走（"叮"换音高）
 const NOTES := [1.0, 1.122, 1.26, 1.498, 1.682, 2.0, 2.245, 2.52]
 ## 前脚离脚底中点多远（第一根柱子从这里外面开始）
@@ -44,7 +53,9 @@ var state := State.IDLE
 var _state_t := 0.0
 var _idle_time := 1.5
 var _rounds := 0
-var _next_chord := false
+## 下一招：0 琴键浪，1 和弦，2 琶音
+var _next_attack := 0
+var _arp_left := 0
 var _attack_dir := -1
 
 
@@ -57,8 +68,8 @@ func _setup() -> void:
 	frame_size = Vector2i(42, 30)
 	body_rect = Rect2(-19, -28, 38, 28)
 	led_pixel = Vector2i(20, 7)
-	max_hp = 1100.0
-	contact_damage = 10.0
+	max_hp = 750.0
+	contact_damage = 8.0
 	_idle_time = 1.0
 
 
@@ -85,7 +96,6 @@ func _tick(delta: float) -> void:
 		State.WAVE_WARN:
 			set_frame(4)
 			if _state_t >= WAVE_WARN:
-				_wave()
 				_enter(State.WAVE)
 		State.WAVE:
 			_play_frames()
@@ -99,6 +109,18 @@ func _tick(delta: float) -> void:
 		State.CHORD:
 			_play_frames()
 			if _state_t >= CHORD_MARK + CHORD_UP:
+				_enter(State.RECOVER)
+		State.ARP_WARN:
+			set_frame(4)
+			if _state_t >= ARP_WARN:
+				_arp_left = ARP_NOTES
+				_enter(State.ARP)
+		State.ARP:
+			_play_frames()
+			if _arp_left > 0 and _state_t >= (ARP_NOTES - _arp_left) * ARP_GAP:
+				_play_note(ARP_NOTES - _arp_left)
+				_arp_left -= 1
+			if _arp_left == 0 and _state_t >= ARP_NOTES * ARP_GAP + 0.2:
 				_enter(State.RECOVER)
 		State.RECOVER:
 			_roll_frames()
@@ -125,14 +147,21 @@ func _enter(s: State) -> void:
 func _start_attack() -> void:
 	_face_player()
 	_attack_dir = dir
-	if _next_chord:
-		warn(CHORD_WARN)
-		_enter(State.CHORD_WARN)
-	else:
-		warn(WAVE_WARN)
-		_enter(State.WAVE_WARN)
+	match _next_attack:
+		1:
+			warn(CHORD_WARN)
+			_enter(State.CHORD_WARN)
+		2:
+			warn(ARP_WARN)
+			_enter(State.ARP_WARN)
+			Game.sfx("charge", -12.0, 1.4)
+		_:
+			warn(WAVE_WARN)
+			_enter(State.WAVE_WARN)
+			# 琴键马上排出来：预警这段时间先在地上淡淡标出整排位置，到点再一根根顶起
+			_wave(WAVE_WARN)
 	Game.sfx("ready", -12.0, 0.7)
-	_next_chord = not _next_chord
+	_next_attack = (_next_attack + 1) % 3
 
 
 func _shuffle() -> void:
@@ -144,8 +173,9 @@ func _shuffle() -> void:
 		Game.dust(get_parent(), global_position + Vector2(-side * 16.0, 0), 2, -side)
 
 
-## 琴键浪：一根根往主角那边排过去。地面断了、撞墙就停
-func _wave() -> void:
+## 琴键浪：一根根往主角那边排过去。地面断了、撞墙就停。
+## head_start：在顶起之前多等多久（这段时间琴键的位置在地上淡淡标出来）
+func _wave(head_start := 0.0) -> void:
 	var p := nearest_player()
 	var reach := 120.0
 	if p:
@@ -171,7 +201,8 @@ func _wave() -> void:
 		k.width = WAVE_WIDTH
 		k.height = WAVE_HEIGHT
 		k.lead = 0.2
-		k.delay = i * WAVE_GAP * interval_mult()
+		k.delay = head_start + i * WAVE_GAP * interval_mult()
+		k.preview = head_start > 0.0
 		k.up_time = WAVE_UP
 		k.damage = WAVE_DAMAGE * damage_mult()
 		k.pitch = NOTES[i % NOTES.size()]
@@ -226,6 +257,41 @@ func _ground_at(side: float, dist: float) -> bool:
 	return not get_world_2d().direct_space_state.intersect_ray(q).is_empty()
 
 
+## 琶音的第 i 个音：朝主角抛一颗音符，落点散开一点，音一个比一个高
+func _play_note(i: int) -> void:
+	var p := nearest_player()
+	var from := global_position + Vector2(_attack_dir * 10.0, -frame_size.y + 4.0)
+	var target := p.global_position + Vector2(0, -6) if p else from + Vector2(_attack_dir * 100.0, 20.0)
+	target.x += (i - ARP_NOTES / 2) * 9.0 + randf_range(-5, 5)
+	var g := BossBullet.EMBER_GRAVITY * 0.85
+	var t := 0.75 + i * 0.03
+	var v := Vector2((target.x - from.x) / t, (target.y - from.y) / t - 0.5 * g * t)
+	var b := BossBullet.spawn(get_parent(), BossBullet.Kind.NOTE, from, v, i % 2 == 0)
+	b.arena = Rect2(global_position.x - 320, global_position.y - 240, 640, 280)
+	Game.sfx("ready", -8.0, NOTES[i % NOTES.size()])
+	Game.sparks(get_parent(), from, Color(1.0, 0.9, 0.6), 3, 40.0, Vector2.UP)
+
+
+## 预警时琴身抖、一闪一闪发红，越接近放招越快
+func _update_visual() -> void:
+	super._update_visual()
+	var warn_t := -1.0
+	match state:
+		State.WAVE_WARN:
+			warn_t = _state_t / WAVE_WARN
+		State.CHORD_WARN:
+			warn_t = _state_t / CHORD_WARN
+		State.ARP_WARN:
+			warn_t = _state_t / ARP_WARN
+	if warn_t >= 0.0:
+		var amp := 1.0 if warn_t < 0.6 else 2.0
+		_sprite.position.x += amp if int(_state_t * 30.0) % 2 == 0 else -amp
+		var pulse := 0.5 + 0.5 * sin(_state_t * (14.0 + 20.0 * warn_t))
+		_sprite.modulate = Color.WHITE.lerp(Color(1.8, 0.75, 0.6), pulse * (0.4 + 0.6 * warn_t))
+	else:
+		_sprite.modulate = Color.WHITE
+
+
 func _face_player() -> void:
 	var p := nearest_player()
 	if p and absf(p.global_position.x - global_position.x) > 2.0:
@@ -269,6 +335,8 @@ class KeyColumn:
 	var damage := 10.0
 	var marker := false
 	var pitch := 1.0
+	## 等待（delay）的这段时间也在地上淡淡画出位置（琴键浪的预警）
+	var preview := false
 
 	var _t := 0.0
 	var _rose := false
@@ -319,9 +387,11 @@ class KeyColumn:
 
 	func _draw() -> void:
 		var t := _t - delay
-		if t < 0.0:
-			return
 		var hw := floorf(width / 2.0)
+		if t < 0.0:
+			if preview and int(_t / 0.12) % 2 == 0:
+				draw_rect(Rect2(-hw, -1, width, 1), Color(FLASH, 0.45))
+			return
 		if t < lead:
 			# 地面闪：一亮一暗，越到后面越快
 			var blink := int(t / (0.05 if t > lead * 0.5 else 0.08)) % 2 == 0

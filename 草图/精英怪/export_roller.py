@@ -2,7 +2,7 @@
 
     python3 export_roller.py     # 写到 oscar-rush/art/enemies/roller.png，同时在本文件夹出一张放大预览
 
-画布 54×38，原图朝左，地面是最后一行。5 帧：
+画布 54×38，原图朝左，地面是最后一行。2026-10-17：两个轮子各往下挪 1 像素，实心部分压到最后一行（原来看着离地）。5 帧：
 0、1 开动（后轮辐条转半格，两帧来回）
 2 蓄力（烟囱冒汽，红灯更亮一格）
 3 冲撞（烟囱喷汽 + 身后速度线）
@@ -26,17 +26,17 @@ OX, OY = 2, 4
 def body(g, spoke_phase=0.0):
     ox, oy = OX, OY
     # 后轮（大轮，带辐条），辐条按 spoke_phase 转
-    g.disk(ox + 38, oy + 24, 8.5, 6)
-    g.disk(ox + 38, oy + 24, 7.5, 2)
+    g.disk(ox + 38, oy + 25, 8.5, 6)
+    g.disk(ox + 38, oy + 25, 7.5, 2)
     for k in range(8):
         a = spoke_phase + k * math.pi / 4
-        g.line(ox + 38, oy + 24, round(ox + 38 + 7 * math.cos(a)), round(oy + 24 + 7 * math.sin(a)), 4)
-    g.disk(ox + 38, oy + 24, 1.6, 7)
+        g.line(ox + 38, oy + 25, round(ox + 38 + 7 * math.cos(a)), round(oy + 25 + 7 * math.sin(a)), 4)
+    g.disk(ox + 38, oy + 25, 1.6, 7)
     for a in range(0, 360, 30):                                       # 轮缘上的抓地齿
         rad = math.radians(a) + spoke_phase
         x = round(ox + 38 + 8.6 * math.cos(rad))
-        y = round(oy + 24 + 8.6 * math.sin(rad))
-        g.put(x, y, 7 if y < oy + 24 else 5)
+        y = round(oy + 25 + 8.6 * math.sin(rad))
+        g.put(x, y, 7 if y < oy + 25 else 5)
     # 驾驶棚
     g.rect(ox + 26, oy + 1, ox + 47, oy + 2, 8)
     g.rect(ox + 26, oy + 1, ox + 47, oy + 1, 9)
@@ -61,18 +61,18 @@ def body(g, spoke_phase=0.0):
     g.rect(ox + 9, oy - 1, ox + 13, oy, 8)
     g.rect(ox + 9, oy - 1, ox + 13, oy - 1, 9)
     # 前滚筒和叉架；滚筒上的亮点跟着转
-    g.rect(ox + 7, oy + 17, ox + 9, oy + 20, 5)
+    g.rect(ox + 7, oy + 17, ox + 9, oy + 21, 5)
     g.rect(ox + 4, oy + 17, ox + 12, oy + 17, 7)
-    g.disk(ox + 8, oy + 25, 7.6, 5)
-    g.disk(ox + 8, oy + 25, 7.6, 8, ring=1)
-    for y in range(oy + 25, oy + 33):
+    g.disk(ox + 8, oy + 26, 7.6, 5)
+    g.disk(ox + 8, oy + 26, 7.6, 8, ring=1)
+    for y in range(oy + 26, oy + 34):
         for x in range(ox, ox + 17):
             if g.a[y, x] == 8:
                 g.a[y, x] = 4
-    g.disk(ox + 8, oy + 25, 5.0, 3, ring=1)
-    g.disk(ox + 8, oy + 25, 1.5, 7)
+    g.disk(ox + 8, oy + 26, 5.0, 3, ring=1)
+    g.disk(ox + 8, oy + 26, 1.5, 7)
     a = spoke_phase * 2
-    g.put(round(ox + 8 + 3.2 * math.cos(a)), round(oy + 25 + 3.2 * math.sin(a)), 7)
+    g.put(round(ox + 8 + 3.2 * math.cos(a)), round(oy + 26 + 3.2 * math.sin(a)), 7)
 
 
 def puffs(g, n):

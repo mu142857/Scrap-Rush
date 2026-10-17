@@ -168,8 +168,7 @@ def house(hx, gy, w=64, wall_h=36, gable=26, wall=(222, 206, 180), roof=(160, 86
     S().poly([(dx0, top + 8), (dx0 - 4, top + 6), (dx0 - 4, gy + 1), (dx0, gy)], (120, 80, 70))   # 打开的门板
     kbox(dx0 - 4, gy, dx0 + 15, gy + 1, (176, 160, 150), depth=0.05, cap=3)
     kbox(dx0 - 7, gy + 2, dx0 + 18, gy + 3, (160, 146, 138), depth=0.05, cap=3)
-    kbox(dx0 + 14, top + 5, dx0 + 16, top + 7, (60, 50, 50), depth=0.02)
-    S().put(dx0 + 15, top + 7, (255, 244, 200))
+    S().rect(dx0 + 15, top + 4, dx0 + 16, top + 5, (150, 110, 70)); S().put(dx0 + 15, top + 6, (255, 244, 200)); S().put(dx0 + 16, top + 6, (246, 220, 150))
     plat(hx - 4, hx + w // 2, top - 2)
     return (dx0 + 5, gy)
 
@@ -474,21 +473,42 @@ def sc_ferris(tv):
 
 
 def sc_forest(tv):
-    """森林（绿荧光）：几层树干从远到近、光柱、小路、萤火虫、蘑菇。"""
+    """森林：远处一层淡的树影，中间几棵粗细不一的树，树冠是一团团色块；
+    一道光柱从树缝里打下来，小路、蕨草、蘑菇、萤火虫。"""
     x0, y0, x1, fy = tv.sx0, tv.sy0, tv.sx1, tv.fy
-    bands_v(tv, y0, fy, [(150, 170, 150), (130, 150, 132), (110, 130, 116)])
-    for depth, (c, wmin) in enumerate([((120, 140, 124), 4), ((96, 112, 100), 6), ((70, 82, 76), 9)]):
-        for tx in range(x0 - 4 + depth * 9, x1, 22 + depth * 6):
-            tw = wmin + random.randint(0, 3)
-            S().rect(tx, y0, tx + tw, fy, c)
-    S().poly([(x0 + 40, y0), (x0 + 52, y0), (x0 + 80, fy), (x0 + 60, fy)], (186, 206, 176))
-    ground(tv, [(110, 120, 96), (96, 104, 86), (84, 92, 78)])
-    S().fill_mask(tv.screen_mask() & (k.YY >= tv.fy) & (np.abs(k.XX - (x0 + x1) / 2) < 14 + (k.YY - tv.fy) * 3), (160, 150, 120))
-    for _ in range(10):
-        S().put(random.randint(x0, x1), random.randint(y0 + 20, fy - 4), (236, 246, 170))
+    bands_v(tv, y0, fy, [(170, 196, 170), (150, 178, 152), (128, 156, 134), (110, 136, 118)])
+    rr = random.Random(x0)
+    for tx in range(x0 - 10, x1 + 10, 14):                                 # 远处的树影
+        th = rr.randint(int((fy - y0) * 0.5), int((fy - y0) * 0.9))
+        S().rect(tx, fy - th, tx + 2, fy, (126, 154, 132))
+        canopy(tx + 1, fy - th, rr.randint(8, 12), (120, 150, 126), n=5, seed=tx)
+    lx = x0 + int((x1 - x0) * 0.4)
+    S().poly([(lx, y0), (lx + 12, y0), (lx + 34, fy), (lx + 14, fy)], (206, 222, 190))
+    S().poly([(lx + 4, y0), (lx + 8, y0), (lx + 26, fy), (lx + 20, fy)], (226, 236, 206))
+    ground(tv, [(110, 132, 96), (96, 116, 86), (84, 102, 78)])
+    S().fill_mask(tv.screen_mask() & (k.YY >= fy) & (np.abs(k.XX - (lx + 24)) < 8 + (k.YY - fy) * 3), (168, 156, 120))
+    xs = sorted(rr.sample(range(x0 + 8, x1 - 16), min(5, max(2, (x1 - x0) // 40))))
+    for i, tx in enumerate(xs):                                            # 近处的树
+        if abs(tx - lx - 16) < 18:
+            continue
+        tw = rr.randint(4, 8)
+        floor_shadow(tx - 6, tx + tw + 6, fy, 3)
+        bark = (92, 76, 66)
+        S().poly([(tx - 2, fy), (tx + tw + 2, fy), (tx + tw, fy - 6), (tx + tw, y0), (tx, y0), (tx, fy - 6)], bark)
+        S().rect(tx + tw - 2, y0, tx + tw, fy - 1, shade(bark, -2))
+        S().rect(tx, y0, tx + 1, fy - 1, shade(bark, 1))
+        for ky in range(y0 + 10, fy - 6, rr.randint(9, 15)):
+            S().line(tx + 2, ky, tx + tw - 3, ky + 2, shade(bark, -1))
+        canopy(tx + tw // 2, y0 + rr.randint(4, 14), rr.randint(16, 24), (78, 118, 90), n=10, seed=tx * 3)
+    for fx in range(x0 + 4, x1 - 4, rr.randint(9, 13)):                    # 蕨草
+        for d_ in (-4, -2, 0, 2, 4):
+            S().line(fx, fy, fx + d_, fy - 5 + abs(d_) // 2, (96, 146, 100) if d_ < 0 else (80, 124, 88))
     for mx in (x0 + 16, x1 - 20):
-        S().rect(mx, fy - 3, mx + 1, fy, (226, 220, 200)); S().rect(mx - 2, fy - 5, mx + 3, fy - 4, (206, 90, 80))
-    finish(tv, (x0 + 60, y0 + 20))
+        S().rect(mx, fy - 3, mx + 1, fy, (226, 220, 200)); kbox(mx - 2, fy - 6, mx + 3, fy - 4, (206, 90, 80), depth=0.04, cap=1)
+        S().put(mx - 1, fy - 6, (246, 230, 220))
+    for _ in range(12):
+        S().put(rr.randint(x0, x1), rr.randint(y0 + 20, fy - 4), (236, 246, 170))
+    finish(tv, (lx + 10, y0 + 6))
 
 
 def sc_rooftop(tv):
@@ -617,8 +637,7 @@ def sc_hometown(tv):
         gy = int(max(hill_top[0, gx], y0)) + random.randint(2, 20)
         if gy < fy + 2:
             S().put(gx, gy, shade(grass, random.choice([2, -2])))
-    gy_house = int(fy - 52)
-    door = house(hc - 32, gy_house + 30)
+    door = house(hc - 42, int(fy - 20), w=84, wall_h=46, gable=32)
     # 石板小路：从左边弯到台阶
     for i in range(0, 46):
         t = i / 45
@@ -628,8 +647,8 @@ def sc_hometown(tv):
             r_ = 3 - t * 1.2
             disc(px, py, r_ + 1, (176, 160, 130), max(1, r_ * 0.5))
             S().put(int(px - 1), int(py - 1), (206, 192, 160))
-    fence(hc - 90, hc - 36, lambda x: hill_top[0, x] + 8 if hill_top[0, x] + 8 < fy else fy)
-    tx = hc + 70                                                            # 大树 + 秋千
+    fence(hc - 110, hc - 48, lambda x: hill_top[0, x] + 8 if hill_top[0, x] + 8 < fy else fy)
+    tx = hc + 84                                                            # 大树 + 秋千
     tree(tx, fy, 52, 22, seed=3)
     S().line(tx - 8, fy - 44, tx - 8, fy - 14, (190, 180, 170)); S().line(tx + 2, fy - 44, tx + 2, fy - 14, (190, 180, 170))
     kbox(tx - 9, fy - 14, tx + 3, fy - 13, (150, 104, 82), depth=0.04, cap=2)

@@ -1,12 +1,15 @@
 class_name BossBullet
 extends Area2D
 ## Boss 的弹幕子弹，三种：
-##   EMBER 余烬：从烟囱喷到天上，受重力落下来，碰到平台、地面就碎（平台下面能躲）
+##   EMBER 余烬：从烟囱喷到天上，受重力落下来；往下落时碰到平台、地面才碎（平台下面能躲），
+##               往上飞时穿过平台，不会一出烟囱就撞天花板
 ##   RIVET 铆钉：直线飞，烧红的芯、灰白的壳，后面拖一条短尾巴
-##   COAL  煤块：贴着地面往前滚，一跳一跳的，要跳过去
+##   NOTE  音符：自动钢琴"琶音"弹出来的发光音符，和余烬一样抛物线落下，往下落时被平台、地面挡住
+##   COAL  煤块：被煤铲高高抛出，瞄着人落；穿过平台（躲在平台下面也没用），
+##               落到地上接着一跳一跳往前滚
 ## 打中玩家走 Player.hurt（有无敌时间），打中放在地上的马灯走 Crystal.take_hit。
 
-enum Kind { EMBER, RIVET, COAL }
+enum Kind { EMBER, RIVET, COAL, NOTE }
 
 const DAMAGE := 8.0
 const EMBER_GRAVITY := 230.0
@@ -23,6 +26,7 @@ var _life := 0.0
 var _trail: Array[Vector2] = []
 var _done := false
 var _seed := 0.0
+var _rolling := false
 
 
 static func spawn(parent: Node, k: Kind, pos: Vector2, vel: Vector2, lit := false) -> BossBullet:
@@ -38,13 +42,13 @@ static func spawn(parent: Node, k: Kind, pos: Vector2, vel: Vector2, lit := fals
 func _ready() -> void:
 	add_to_group("boss_bullet")
 	collision_layer = 0
-	# 余烬和铆钉碰到世界（地面、平台、墙）就碎；煤块自己贴地走，不看世界
-	collision_mask = (2 | 8) if kind == Kind.COAL else (1 | 2 | 8)
+	# 铆钉碰到世界（地面、平台、墙）就碎；余烬和煤块往下落时才看世界（见 _physics_process）
+	collision_mask = (1 | 2 | 8) if kind == Kind.RIVET else (2 | 8)
 	z_index = 8
 	_seed = randf() * 10.0
 	var shape := CollisionShape2D.new()
 	var c := CircleShape2D.new()
-	c.radius = {Kind.EMBER: 2.5, Kind.RIVET: 2.0, Kind.COAL: 3.0}[kind]
+	c.radius = {Kind.EMBER: 2.5, Kind.RIVET: 2.0, Kind.COAL: 3.0, Kind.NOTE: 2.5}[kind]
 	shape.shape = c
 	add_child(shape)
 	var unshaded := CanvasItemMaterial.new()
@@ -68,12 +72,19 @@ func _physics_process(delta: float) -> void:
 		Kind.EMBER:
 			velocity.y += EMBER_GRAVITY * delta
 			velocity.x *= 1.0 - 0.15 * delta
+		Kind.NOTE:
+			velocity.y += EMBER_GRAVITY * 0.85 * delta
 		Kind.COAL:
 			velocity.y += COAL_GRAVITY * delta
 			if position.y >= floor_y - 3.0 and velocity.y > 0.0:
 				position.y = floor_y - 3.0
-				# 一跳一跳往前滚，每跳一次低一点
-				velocity.y = -absf(velocity.y) * 0.45 if absf(velocity.y) > 60.0 else -110.0
+				_rolling = true
+				# 落地以后一跳一跳往前滚，每跳一次低一点
+				velocity.y = -absf(velocity.y) * 0.4 if absf(velocity.y) > 140.0 else -110.0
+	# 余烬往下落的时候才会被平台、地面挡住（往上飞穿过去）
+	if kind == Kind.EMBER or kind == Kind.NOTE:
+		var falling := velocity.y > 0.0 and not _rolling
+		set_collision_mask_value(1, falling)
 	_trail.push_front(position)
 	if _trail.size() > (5 if kind == Kind.RIVET else 3):
 		_trail.pop_back()
@@ -125,6 +136,17 @@ func _draw() -> void:
 			draw_rect(Rect2(-2, -2, 5, 5), OUTLINE)
 			draw_rect(Rect2(-1, -1, 3, 3), Color(0.95, 0.92, 0.86))
 			draw_rect(Rect2(0, 0, 1, 1), Color(1.0, 0.45, 0.2))
+		Kind.NOTE:
+			# 一个八分音符：符头 3×2 在左下，符杆 1×6，顶上一面小旗
+			var c := Color(0.98, 0.92, 0.72)
+			for i in _trail.size():
+				var p := (_trail[i] - position).round()
+				draw_rect(Rect2(p, Vector2.ONE), Color(1.0, 0.85, 0.5, 0.45 - i * 0.14))
+			draw_rect(Rect2(-3, 0, 5, 4), OUTLINE)
+			draw_rect(Rect2(0, -6, 3, 7), OUTLINE)
+			draw_rect(Rect2(-2, 1, 3, 2), c)
+			draw_rect(Rect2(1, -5, 1, 6), c)
+			draw_rect(Rect2(2, -5, 1, 2), c)
 		Kind.COAL:
 			draw_rect(Rect2(-3, -3, 7, 6), OUTLINE)
 			draw_rect(Rect2(-2, -2, 5, 4), Color(0.2, 0.15, 0.13))

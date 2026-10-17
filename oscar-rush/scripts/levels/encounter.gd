@@ -8,6 +8,9 @@ extends Node2D
 ## 关卡重来（R 或马灯碎了）会重载整个场景，遭遇战自然回到没打过的状态。
 ## 用法：new() 以后填 left/right/ceil_y/floor_left/floor_right/waves/hazards，再 add_child 进关卡。
 
+## 打完（闸门升起的那一刻）发出
+signal finished
+
 ## 怪的种类 → 脚本。脚本文件不存在的种类自动跳过
 const TYPES := {
 	"crawler": "res://scripts/enemies/crawler.gd",
@@ -46,6 +49,9 @@ var hazards: Array = []
 
 var started := false
 var cleared := false
+## 可选：自定义某种怪怎么出场（比如压路机坐在伸出来的桥上开出来）。
+## 签名 func(kind: String, x: float) -> Node2D：返回怪（自己负责加进场景）就用它，返回 null 走默认的从天花板掉下来。
+var spawn_hook: Callable
 
 var _wave := -1
 var _alive: Array[Node] = []
@@ -177,6 +183,13 @@ func _tick_queue(delta: float) -> void:
 				Game.sfx("scrap", -16.0, 1.7, 0.1)
 		if q["t"] >= (ELITE_WARN_TIME if elite else WARN_TIME):
 			_queue.erase(q)
+			if spawn_hook.is_valid():
+				var hooked: Node2D = spawn_hook.call(q["kind"], x)
+				if hooked:
+					_alive.append(hooked)
+					if elite:
+						Run.add_emotion(10.0)
+					continue
 			var e := _make(q["kind"])
 			if e == null:
 				continue
@@ -198,6 +211,7 @@ func _make(kind: String) -> Node2D:
 
 func _finish() -> void:
 	cleared = true
+	finished.emit()
 	for g in _gates:
 		g.rise()
 	Game.sfx("ready", -6.0)

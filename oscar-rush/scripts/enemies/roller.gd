@@ -6,22 +6,32 @@ extends EliteBase
 ##    一路冲到撞墙（桥两头的闸门）为止 → 撞墙大震，晕 2 秒，晕的时候挨打 ×1.5。跳过去躲。
 ## 2. 喷汽：主角在它头顶（跳过去、飞在上面）时，先冒"!"，然后烟囱往上喷一柱蒸汽，顶人也伤人。
 ##    免得玩家一直飘在它头上打。
+## 3. 煤渣炮（2026-10-17 加）：主角离得远时，鸣笛（"!"），烟囱朝主角的位置连轰两发烧红的煤块，
+##    落地以后接着往前滚。站远了慢慢磨也不安全。和冲撞轮流用。
 ## 平时慢慢朝主角开。从天花板掉下来时落地一震。
+## 冲撞的前摇（2026-10-17 试玩嫌不明显）：先往后倒一小段，车身闪红、越抖越厉害，烟囱一股股喷汽，
+## 后轮原地空转扬灰，地上从车头往冲的方向画一条闪烁的红色虚线，标出要冲的那条道。
 ## 贴图 roller.png（54×38）：0、1 开动，2 蓄力，3 冲撞，4 晕。由 草图/精英怪/export_roller.py 导出。
 
-enum State { DRIVE, WINDUP, CHARGE, STUN, BLAST_WARN, BLAST }
+enum State { DRIVE, WINDUP, CHARGE, STUN, BLAST_WARN, BLAST, MORTAR_WARN, MORTAR }
 
 const DRIVE_SPEED := 20.0
-const CHARGE_SPEED := 175.0
-const WINDUP_TIME := 0.8
-const STUN_TIME := 2.0
-const STUN_DAMAGE_MULT := 1.5
-const CHARGE_COOLDOWN := 1.6
+## 2026-10-17 第二次试玩嫌太难，整体降了一档：冲得慢、前摇长、冷却长、晕得久、煤渣炮少一发、伤害和血都低了
+const CHARGE_SPEED := 145.0
+const WINDUP_TIME := 1.2
+const BACKUP_SPEED := 14.0
+const MORTAR_WARN_TIME := 0.9
+const MORTAR_SHOTS := 2
+const MORTAR_GAP := 0.45
+const MORTAR_MIN_DIST := 90.0
+const STUN_TIME := 3.0
+const STUN_DAMAGE_MULT := 2.0
+const CHARGE_COOLDOWN := 2.6
 const SEE_HEIGHT := 28.0
 const BLAST_WARN_TIME := 0.5
 const BLAST_TIME := 0.8
 const BLAST_HEIGHT := 70.0
-const BLAST_DAMAGE := 10.0
+const BLAST_DAMAGE := 8.0
 const BLAST_PUSH := 200.0
 const CHIMNEY_PIXEL := Vector2i(11, 3)
 
@@ -33,6 +43,9 @@ var _landed := false
 var _blast_area: Area2D
 var _blast: CPUParticles2D
 var _smoke: CPUParticles2D
+var _lane: Node2D
+var _mortar_left := 0
+var _next_is_mortar := false
 
 
 func _setup() -> void:
@@ -44,8 +57,8 @@ func _setup() -> void:
 	frame_size = Vector2i(54, 38)
 	body_rect = Rect2(-24, -30, 48, 30)
 	led_pixel = Vector2i(7, 15)
-	max_hp = 1500.0
-	contact_damage = 12.0
+	max_hp = 1000.0
+	contact_damage = 8.0
 
 
 func _after_ready() -> void:
@@ -65,6 +78,14 @@ func _after_ready() -> void:
 	_blast = _particles(60, 0.5, 160.0, 10.0, Vector2(2, 4), 0.6)
 	_smoke = _particles(10, 0.6, 30.0, 25.0, Vector2(1, 3), 0.4)
 	_smoke.emitting = true
+	# 冲撞道的红色虚线
+	_lane = Node2D.new()
+	var unshaded := CanvasItemMaterial.new()
+	unshaded.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+	_lane.material = unshaded
+	_lane.z_index = 9
+	_lane.draw.connect(_draw_lane)
+	add_child(_lane)
 
 
 func _tick(delta: float) -> void:
@@ -93,13 +114,25 @@ func _tick(delta: float) -> void:
 					dir = 1 if dx > 0.0 else -1
 				if _cooldown <= 0.0 and absf(dx) < 40.0 and dy < -24.0:
 					_enter(State.BLAST_WARN)
+				elif _cooldown <= 0.0 and absf(dx) > MORTAR_MIN_DIST and (_next_is_mortar or absf(dy) >= SEE_HEIGHT):
+					_next_is_mortar = false
+					_enter(State.MORTAR_WARN)
 				elif _cooldown <= 0.0 and absf(dy) < SEE_HEIGHT and absf(dx) < 300.0:
+					_next_is_mortar = true
 					_enter(State.WINDUP)
 			velocity.x = dir * DRIVE_SPEED * speed_mult()
 			set_frame(int(_time / 0.15) % 2)
 		State.WINDUP:
-			velocity.x = 0.0
-			set_frame(2)
+			var k := _state_t / WINDUP_TIME
+			# 前一半往后倒车蓄势，后一半原地空转
+			velocity.x = -dir * BACKUP_SPEED if k < 0.5 else 0.0
+			set_frame(2 if int(_state_t / 0.06) % 2 == 0 else 0)
+			if int(_state_t / 0.12) != int((_state_t - delta) / 0.12):
+				Game.dust(get_parent(), global_position + Vector2(-dir * 18, 0), 2, -dir)
+			if int(_state_t / 0.25) != int((_state_t - delta) / 0.25):
+				Game.sfx("vent", -14.0, 1.6, 0.1)
+				_smoke.amount = 30
+			_lane.queue_redraw()
 			if _state_t >= WINDUP_TIME:
 				_charge_dir = dir
 				_enter(State.CHARGE)
@@ -121,6 +154,20 @@ func _tick(delta: float) -> void:
 			set_frame(4)
 			if _state_t >= STUN_TIME:
 				_enter(State.DRIVE)
+		State.MORTAR_WARN:
+			velocity.x = 0.0
+			set_frame(2)
+			if _state_t >= MORTAR_WARN_TIME:
+				_mortar_left = MORTAR_SHOTS
+				_enter(State.MORTAR)
+		State.MORTAR:
+			velocity.x = 0.0
+			set_frame(3 if fmod(_state_t, MORTAR_GAP) < 0.1 else 2)
+			if _mortar_left > 0 and _state_t >= (MORTAR_SHOTS - _mortar_left) * MORTAR_GAP:
+				_mortar_left -= 1
+				_fire_mortar(p)
+			if _mortar_left == 0 and _state_t >= MORTAR_SHOTS * MORTAR_GAP + 0.3:
+				_enter(State.DRIVE)
 		State.BLAST_WARN:
 			velocity.x = 0.0
 			set_frame(2)
@@ -136,7 +183,7 @@ func _tick(delta: float) -> void:
 					pl.hurt(global_position + chimney, BLAST_DAMAGE * damage_mult())
 			if _state_t >= BLAST_TIME:
 				_enter(State.DRIVE)
-	contact_damage = 16.0 if state == State.CHARGE else 12.0
+	contact_damage = 12.0 if state == State.CHARGE else 8.0
 	move_and_slide()
 
 
@@ -152,9 +199,14 @@ func _enter(s: State) -> void:
 			Game.sfx("jet", -8.0, 0.6)
 		State.CHARGE:
 			Game.sfx("jet", -4.0, 0.9)
-			Game.add_shake(2.0)
+			Game.sfx("whistle", -8.0, 1.5)
+			Game.add_shake(3.0)
+			_lane.queue_redraw()
 		State.BLAST_WARN:
 			warn(BLAST_WARN_TIME)
+		State.MORTAR_WARN:
+			warn(MORTAR_WARN_TIME)
+			Game.sfx("whistle", -10.0, 1.3)
 		State.BLAST:
 			Game.sfx("jet", -6.0, 1.5)
 		State.DRIVE:
@@ -182,9 +234,48 @@ func _on_die() -> void:
 
 func _update_visual() -> void:
 	super._update_visual()
-	# 蓄力时原地发抖
+	# 蓄力时原地发抖，越到后面抖得越厉害，车身一闪一闪发红
 	if state == State.WINDUP:
-		_sprite.position.x += 1.0 if int(_state_t * 30.0) % 2 == 0 else -1.0
+		var k := _state_t / WINDUP_TIME
+		var amp := 1.0 if k < 0.6 else 2.0
+		_sprite.position.x += amp if int(_state_t * 30.0) % 2 == 0 else -amp
+		var pulse := 0.5 + 0.5 * sin(_state_t * (12.0 + 20.0 * k))
+		_sprite.modulate = Color.WHITE.lerp(Color(1.8, 0.7, 0.6), pulse * (0.4 + 0.6 * k))
+	elif state == State.MORTAR_WARN:
+		_sprite.modulate = Color.WHITE.lerp(Color(1.6, 0.9, 0.6), 0.5 + 0.5 * sin(_state_t * 30.0))
+	else:
+		_sprite.modulate = Color.WHITE
+
+
+## 冲撞道：从车头往要冲的方向，贴地一条红色虚线，往前流动、越来越亮
+func _draw_lane() -> void:
+	if state != State.WINDUP or dead:
+		return
+	var k := _state_t / WINDUP_TIME
+	if int(_state_t * 10.0) % 2 == 1 and k < 0.7:
+		return
+	var col := Color(1.0, 0.25, 0.18, 0.35 + 0.6 * k)
+	var front := dir * (frame_size.x / 2 + 2)
+	var flow := int(_state_t * 40.0) % 8
+	for i in range(0, 260, 8):
+		var x := front + dir * (i + flow)
+		_lane.draw_rect(Rect2(x - (4 if dir < 0 else 0), -2, 4, 1), col)
+
+
+## 煤渣炮：从烟囱朝主角现在的位置抛一发烧红的煤块（落地接着滚）
+func _fire_mortar(p: Player) -> void:
+	var from := global_position + _chimney_local() + Vector2(0, -2)
+	var target := p.global_position if p else from + Vector2(dir * 120, 0)
+	target.x += randf_range(-14, 14)
+	var t := randf_range(0.75, 0.95)
+	var v := Vector2((target.x - from.x) / t, (target.y - 4.0 - from.y) / t - 0.5 * BossBullet.COAL_GRAVITY * t)
+	var b := BossBullet.spawn(get_parent(), BossBullet.Kind.COAL, from, v, true)
+	b.floor_y = global_position.y
+	b.arena = Rect2(global_position.x - 300, global_position.y - 230, 600, 260)
+	Game.sfx("boom", -10.0, 1.5, 0.1)
+	Game.sfx("embers", -8.0, 1.2)
+	Game.add_shake(2.0)
+	Game.sparks(get_parent(), from, Color(1.0, 0.6, 0.25), 6, 70.0, Vector2.UP)
 
 
 ## 烟囱口相对原点（脚底中间）的位置，跟着朝向镜像

@@ -107,6 +107,36 @@ def export_scene_layers(tmp: Path) -> None:
         save(np.array(out), ROOT / f"art/levels/scene1_{group}.png")
 
 
+# 关卡里桥和吊车要动，"near" 那一组在游戏里拆成三层，桥和吊车夹在中间，前后关系和原图一样：
+#   near_a（图层 4）→ 吊车（图层 3）→ near_b（图层 2、5）→ 桥（QIAO）→ near_c（di）
+# scene1_near.png（全部叠在一起的第 0 帧）留给开始界面等别的地方用。
+NEAR_SPLIT = {"near_a": ["图层 4"], "near_b": ["图层 2", "图层 5"], "near_c": ["di"]}
+# 会动的两层：(图层名, 输出名, 裁剪框 x0, y0, x1, y1)，27 帧横排
+ANIMATED = [("QIAO", "bridge", 449, 343, 809, 380), ("图层 3", "crane", 912, 0, 1003, 161)]
+
+
+def export_scene_split(tmp: Path) -> None:
+    src = SRC / "场景1.aseprite"
+    for name, layers in NEAR_SPLIT.items():
+        out = None
+        for i, layer in enumerate(layers):
+            png = tmp / f"{name}_{i}.png"
+            subprocess.run([ASEPRITE, "-b", "--layer", layer, "--frame-range", "0,0",
+                            str(src), "--sheet", str(png)], check=True, capture_output=True)
+            im = Image.open(png).convert("RGBA")
+            out = im if out is None else Image.alpha_composite(out, im)
+        save(np.array(out), ROOT / f"art/levels/scene1_{name}.png")
+    for layer, name, x0, y0, x1, y1 in ANIMATED:
+        frames = export_frames(src, tmp, [l for l in _all_layers(src) if l != layer])
+        cells = [f[y0:y1, x0:x1] for f in frames]
+        save(np.concatenate(cells, axis=1), ROOT / f"art/levels/scene1_{name}.png")
+
+
+def _all_layers(src: Path) -> list[str]:
+    r = subprocess.run([ASEPRITE, "-b", "--list-layers", str(src)], check=True, capture_output=True, text=True)
+    return [l.strip() for l in r.stdout.splitlines() if l.strip()]
+
+
 if __name__ == "__main__":
     with tempfile.TemporaryDirectory() as d:
         tmp = Path(d)
@@ -114,3 +144,4 @@ if __name__ == "__main__":
         export_crawler(tmp)
         export_scene(tmp)
         export_scene_layers(tmp)
+        export_scene_split(tmp)

@@ -309,13 +309,13 @@ func _wait(t: float) -> void:
 
 ## 歇口气的时间：越往后越短，情绪越高越短
 func _gap() -> float:
-	return [1.3, 1.0, 0.7][phase - 1] * EnemyBase.interval_mult()
+	return [0.85, 0.65, 0.45][phase - 1] * EnemyBase.interval_mult()
 
 
 func _fight_loop() -> void:
 	await _wait(0.6)
 	while active and not dead:
-		var pool: Array[String] = ["ember", "ring", "shovel"]
+		var pool: Array[String] = ["ember", "ring", "shovel", "fan"]
 		if phase >= 2:
 			pool.append("vents")
 		if phase >= 3:
@@ -337,6 +337,8 @@ func _fight_loop() -> void:
 				await _stoke()
 			"spiral":
 				await _spiral()
+			"fan":
+				await _rivet_fan()
 		if dead:
 			return
 		# 三阶段：歇口气的同时还会补一股余烬
@@ -370,12 +372,42 @@ func _ember_burst(n: int) -> void:
 	Game.add_shake(1.5)
 	_blast_smoke()
 	var top := global_position + CHIMNEY + _parts.position
+	# 最高只冲到天花板下面一点（烟囱口离天花板约 60 像素）
+	var max_up := sqrt(2.0 * BossBullet.EMBER_GRAVITY * maxf(top.y - arena.position.y - 22.0, 10.0))
+	var target := _target_x()
 	for i in n:
-		# 大部分往左（玩家那边），少数往右落回 Boss 身后
-		var vx := randf_range(-190.0, -20.0) if randf() < 0.85 else randf_range(0.0, 50.0)
-		var v := Vector2(vx, randf_range(-260.0, -170.0))
-		var b := BossBullet.spawn(bullet_parent, BossBullet.Kind.EMBER, top + Vector2(randf_range(-3, 3), 0), v, i % 3 == 0)
+		var vy := -randf_range(max_up * 0.6, max_up)
+		var vx: float
+		if i < n / 3:
+			# 三分之一瞄着人落：按抛物线算出落到人那一列要多快
+			var t_up := -vy / BossBullet.EMBER_GRAVITY
+			var t_down := sqrt(2.0 * (floor_y - (top.y - vy * vy / (2.0 * BossBullet.EMBER_GRAVITY))) / BossBullet.EMBER_GRAVITY)
+			vx = (target + randf_range(-18, 18) - top.x) / (t_up + t_down)
+		else:
+			vx = randf_range(-230.0, -40.0) if randf() < 0.9 else randf_range(0.0, 40.0)
+		var b := BossBullet.spawn(bullet_parent, BossBullet.Kind.EMBER, top + Vector2(randf_range(-3, 3), 0), Vector2(vx, vy), i % 3 == 0)
 		b.arena = arena
+
+
+## 离 Boss 最近那个玩家的 x（瞄准用）
+func _target_x() -> float:
+	var best := INF
+	var x := arena.position.x + 60.0
+	for n in get_tree().get_nodes_in_group("player"):
+		var p := n as Player
+		if absf(p.global_position.x - global_position.x) < best:
+			best = absf(p.global_position.x - global_position.x)
+			x = p.global_position.x
+	return x
+
+
+func _target_pos() -> Vector2:
+	var tx := _target_x()
+	for n in get_tree().get_nodes_in_group("player"):
+		var p := n as Player
+		if is_equal_approx(p.global_position.x, tx):
+			return p.global_position + Vector2(0, -8)
+	return Vector2(tx, floor_y - 8.0)
 
 
 ## 铆钉环：压力表"咔"一声，炸出一圈铆钉，留一个缺口
@@ -388,7 +420,7 @@ func _rivet_ring() -> void:
 	for r in rings:
 		if dead:
 			return
-		var count := 18 if phase == 1 else 22
+		var count := 22 if phase == 1 else 26
 		var gap_at := randi() % count
 		var spin := (TAU / count) * 0.5 * r
 		Game.sfx("rivets", -3.0, 1.0 + 0.1 * r)
@@ -398,9 +430,29 @@ func _rivet_ring() -> void:
 			if absi(i - gap_at) <= 1 or absi(i - gap_at) >= count - 1:
 				continue  # 缺口：三颗不发
 			var a := TAU * i / count + spin
-			var b := BossBullet.spawn(bullet_parent, BossBullet.Kind.RIVET, center, Vector2.from_angle(a) * 70.0)
+			var b := BossBullet.spawn(bullet_parent, BossBullet.Kind.RIVET, center, Vector2.from_angle(a) * 92.0)
 			b.arena = arena
-		await _wait(0.4)
+		await _wait(0.3)
+
+
+## 铆钉扇射：压力表对准人，连射几轮扇形铆钉（每轮 5 颗，阶段越后轮数越多）
+func _rivet_fan() -> void:
+	_warn_at(GAUGE + Vector2(0, -14), 0.45)
+	_pressure = 0.95
+	await _wait(0.45)
+	var volleys: int = [2, 3, 4][phase - 1]
+	for v in volleys:
+		if dead:
+			return
+		var center := global_position + GAUGE + _parts.position
+		var aim := (_target_pos() - center).angle()
+		Game.sfx("rivets", -6.0, 1.2, 0.1)
+		Game.add_shake(1.0)
+		for k in range(-2, 3):
+			var b := BossBullet.spawn(bullet_parent, BossBullet.Kind.RIVET, center,
+				Vector2.from_angle(aim + k * deg_to_rad(11.0)) * 125.0)
+			b.arena = arena
+		await _wait(0.32)
 
 
 ## 三阶段的螺旋：两条铆钉流一边转一边射，转一圈半
@@ -409,40 +461,45 @@ func _spiral() -> void:
 	_warn_at(GAUGE + Vector2(0, -14), 0.7)
 	await _wait(0.7)
 	var a := randf() * TAU
-	for i in 36:
+	for i in 44:
 		if dead:
 			return
 		for arm_i in 2:
 			var ang := a + PI * arm_i
-			var b := BossBullet.spawn(bullet_parent, BossBullet.Kind.RIVET, center + _parts.position, Vector2.from_angle(ang) * 80.0)
+			var b := BossBullet.spawn(bullet_parent, BossBullet.Kind.RIVET, center + _parts.position, Vector2.from_angle(ang) * 95.0)
 			b.arena = arena
-		a += deg_to_rad(15.0)
+		a += deg_to_rad(14.0)
 		if i % 4 == 0:
 			Game.sfx("rivets", -10.0, 1.3, 0.1)
 		await _wait(0.06)
 
 
-## 铲煤：举铲（"!"）→ 砸下去贴地铲出一排烧红的煤块往左滚，要跳过去
+## 铲煤：举铲（"!"）→ 一甩，把烧红的煤块高高抛出去，瞄着人现在的位置落；
+## 煤块穿过平台，落到地上接着一跳一跳往前滚。躲在平台下面也没用，要看落点挪开、跳过滚过来的。
 func _shovel_sweep() -> void:
 	_arm.frame = 1
-	_warn_at(Vector2(-60, -60), 0.7)
+	_warn_at(Vector2(-60, -60), 0.6)
 	Game.sfx("scrape", -10.0, 0.7)
-	await _wait(0.75)
+	await _wait(0.6)
 	if dead:
 		return
 	_arm.frame = 2
 	Game.sfx("scrape", -2.0)
 	Game.sfx("boom", -10.0, 1.6)
 	Game.add_shake(4.0)
-	var tip := global_position + SHOVEL_TIP
+	var tip := global_position + SHOVEL_TIP + Vector2(0, -6)
 	Game.sparks(get_parent(), tip, FIRE_COLOR, 12, 110.0)
-	var n: int = [4, 5, 6][phase - 1]
+	var target := _target_pos()
+	var n: int = [5, 7, 9][phase - 1]
 	for i in n:
-		var b := BossBullet.spawn(bullet_parent, BossBullet.Kind.COAL, tip + Vector2(-i * 3, -4),
-			Vector2(-randf_range(75.0, 135.0), -randf_range(80.0, 170.0)))
+		# 落点散在人周围；飞行时间 0.8~1.1 秒，按抛物线反算初速度
+		var land := Vector2(target.x + randf_range(-40.0, 40.0) + (i - n / 2) * 6.0, target.y)
+		var t := randf_range(0.8, 1.1)
+		var v := Vector2((land.x - tip.x) / t, (land.y - tip.y) / t - 0.5 * BossBullet.COAL_GRAVITY * t)
+		var b := BossBullet.spawn(bullet_parent, BossBullet.Kind.COAL, tip + Vector2(-i * 2, 0), v)
 		b.floor_y = floor_y
 		b.arena = arena
-	await _wait(0.7)
+	await _wait(0.6)
 	_arm.frame = 0
 
 

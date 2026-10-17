@@ -10,7 +10,10 @@ const SCENE_LAYERS := [
 	[preload("res://art/levels/scene1_beams.png"), 0.7, Color(0.8, 0.8, 0.86)],
 	[preload("res://art/levels/scene1_machines.png"), 0.8, Color(0.88, 0.88, 0.92)],
 	[preload("res://art/levels/scene1_truss.png"), 0.9, Color(0.95, 0.95, 0.97)],
-	[preload("res://art/levels/scene1_near.png"), 1.0, Color.WHITE],
+	# near 拆成三层，桥和吊车（Bridge 节点）夹在中间，前后关系和原图一样
+	[preload("res://art/levels/scene1_near_a.png"), 1.0, Color.WHITE],
+	[preload("res://art/levels/scene1_near_b.png"), 1.0, Color.WHITE],
+	[preload("res://art/levels/scene1_near_c.png"), 1.0, Color.WHITE],
 ]
 const BOUNDS := Rect2(0, 0, 1006, 426)
 ## 场景整体压暗，光只来自马灯、荧光条和闪光
@@ -24,7 +27,9 @@ const SOLIDS: Array[Rect2] = [
 	Rect2(1006, -200, 16, 800),    # 右墙
 	Rect2(45, 118, 866, 18),       # 上层：传送带，到 911 为止
 	Rect2(48, 208, 958, 14),       # 中层：桁架走道，左边 0~48 留缺口往下跳
-	Rect2(449, 343, 359, 71),      # Boss 台
+	# 原来的"Boss 台"现在是会伸缩的桥（Bridge 节点管桥面碰撞）。桥下面从桥面到地面一直是实心：
+	# 桥伸出来以后这块被桥和两根柱子围住，人掉不进去；桥伸出来之前，钢琴那场的闸门挡着，人也过不来
+	Rect2(449, 343, 359, 71),      # 桥下面，走不进去
 	Rect2(422, 354, 27, 60),       # Boss 台左边的柱子（台阶）
 	Rect2(808, 354, 25, 60),       # Boss 台右边的柱子
 ]
@@ -57,8 +62,11 @@ const ENCOUNTERS := [
 	 "waves": [["crawler", "shaver", "crawler"], ["moth", "moth", "flea"], ["sewing", "shaver", "flea"]]},
 	{"left": 230, "right": 470, "ceil": 136, "floor_l": 208, "floor_r": 208, "hazards": [],
 	 "waves": [["flea", "flea"], ["moth", "moth", "moth"], ["vacuum", "shaver", "crawler"]]},
+	# 钢琴那场打完，桥从右边柱子伸出来（Oscar 原稿里桥和吊车的动画），之后一直伸着
 	{"left": 110, "right": 390, "ceil": 222, "floor_l": 407, "floor_r": 414, "hazards": [["kettle", Vector2(308, 405)]],
+	 "opens_bridge": true,
 	 "waves": [["crawler", "crawler", "shaver"], ["moth", "flea", "moth"], ["piano", "shaver", "flea"]]},
+	# 桥那场：在伸出来的桥面上打，最后压路机。打完往右走过柱子、跳下去就是出口
 	{"left": 455, "right": 802, "ceil": 222, "floor_l": 343, "floor_r": 343, "hazards": [],
 	 "waves": [["crawler", "crawler", "flea"], ["moth", "moth", "shaver"], ["flea", "flea", "shaver", "shaver"],
 		["moth", "moth", "shaver", "shaver", "crawler"], ["roller"]]},
@@ -83,6 +91,7 @@ var hud: Hud
 var _debug := false
 var _retrying := false
 var _leaving := false
+var _bridge: Bridge
 
 
 func _ready() -> void:
@@ -102,6 +111,9 @@ func _ready() -> void:
 	bg.layers = SCENE_LAYERS
 	bg.bounds = BOUNDS
 	add_child(bg)
+	_bridge = Bridge.new()
+	add_child(_bridge)
+	_bridge.set_state(Bridge.FRAMES - 1)
 
 	var dark := CanvasModulate.new()
 	dark.color = DARKNESS
@@ -148,6 +160,8 @@ func _ready() -> void:
 		enc.floor_right = d["floor_r"] if d["left"] < d["right"] else d["floor_l"]
 		enc.waves = d["waves"]
 		enc.hazards = d["hazards"]
+		if d.get("opens_bridge", false):
+			enc.finished.connect(_open_bridge)
 		add_child(enc)
 
 	var first: Player = null
@@ -219,6 +233,14 @@ func _physics_process(_delta: float) -> void:
 		if EXIT.has_point((p as Node2D).global_position):
 			_leave()
 			return
+
+
+## 钢琴那场打完：歇一下，桥从右边柱子伸出来，接上左边的柱子，人才能上桥打最后一场
+func _open_bridge() -> void:
+	await get_tree().create_timer(0.8, false).timeout
+	if is_instance_valid(_bridge):
+		Game.sfx("whistle", -2.0, 0.9)
+		_bridge.extend()
 
 
 func _leave() -> void:

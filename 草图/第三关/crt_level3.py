@@ -39,11 +39,11 @@ for h in MAXH[:-1]:
     BOTTOMS.append(BOTTOMS[-1] - h)              # 980 / 750 / 530 / 310
 ROW_X0 = 110
 ROW_X1 = [2200, 2200, 2200, 2200]
-BREAKS = [[1100], [700, 1600], [1300], []]       # 每层在这些 x 附近断开（实心外壳，不打通）
+BREAKS = [[1100], [700, 1600], [1300], [820]]    # 每层在这些 x 附近断开（实心外壳，不打通）
 HOLES = [                                        # (下层, 上层, 目标 x)
     (0, 1, 300), (0, 1, 900), (0, 1, 1350), (0, 1, 2000),
     (1, 2, 220), (1, 2, 1000), (1, 2, 1900),
-    (2, 3, 420), (2, 3, 1550),
+    (2, 3, 420), (2, 3, 1150), (2, 3, 1550),
 ]
 
 ROOMS = {"kitchen": k.room_kitchen, "living": k.room_living, "bedroom": k.room_bedroom,
@@ -79,8 +79,9 @@ def pick_size(row):
         w = random.randint(206, 270)
     else:
         w = random.randint(290, 330)
-    hmin = 92 if w < 130 else 120
-    h = int(np.clip(w * random.uniform(0.62, 0.86), hmin, MAXH[row]))
+    # 高度尽量贴近这一层的上限，空隙少，杂物就少
+    hmin = 96 if w < 130 else int(MAXH[row] * 0.74)
+    h = int(np.clip(max(hmin, w * random.uniform(0.66, 0.9)), hmin, MAXH[row]))
     return w, h
 
 
