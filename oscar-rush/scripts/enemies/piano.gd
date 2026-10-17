@@ -50,6 +50,8 @@ var _attack_dir := -1
 
 func _setup() -> void:
 	elite_name = "PLAYER PIANO"
+	intro_title = "ENCORE"
+	intro_frame = 5
 	texture_path = "res://art/enemies/piano.png"
 	hframes = 7
 	frame_size = Vector2i(42, 30)

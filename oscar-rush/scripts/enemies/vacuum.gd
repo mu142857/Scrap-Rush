@@ -60,6 +60,8 @@ var _suck_fx: CPUParticles2D
 
 func _setup() -> void:
 	elite_name = "VACUUM"
+	intro_title = "CLEAN SWEEP"
+	intro_frame = 5
 	texture_path = "res://art/enemies/vacuum.png"
 	hframes = 7
 	frame_size = Vector2i(46, 20)

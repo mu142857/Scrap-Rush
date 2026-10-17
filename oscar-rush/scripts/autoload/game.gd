@@ -23,6 +23,7 @@ func _ready() -> void:
 	_flash_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_flash_rect.color = Color(1, 1, 1, 0)
 	layer.add_child(_flash_rect)
+	add_child(load("res://scripts/debug/dev_mode.gd").new())        # F8 开发者模式
 
 
 ## F11 或 Alt+Enter 切换全屏（默认全屏）

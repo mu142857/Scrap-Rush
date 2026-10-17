@@ -14,15 +14,15 @@ const GATE := preload("res://art/boss/gate.png")
 const M := 16
 const ARENA := Rect2(0, 0, 320, 180)
 const FLOOR_Y := 164.0
-## 脚踩进地面亮边 2 像素才不像飘着（照普通关卡的做法），碰撞和站的高度用这个
-const STAND_Y := FLOOR_Y + 2.0
+## 站的高度就是地面顶边（试过往下沉 2 像素，用户嫌陷进地里，撤回了）
+const STAND_Y := FLOOR_Y
 const WALL := 8.0
 const CEIL := 12.0
 const PLATFORMS := [Vector3(20, 76, 128), Vector3(100, 156, 104), Vector3(30, 86, 78)]
 const VENTS := [50.0, 128.0, 196.0]
 const LAMPS := [Vector2(80, 16), Vector2(240, 16)]
 const BOSS_X := 258.0
-const SPAWN := Vector2(26, 166)
+const SPAWN := Vector2(26, 164)
 const TRIGGER_X := 64.0
 const GATE_OPEN_Y := 84.0
 const GATE_SHUT_Y := 124.0
@@ -129,8 +129,7 @@ func _build_room() -> void:
 	# 右边闸门那一截墙单独一块，打完以后拆掉放人出去
 	_exit_wall = _solid(Rect2(ARENA.size.x - WALL, GATE_SHUT_Y, 40 + WALL, FLOOR_Y - GATE_SHUT_Y))
 	for p in PLATFORMS:
-		# 平台也让脚踩进顶边 1 像素
-		var cs := _solid(Rect2(p.x, p.z + 1, p.y - p.x, 4))
+		var cs := _solid(Rect2(p.x, p.z, p.y - p.x, 4))
 		cs.one_way_collision = true
 
 	_gate_l = _gate(Vector2(-1, GATE_OPEN_Y))
@@ -320,8 +319,9 @@ func _leave() -> void:
 	_state = 4
 	hud.show_banner("BOILER BAY CLEARED")
 	await get_tree().create_timer(2.5).timeout
-	# 第二关还没有：先回开始界面
-	get_tree().change_scene_to_file("res://scenes/title.tscn")
+	# 进商店；第二关还没有，商店出口先回开始界面
+	ShopRoom.next_scene = "res://scenes/title.tscn"
+	get_tree().change_scene_to_file("res://scenes/shop.tscn")
 	Game.flash(Color.BLACK, 1.0, 0.6)
 
 

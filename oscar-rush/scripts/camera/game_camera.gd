@@ -1,24 +1,28 @@
 class_name GameCamera
 extends Camera2D
 ## 跟所有玩家的镜头。像素画不缩放，只平移。
-## - 主角放在画面中间略偏下（脚在画面 62% 高处，头顶留出空间），往移动方向多看 60 像素
+## - 构图照空洞骑士：主角在画面下半部，脚在画面约 75% 高处，头顶留大片空间看上面的平台和怪；往移动方向多看 60 像素
 ## - 跳起来时镜头不上下晃（照 Phage：只跟落地时的高度）
 ## - 往下掉得快时镜头提前往下看 60 像素，先看到落点
 ## - 多人时跟所有人的中心，提灯的人权重加倍
 ## - 2026-10-17：画面放大 2 倍（和开始界面一样），屏幕上只看到 240×135 个游戏像素，
 ##   站在上层看不到底层。3~4 人时退到 1.5 倍，免得有人被挤出画面。下面的距离都是游戏像素。
+## - "camera_focus" 组里的节点（精英怪出场动画时）把镜头往它那边拉一半，主角和它都在画面里；
+##   不管怎么拉，玩家都不出画面
 
 const ZOOM := 2.0
 const ZOOM_CROWD := 1.5
 const LOOK_AHEAD := 36.0
 const LOOK_AHEAD_SPEED := 3.0
-const FOCUS_OFFSET := Vector2(0, -16)
+const FOCUS_OFFSET := Vector2(0, -34)
 const FOLLOW_X_SPEED := 9.0
 const FOLLOW_Y_SPEED := 5.0
 const FALL_CATCHUP := 16.0
 const FALL_LOOK_DOWN := 40.0
 const FALL_LOOK_SPEED := 160.0
 const EDGE_MARGIN := 12.0
+## 有 camera_focus 时，镜头从玩家往它那边挪多少（0.5 = 正中间）
+const EXTRA_FOCUS_WEIGHT := 0.5
 
 var bounds := Rect2(0, 0, 480, 270)
 
@@ -63,6 +67,7 @@ func _process(delta: float) -> void:
 	for p in players:
 		var feet := p.global_position.y
 		pos.y = clampf(pos.y, feet - half.y + EDGE_MARGIN, feet - 20.0 + half.y - EDGE_MARGIN)
+		pos.x = clampf(pos.x, p.global_position.x - half.x + EDGE_MARGIN, p.global_position.x + half.x - EDGE_MARGIN)
 	global_position = _clamp_to_bounds(pos, half)
 	# 震屏按屏幕像素算，放大以后除回去，力度和以前一样
 	offset = (Vector2(randf_range(-1, 1), randf_range(-1, 1)) * Game.shake / zoom.x * 2.0).round() / 2.0
@@ -92,8 +97,12 @@ func _target_position() -> Vector2:
 			target_y = lead.global_position.y - FALL_CATCHUP
 	else:
 		target_y = focus.y
+	var target_x := focus.x + _look
+	var extra := get_tree().get_nodes_in_group("camera_focus")
+	if not extra.is_empty():
+		target_x = lerpf(target_x, (extra[0] as Node2D).global_position.x, EXTRA_FOCUS_WEIGHT)
 	var half := get_viewport_rect().size * 0.5 / zoom
-	return _clamp_to_bounds(Vector2(focus.x + _look, target_y + _look_down) + FOCUS_OFFSET, half)
+	return _clamp_to_bounds(Vector2(target_x, target_y + _look_down) + FOCUS_OFFSET, half)
 
 
 func _clamp_to_bounds(pos: Vector2, half: Vector2) -> Vector2:

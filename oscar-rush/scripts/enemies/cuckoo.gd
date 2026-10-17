@@ -43,6 +43,8 @@ var _last_tick := -1
 
 func _setup() -> void:
 	elite_name = "CUCKOO CLOCK"
+	intro_title = "TIME'S UP"
+	intro_frame = 3
 	texture_path = "res://art/enemies/cuckoo.png"
 	hframes = 7
 	frame_size = Vector2i(53, 40)

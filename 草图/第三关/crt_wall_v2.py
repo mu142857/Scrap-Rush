@@ -19,7 +19,8 @@ from PIL import Image
 
 sys.path.insert(0, "/Users/jiamulin/Desktop/程序programs/AI Oscar")
 from oscarkit.canvas import Canvas  # noqa: E402
-from oscarkit.shade import facet  # noqa: E402
+from oscarkit.shade import facet, step_color  # noqa: E402
+from oscarkit.light import smooth_noise, polygonal  # noqa: E402
 
 OUT = Path(__file__).parent
 W, H = 480, 270
@@ -202,6 +203,7 @@ class TV:
 
 # ---------------------------------------------------------------- 房间：墙、地板、光
 def room_base(tv, wallc, floorc, lamp, wainscot=None):
+    set_vp(tv)
     x0, y0, x1, y1, fy = tv.sx0, tv.sy0, tv.sx1, tv.sy1, tv.fy
     rw = x1 - x0 + 1
     inside = tv.screen_mask()
@@ -246,116 +248,215 @@ def crew_photo(x, y):
         scr.put(fx + 1, y + 2, c)
 
 
+# ---------------------------------------------------------------- 体积：照 Oscar 的家具，每件都有侧面和顶面
+VP = [0, 0]          # 当前这块屏幕的灭点（屏幕中间、视线高度）
+_SHADE = {}
+
+
+def set_vp(tv):
+    VP[0] = (tv.sx0 + tv.sx1) // 2
+    VP[1] = tv.sy0 + int((tv.fy - tv.sy0) * 0.42)
+
+
+def shade(c, k):
+    """c 往亮（k>0，偏暖）或往暗（k<0，偏冷）挪 k 档，一档约 0.045 OKLab。"""
+    key = (tuple(c[:3]), int(k))
+    if key not in _SHADE:
+        _SHADE[key] = step_color(c[:3], k) if k else tuple(c[:3])
+    return _SHADE[key]
+
+
+def extrude(pts, front, depth=0.07, side=None, top=None, under=None, cap=9):
+    """把一个正面多边形朝灭点挤出厚度：灭点左边的东西露右侧面，比视线低的露顶面。"""
+    cx = sum(p[0] for p in pts) / len(pts)
+    cy = sum(p[1] for p in pts) / len(pts)
+    ox = int(np.clip(round((VP[0] - cx) * depth), -cap, cap))
+    oy = int(np.clip(round((VP[1] - cy) * depth), -cap, cap))
+    side = side or shade(front, -2)
+    top = top or shade(front, 1)
+    under = under or shade(front, -3)
+    vq, hq = [], []
+    for i in range(len(pts)):
+        p, q = pts[i], pts[(i + 1) % len(pts)]
+        nx, ny = q[1] - p[1], -(q[0] - p[0])                   # 边的法线，朝外
+        if nx * ((p[0] + q[0]) / 2 - cx) + ny * ((p[1] + q[1]) / 2 - cy) < 0:
+            nx, ny = -nx, -ny
+        if nx * ox + ny * oy <= 0:                             # 往里挤的边看不见
+            continue
+        quad = [p, q, (q[0] + ox, q[1] + oy), (p[0] + ox, p[1] + oy)]
+        (vq if abs(q[1] - p[1]) > abs(q[0] - p[0]) else hq).append(quad)
+    for quad in vq:
+        scr.poly(quad, side)
+    for quad in hq:
+        scr.poly(quad, top if oy < 0 else under)
+    return scr.poly(pts, front)
+
+
+def box(x0, y0, x1, y1, front, **kw):
+    """含端点的矩形，挤出厚度。"""
+    return extrude([(x0, y0), (x1 + 1, y0), (x1 + 1, y1 + 1), (x0, y1 + 1)], front, **kw)
+
+
+def panel(x0, y0, x1, y1, base):
+    """柜门、抽屉这种嵌进去的面板：上、左一道暗缝，下、右一道亮边。"""
+    scr.rect(x0, y0, x1, y1, shade(base, -1))
+    scr.line(x0, y0, x1, y0, shade(base, -3)); scr.line(x0, y0, x0, y1, shade(base, -3))
+    scr.line(x0 + 1, y1, x1, y1, shade(base, 1)); scr.line(x1, y0 + 1, x1, y1, shade(base, 1))
+
+
+def floor_shadow(x0, x1, fy, depth=3):
+    """家具脚下一块柔和的影子，往背光那边拖一点。"""
+    a = scr.a
+    for dy in range(depth):
+        xa, xb = max(0, x0 - 1 + dy), min(W - 1, x1 + 3 + dy * 2)
+        y = fy + 1 + dy
+        if 0 <= y < H:
+            seg = a[y, xa:xb + 1, :3].astype(float) * (0.78 + dy * 0.06)
+            a[y, xa:xb + 1, :3] = seg.astype(np.uint8)
+
+
 def floor_lamp(x, fy, top):
-    scr.line(x, top + 6, x, fy, (90, 70, 70))
-    scr.rect(x - 3, fy, x + 3, fy + 1, (90, 70, 70))
+    floor_shadow(x - 4, x + 4, fy)
+    scr.line(x, top + 6, x, fy, (90, 70, 70)); scr.line(x + 1, top + 6, x + 1, fy, (70, 56, 60))
+    box(x - 3, fy - 1, x + 3, fy, (90, 70, 70))
     scr.poly([(x - 6, top + 6), (x + 7, top + 6), (x + 4, top - 4), (x - 3, top - 4)], (246, 226, 168))
-    scr.line(x - 6, top + 6, x + 6, top + 6, (226, 196, 140))
+    scr.poly([(x + 2, top + 6), (x + 7, top + 6), (x + 4, top - 4), (x + 2, top - 4)], (232, 204, 150))
+    scr.line(x - 6, top + 6, x + 6, top + 6, (252, 240, 200))
 
 
 def hanging_lamp(x, ceil, y):
     scr.line(x, ceil, x, y - 4, (80, 64, 66))
     scr.poly([(x - 8, y + 2), (x + 9, y + 2), (x + 4, y - 4), (x - 3, y - 4)], (226, 200, 150))
+    scr.poly([(x + 3, y + 2), (x + 9, y + 2), (x + 4, y - 4), (x + 2, y - 4)], (200, 172, 130))
     scr.rect(x - 2, y + 3, x + 2, y + 4, (252, 240, 196))
 
 
 def sofa(x0, x1, fy):
-    sb = fy
-    scr.rect(x0 + 3, sb - 20, x1 - 3, sb - 9, (92, 118, 120))
-    scr.rect(x0, sb - 11, x1, sb, (84, 108, 112))
-    scr.rect(x0, sb - 15, x0 + 5, sb, (74, 96, 104))
-    scr.rect(x1 - 5, sb - 15, x1, sb, (100, 128, 126))
-    scr.line(x1 - 5, sb - 15, x1, sb - 15, (140, 164, 150))
-    scr.line(x0 + 3, sb - 20, x1 - 3, sb - 20, (116, 142, 136))
-    scr.line((x0 + x1) // 2, sb - 19, (x0 + x1) // 2, sb - 10, (80, 104, 110))
+    c = (88, 114, 118)
+    floor_shadow(x0, x1, fy, 4)
+    box(x0 + 3, fy - 21, x1 - 3, fy - 10, shade(c, 1))                    # 靠背
+    for cx in range(x0 + 4, x1 - 4, max(8, (x1 - x0) // 3)):
+        scr.line(cx, fy - 20, cx, fy - 11, shade(c, -1))
+    box(x0, fy - 11, x1, fy, c)                                           # 坐垫
+    scr.line(x0 + 1, fy - 11, x1 - 1, fy - 11, shade(c, 2))
+    scr.line((x0 + x1) // 2, fy - 10, (x0 + x1) // 2, fy - 1, shade(c, -2))
+    box(x0 - 1, fy - 16, x0 + 5, fy, shade(c, -1))                         # 扶手
+    box(x1 - 5, fy - 16, x1 + 1, fy, shade(c, 1))
+    scr.line(x1 - 5, fy - 16, x1, fy - 16, shade(c, 3))
+    scr.rect(x0 + 1, fy - 1, x0 + 2, fy, (60, 44, 44)); scr.rect(x1 - 2, fy - 1, x1 - 1, fy, (60, 44, 44))
 
 
 def rug(cx, fy, rx, c=(150, 116, 140), c2=(168, 132, 150)):
     m = (XX - cx) ** 2 / rx ** 2 + (YY - (fy + 5)) ** 2 / 4.0 ** 2 <= 1
     scr.fill_mask(m, c)
     scr.fill_mask(m & (XX > cx + rx * 0.3), c2)
+    scr.fill_mask(m & (YY >= fy + 8), shade(c, -1))
 
 
 def small_tv(x, fy):
-    scr.rect(x, fy - 8, x + 14, fy, (122, 84, 72))
-    scr.line(x, fy - 8, x + 14, fy - 8, (160, 116, 92))
-    scr.rect(x + 2, fy - 18, x + 12, fy - 9, (176, 168, 150))
-    scr.rect(x + 3, fy - 17, x + 9, fy - 11, (120, 150, 196))
+    floor_shadow(x, x + 14, fy)
+    box(x, fy - 8, x + 14, fy, (122, 84, 72))
+    panel(x + 2, fy - 6, x + 6, fy - 2, (122, 84, 72)); panel(x + 8, fy - 6, x + 12, fy - 2, (122, 84, 72))
+    box(x + 2, fy - 18, x + 12, fy - 9, (176, 168, 150))
+    scr.rect(x + 3, fy - 17, x + 9, fy - 11, (120, 150, 196)); scr.put(x + 4, fy - 16, (176, 200, 230))
     scr.put(x + 11, fy - 12, LED_RED)
+    scr.line(x + 6, fy - 19, x + 2, fy - 24, (90, 80, 80)); scr.line(x + 8, fy - 19, x + 12, fy - 25, (90, 80, 80))
 
 
 def fridge(x, fy, w=20, h=46):
-    scr.rect(x, fy - h, x + w, fy, (214, 214, 204))
-    scr.rect(x + w - 4, fy - h, x + w, fy, (180, 182, 178))          # 背光侧
-    scr.line(x, fy - h + 16, x + w - 4, fy - h + 16, (164, 164, 160))
-    scr.rect(x + 2, fy - h + 5, x + 3, fy - h + 12, (140, 140, 140))
-    scr.rect(x + 2, fy - h + 20, x + 3, fy - h + 30, (140, 140, 140))
-    scr.rect(x + 7, fy - h + 4, x + 11, fy - h + 8, (232, 200, 120))   # 冰箱贴
-    scr.rect(x + 9, fy - h + 22, x + 14, fy - h + 27, (226, 214, 180))  # 小孩的画
-    scr.line(x + 10, fy - h + 25, x + 13, fy - h + 24, (96, 136, 214))
+    c = (214, 214, 204)
+    floor_shadow(x, x + w, fy, 4)
+    box(x, fy - h, x + w, fy, c)
+    scr.line(x, fy - h + 16, x + w, fy - h + 16, shade(c, -3))
+    scr.line(x, fy - h + 17, x + w, fy - h + 17, shade(c, 1))
+    scr.rect(x + 2, fy - h + 5, x + 3, fy - h + 12, shade(c, -4)); scr.put(x + 2, fy - h + 5, shade(c, 2))
+    scr.rect(x + 2, fy - h + 20, x + 3, fy - h + 30, shade(c, -4)); scr.put(x + 2, fy - h + 20, shade(c, 2))
+    scr.rect(x + 7, fy - h + 4, x + 11, fy - h + 8, (232, 200, 120))     # 冰箱贴
+    scr.rect(x + 9, fy - h + 22, x + 14, fy - h + 27, (226, 214, 180))    # 小孩的画
+    scr.line(x + 10, fy - h + 25, x + 13, fy - h + 24, (96, 136, 214)); scr.put(x + 11, fy - h + 23, (206, 72, 64))
+    scr.rect(x + 1, fy - 2, x + w - 1, fy, shade(c, -3))
 
 
 def table_chairs(x0, fy, w=40):
+    wood = (150, 104, 82)
     top = fy - 14
-    scr.rect(x0, top, x0 + w, top + 2, (150, 104, 82))
-    scr.line(x0, top, x0 + w, top, (184, 136, 104))
-    scr.rect(x0 + 3, top + 3, x0 + 4, fy, (118, 82, 70)); scr.rect(x0 + w - 4, top + 3, x0 + w - 3, fy, (118, 82, 70))
-    for cx, d in [(x0 - 9, -1), (x0 + w + 4, 1)]:
-        scr.rect(cx, fy - 9, cx + 6, fy - 8, (128, 90, 74))
-        bx = cx if d < 0 else cx + 6
-        scr.rect(bx, fy - 22, bx + 1, fy, (128, 90, 74))
-        scr.rect(cx + (5 if d < 0 else 0), fy - 7, cx + (6 if d < 0 else 1), fy, (118, 82, 70))
+    floor_shadow(x0, x0 + w, fy, 3)
+    for cx, d in [(x0 - 9, -1), (x0 + w + 4, 1)]:                         # 椅子
+        bx = cx if d < 0 else cx + 5
+        box(bx, fy - 23, bx + 1, fy, shade(wood, -1))
+        box(cx, fy - 10, cx + 6, fy - 8, shade(wood, -1))
+        scr.rect(cx + (5 if d < 0 else 0), fy - 7, cx + (6 if d < 0 else 1), fy, shade(wood, -2))
+    scr.rect(x0 + 3, top + 3, x0 + 4, fy, shade(wood, -2)); scr.rect(x0 + w - 4, top + 3, x0 + w - 3, fy, shade(wood, -2))
+    box(x0, top, x0 + w, top + 2, wood)
+    scr.rect(x0 + 2, top - 1, x0 + w - 2, top - 1, (226, 214, 200))       # 桌布
     # 桌上：一个蛋糕，四根蜡烛
-    scr.rect(x0 + 14, top - 6, x0 + 26, top - 1, (232, 210, 200))
-    scr.line(x0 + 14, top - 6, x0 + 26, top - 6, (246, 236, 226))
-    for k in range(4):
-        scr.put(x0 + 16 + k * 3, top - 8, (246, 214, 140)); scr.put(x0 + 16 + k * 3, top - 7, (220, 120, 120))
+    box(x0 + 14, top - 6, x0 + 26, top - 1, (232, 210, 200))
+    scr.line(x0 + 14, top - 4, x0 + 26, top - 4, (206, 130, 140))
+    for k_ in range(4):
+        scr.put(x0 + 16 + k_ * 3, top - 9, (252, 226, 150)); scr.put(x0 + 16 + k_ * 3, top - 8, (220, 120, 120)); scr.put(x0 + 16 + k_ * 3, top - 7, (220, 120, 120))
 
 
 def counter(x0, x1, fy):
-    scr.rect(x0, fy - 18, x1, fy, (176, 160, 146))
-    scr.rect(x0, fy - 18, x1, fy - 16, (210, 196, 180))
-    for dx in range(x0 + 4, x1 - 8, 14):
-        scr.rect(dx, fy - 13, dx + 10, fy - 2, (156, 140, 130)); scr.put(dx + 8, fy - 8, (110, 96, 96))
-    # 墙上的吊柜
-    scr.rect(x0, fy - 60, x1, fy - 44, (176, 160, 146)); scr.line(x0, fy - 44, x1, fy - 44, (140, 124, 118))
-    scr.line((x0 + x1) // 2, fy - 60, (x0 + x1) // 2, fy - 45, (150, 136, 128))
+    c = (176, 160, 146)
+    floor_shadow(x0, x1, fy, 3)
+    box(x0, fy - 16, x1, fy, c)
+    for dx in range(x0 + 3, x1 - 9, 13):
+        panel(dx, fy - 13, dx + 10, fy - 2, c); scr.put(dx + 8, fy - 8, shade(c, -5))
+    box(x0 - 1, fy - 19, x1 + 1, fy - 17, (214, 204, 190))               # 台面
+    scr.rect(x0 + 6, fy - 22, x0 + 12, fy - 20, (140, 150, 170)); scr.rect(x0 + 8, fy - 25, x0 + 9, fy - 23, (180, 184, 196))   # 水壶
+    box(x0, fy - 60, x1, fy - 44, c)                                      # 墙上的吊柜：比视线高，露底面
+    for dx in range(x0 + 3, x1 - 9, 13):
+        panel(dx, fy - 57, dx + 10, fy - 47, c)
+    for k_ in range(3):                                                   # 吊柜下挂着的杯子
+        scr.rect(x0 + 18 + k_ * 6, fy - 41, x0 + 20 + k_ * 6, fy - 39, [(206, 120, 110), (110, 150, 200), (220, 200, 130)][k_])
 
 
 def bed(x0, fy, w=50):
-    scr.rect(x0, fy - 26, x0 + 4, fy, (118, 84, 72))                  # 床头
-    scr.rect(x0 + 4, fy - 12, x0 + w, fy - 5, (220, 214, 204))         # 床垫
-    scr.rect(x0 + 5, fy - 16, x0 + 16, fy - 12, (236, 232, 222))       # 枕头
-    scr.rect(x0 + 18, fy - 14, x0 + w, fy - 7, (130, 140, 186))        # 被子
-    scr.line(x0 + 18, fy - 14, x0 + w, fy - 14, (156, 166, 206))
-    scr.rect(x0 + 4, fy - 5, x0 + w, fy - 3, (118, 84, 72))
-    scr.rect(x0 + w - 2, fy - 3, x0 + w, fy, (118, 84, 72)); scr.rect(x0 + 4, fy - 3, x0 + 6, fy, (118, 84, 72))
+    wood, quilt = (118, 84, 72), (130, 140, 186)
+    floor_shadow(x0, x0 + w, fy, 4)
+    box(x0, fy - 27, x0 + 4, fy, wood)                                   # 床头
+    scr.rect(x0 + 1, fy - 25, x0 + 3, fy - 25, shade(wood, 2))
+    box(x0 + 4, fy - 5, x0 + w, fy - 3, wood)
+    box(x0 + 4, fy - 12, x0 + w, fy - 6, (220, 214, 204))                 # 床垫
+    box(x0 + 5, fy - 16, x0 + 16, fy - 12, (236, 232, 222), depth=0.04)   # 枕头
+    box(x0 + 18, fy - 14, x0 + w, fy - 7, quilt)                          # 被子
+    for qx in range(x0 + 22, x0 + w, 8):
+        scr.line(qx, fy - 13, qx + 2, fy - 8, shade(quilt, -1))
+    scr.rect(x0 + w - 2, fy - 3, x0 + w, fy, wood); scr.rect(x0 + 4, fy - 3, x0 + 6, fy, wood)
 
 
 def wardrobe(x, fy, w=28, h=54):
-    scr.rect(x, fy - h, x + w, fy, (140, 100, 82))
-    scr.rect(x + w - 4, fy - h, x + w, fy, (116, 82, 70))
-    scr.line(x + w // 2 - 2, fy - h + 3, x + w // 2 - 2, fy - 3, (104, 72, 64))
-    scr.put(x + w // 2 - 4, fy - h // 2, (220, 190, 120)); scr.put(x + w // 2, fy - h // 2, (220, 190, 120))
-    scr.line(x, fy - h, x + w, fy - h, (170, 128, 100))
+    c = (140, 100, 82)
+    floor_shadow(x, x + w, fy, 4)
+    box(x, fy - h, x + w, fy, c)
+    panel(x + 2, fy - h + 4, x + w // 2 - 1, fy - 6, c); panel(x + w // 2 + 1, fy - h + 4, x + w - 2, fy - 6, c)
+    scr.put(x + w // 2 - 3, fy - h // 2, (226, 196, 130)); scr.put(x + w // 2 + 3, fy - h // 2, (226, 196, 130))
+    box(x - 1, fy - h - 2, x + w + 1, fy - h, shade(c, 1))               # 顶檐
+    box(x + 4, fy - h - 9, x + 14, fy - h - 3, (196, 170, 130))           # 上面放着的纸箱
 
 
 def bunk(x0, fy, w=44):
     post = (124, 92, 78)
-    scr.rect(x0, fy - 50, x0 + 2, fy, post); scr.rect(x0 + w, fy - 50, x0 + w + 2, fy, post)
+    floor_shadow(x0, x0 + w, fy, 4)
     for by, quilt in [(fy - 6, (200, 120, 110)), (fy - 30, (110, 160, 200))]:
-        scr.rect(x0 + 2, by - 6, x0 + w, by, (224, 218, 206))
-        scr.rect(x0 + 14, by - 8, x0 + w, by - 2, quilt)
-        scr.rect(x0 + 2, by, x0 + w, by + 2, post)
-    for k in range(5):                                                 # 梯子
-        scr.line(x0 + w - 8, fy - 6 - k * 5, x0 + w - 2, fy - 6 - k * 5, post)
+        box(x0 + 2, by, x0 + w, by + 2, post)
+        box(x0 + 2, by - 6, x0 + w, by - 1, (224, 218, 206))
+        box(x0 + 14, by - 8, x0 + w, by - 3, quilt)
+        box(x0 + 3, by - 9, x0 + 11, by - 6, (240, 236, 228), depth=0.04)
+    box(x0, fy - 50, x0 + 2, fy, post); box(x0 + w, fy - 50, x0 + w + 2, fy, post)
+    for k_ in range(5):                                                   # 梯子
+        scr.line(x0 + w - 8, fy - 6 - k_ * 5, x0 + w - 2, fy - 6 - k_ * 5, shade(post, 1))
+    scr.line(x0 + w - 8, fy - 30, x0 + w - 8, fy, post)
 
 
 def rocket(x, fy):
-    scr.rect(x, fy - 18, x + 6, fy - 4, (226, 222, 210))
+    floor_shadow(x - 3, x + 10, fy)
+    box(x, fy - 18, x + 6, fy - 4, (226, 222, 210), depth=0.04)
     scr.poly([(x, fy - 18), (x + 7, fy - 18), (x + 3, fy - 25)], (206, 72, 64))
-    scr.rect(x + 2, fy - 14, x + 4, fy - 12, (96, 136, 214))
-    scr.poly([(x - 3, fy), (x, fy - 7), (x, fy)], (206, 72, 64)); scr.poly([(x + 7, fy - 7), (x + 10, fy), (x + 7, fy)], (206, 72, 64))
+    scr.poly([(x + 4, fy - 18), (x + 7, fy - 18), (x + 3, fy - 25)], (176, 56, 56))
+    disc_ = (XX - (x + 3)) ** 2 + (YY - (fy - 13)) ** 2 <= 2.5
+    scr.fill_mask(disc_, (96, 136, 214)); scr.put(x + 2, fy - 14, (176, 206, 240))
+    scr.poly([(x - 3, fy), (x, fy - 7), (x, fy)], (206, 72, 64)); scr.poly([(x + 7, fy - 7), (x + 10, fy), (x + 7, fy)], (176, 56, 56))
 
 
 def stars(x0, y0, x1, y1, n=9):
@@ -363,64 +464,112 @@ def stars(x0, y0, x1, y1, n=9):
         sx, sy = random.randint(x0, x1), random.randint(y0, y1)
         for dx, dy in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
             scr.put(sx + dx, sy + dy, (246, 230, 150))
+        scr.put(sx + 1, sy + 1, (200, 180, 110))
 
 
 def bookshelf(x, fy, w=34, h=58):
-    scr.rect(x, fy - h, x + w, fy, (118, 84, 72))
+    wood = (118, 84, 72)
+    floor_shadow(x, x + w, fy, 4)
+    box(x, fy - h, x + w, fy, wood)
     cols = [(180, 84, 80), (96, 120, 170), (200, 180, 120), (110, 150, 110), (150, 110, 160), (220, 210, 190)]
     for sy in range(fy - h + 3, fy - 2, 14):
-        scr.rect(x + 2, sy, x + w - 2, sy + 11, (78, 56, 54))
+        scr.rect(x + 2, sy, x + w - 2, sy + 11, (64, 46, 46))
+        scr.rect(x + 2, sy, x + w - 2, sy + 1, (50, 36, 38))
         bx = x + 3
         while bx < x + w - 4:
             bw = random.choice([2, 3, 3, 4])
             bh = random.choice([8, 9, 10, 11])
-            scr.rect(bx, sy + 11 - bh, min(x + w - 3, bx + bw - 1), sy + 10, random.choice(cols))
+            c = random.choice(cols)
+            scr.rect(bx, sy + 11 - bh, min(x + w - 3, bx + bw - 1), sy + 10, c)
+            scr.line(bx, sy + 11 - bh, bx, sy + 10, shade(c, 1))
+            if bw >= 3:
+                scr.put(bx + 1, sy + 13 - bh, shade(c, 3))
             bx += bw + (1 if random.random() < 0.2 else 0)
-        scr.rect(x + 1, sy + 11, x + w - 1, sy + 12, (140, 100, 82))
+        scr.rect(x + 1, sy + 11, x + w - 1, sy + 12, shade(wood, 2))
 
 
 def wall_clock(cx, cy, r=7):
+    scr.fill_mask((XX - cx - 1) ** 2 + (YY - cy - 1) ** 2 <= r * r, (60, 44, 50))
     scr.fill_mask((XX - cx) ** 2 + (YY - cy) ** 2 <= r * r, (112, 84, 80))
     scr.fill_mask((XX - cx) ** 2 + (YY - cy) ** 2 <= (r - 2) ** 2, (236, 228, 206))
+    scr.fill_mask(((XX - cx) ** 2 + (YY - cy) ** 2 <= (r - 2) ** 2) & (XX > cx + 1) & (YY > cy + 1), (214, 204, 186))
     scr.line(cx, cy, cx, cy - r + 3, (60, 50, 50)); scr.line(cx, cy, cx + 3, cy + 1, (60, 50, 50))
 
 
 def armchair(x, fy):
-    scr.rect(x, fy - 22, x + 18, fy - 8, (150, 90, 84))
-    scr.rect(x - 2, fy - 12, x + 20, fy, (136, 80, 76))
-    scr.rect(x - 2, fy - 15, x + 2, fy, (120, 70, 70)); scr.rect(x + 16, fy - 15, x + 20, fy, (166, 104, 94))
-    scr.line(x, fy - 22, x + 18, fy - 22, (176, 116, 104))
+    c = (150, 90, 84)
+    floor_shadow(x - 2, x + 20, fy, 4)
+    box(x, fy - 23, x + 18, fy - 9, c)
+    scr.line(x + 9, fy - 22, x + 9, fy - 10, shade(c, -1))
+    box(x - 2, fy - 12, x + 20, fy, shade(c, -1))
+    box(x - 3, fy - 16, x + 2, fy, shade(c, -2)); box(x + 16, fy - 16, x + 21, fy, shade(c, 1))
+    scr.line(x, fy - 23, x + 18, fy - 23, shade(c, 2))
+    box(x + 4, fy - 15, x + 10, fy - 12, (220, 206, 170), depth=0.03)    # 椅子上的毛毯
 
 
 def front_door(x, fy, w=24, h=48):
-    scr.rect(x - 3, fy - h - 3, x + w + 3, fy, (150, 120, 112))
-    scr.rect(x, fy - h, x + w, fy, (116, 74, 64))
-    scr.rect(x + w - 4, fy - h, x + w, fy, (96, 60, 56))
-    scr.rect(x + 5, fy - h + 6, x + w - 6, fy - h + 16, (226, 200, 150))    # 门上的小窗透着光
-    scr.line(x + w // 2 - 1, fy - h + 6, x + w // 2 - 1, fy - h + 16, (116, 74, 64))
-    scr.rect(x + w - 6, fy - h // 2, x + w - 4, fy - h // 2 + 1, (226, 200, 120))
-    scr.rect(x - 2, fy - 1, x + w + 2, fy, (150, 110, 140))                  # 门垫
+    c = (116, 74, 64)
+    box(x - 3, fy - h - 3, x + w + 3, fy, (150, 120, 112), depth=0.03)
+    scr.rect(x, fy - h, x + w, fy, shade(c, -3))
+    scr.rect(x + 1, fy - h + 1, x + w, fy, c)
+    panel(x + 4, fy - h + 20, x + w - 4, fy - h + 30, c); panel(x + 4, fy - h + 34, x + w - 4, fy - 4, c)
+    scr.rect(x + 5, fy - h + 5, x + w - 6, fy - h + 16, (226, 200, 150))    # 门上的小窗透着光
+    scr.rect(x + 5, fy - h + 5, x + w - 6, fy - h + 6, (252, 236, 190))
+    scr.line(x + w // 2 - 1, fy - h + 5, x + w // 2 - 1, fy - h + 16, c)
+    scr.rect(x + w - 6, fy - h // 2, x + w - 4, fy - h // 2 + 1, (226, 200, 120)); scr.put(x + w - 6, fy - h // 2, (252, 236, 180))
+    box(x - 2, fy - 1, x + w + 2, fy, (150, 110, 140))                    # 门垫
 
 
 def coat_rack(x, fy):
-    scr.line(x, fy - 44, x, fy, (100, 72, 64))
-    scr.rect(x - 4, fy - 1, x + 4, fy, (100, 72, 64))
+    floor_shadow(x - 5, x + 6, fy)
+    scr.line(x, fy - 44, x, fy, (100, 72, 64)); scr.line(x + 1, fy - 44, x + 1, fy, (80, 58, 54))
+    box(x - 4, fy - 1, x + 4, fy, (100, 72, 64))
     for dx, c, top in [(-5, (206, 72, 64), 40), (3, (96, 136, 214), 42), (-3, (110, 180, 100), 34)]:
         scr.rect(x + dx, fy - top, x + dx + 4, fy - top + 16, c)            # 四个人的外套
-    scr.rect(x + 1, fy - 38, x + 5, fy - 24, (190, 140, 96))
+        scr.line(x + dx, fy - top, x + dx, fy - top + 16, shade(c, 1))
+        scr.line(x + dx + 4, fy - top + 2, x + dx + 4, fy - top + 16, shade(c, -2))
+    scr.rect(x + 1, fy - 38, x + 5, fy - 24, (190, 140, 96)); scr.line(x + 5, fy - 36, x + 5, fy - 24, shade((190, 140, 96), -2))
 
 
 def shoes(x, fy):
-    for k, c in enumerate([(206, 72, 64), (190, 140, 96), (96, 136, 214), (110, 180, 100)]):
-        scr.rect(x + k * 7, fy - 2, x + k * 7 + 4, fy, c)
-        scr.put(x + k * 7, fy - 3, c)
+    for k_, c in enumerate([(206, 72, 64), (190, 140, 96), (96, 136, 214), (110, 180, 100)]):
+        scr.rect(x + k_ * 7, fy - 2, x + k_ * 7 + 4, fy, c)
+        scr.put(x + k_ * 7, fy - 3, c); scr.put(x + k_ * 7 + 1, fy - 2, shade(c, 2)); scr.put(x + k_ * 7 + 4, fy, shade(c, -2))
 
 
 def plant(x, fy):
-    scr.rect(x, fy - 7, x + 8, fy, (176, 110, 86)); scr.line(x, fy - 7, x + 8, fy - 7, (206, 140, 106))
+    pot = (176, 110, 86)
+    floor_shadow(x, x + 8, fy)
     for dx, h in [(1, 16), (4, 22), (7, 14)]:
         scr.line(x + 4, fy - 8, x + dx, fy - 8 - h, (96, 150, 104))
         scr.rect(x + dx - 1, fy - 9 - h, x + dx + 1, fy - 6 - h, (120, 176, 120))
+        scr.put(x + dx + 1, fy - 6 - h, (90, 140, 100)); scr.put(x + dx - 1, fy - 9 - h, (150, 200, 140))
+    box(x, fy - 7, x + 8, fy, pot, depth=0.04)
+    scr.line(x, fy - 7, x + 8, fy - 7, shade(pot, 2))
+
+
+def light_pass(tv, light_at, gain=2.6, amp=0.9, cell=9, min_px=30, seed=0):
+    """Oscar 的色块：每个大面按离场景光源的远近切成一档一档，档的边是直线段（三角网格），
+    再加一点低频扰动让边缘有棱角。发光的东西（最亮通道 >= 240）不动，小零件不动。"""
+    x0, y0, x1, y1 = tv.sx0, tv.sy0, tv.sx1, tv.sy1
+    h, w = y1 - y0 + 1, x1 - x0 + 1
+    sub = scr.a[y0:y1 + 1, x0:x1 + 1]
+    m = tv.screen_mask()[y0:y1 + 1, x0:x1 + 1]
+    Y, X = np.mgrid[0:h, 0:w]
+    d = np.hypot(X + x0 - light_at[0], (Y + y0 - light_at[1]) * 1.1) / max(w, h)
+    F = -gain * d + amp * smooth_noise(h, w, sx=22, sy=16, seed=seed)
+    F = polygonal(F, cell, cell * 0.8, seed=seed)
+    key = (sub[..., 0].astype(np.int64) << 16) | (sub[..., 1].astype(np.int64) << 8) | sub[..., 2]
+    for kv in np.unique(key[m]):
+        col = ((kv >> 16) & 255, (kv >> 8) & 255, kv & 255)
+        if max(col) >= 240:
+            continue
+        sel = (key == kv) & m
+        if sel.sum() < min_px:
+            continue
+        kk = np.clip(np.round(F[sel] - F[sel].mean()), -2, 2).astype(int)
+        out = np.array([shade(col, v) for v in range(-2, 3)], np.uint8)[kk + 2]
+        sub[..., :3][sel] = out
 
 
 def static_band(tv, y0, y1):
@@ -438,6 +587,8 @@ def static_band(tv, y0, y1):
 
 def finish_room(tv, light_at):
     m = tv.screen_mask()
+    if not getattr(tv, "flat", False):
+        light_pass(tv, light_at, seed=tv.sx0 % 97)
     tint(m, TINTS[tv.tint])
     scanlines(tv.sx0, tv.sy0, tv.sx1, tv.sy1)
     vignette(tv.sx0, tv.sy0, tv.sx1, tv.sy1, 5)

@@ -63,6 +63,10 @@ const ENCOUNTERS := [
 	 "waves": [["crawler", "crawler", "flea"], ["moth", "moth", "shaver"], ["flea", "flea", "shaver", "shaver"],
 		["moth", "moth", "shaver", "shaver", "crawler"], ["roller"]]},
 ]
+## 关卡出口：桥上最后一场打完、从右边柱子跳下来，走到底层最右端，就进第一关 Boss 房。
+## 玩家、水晶血量、零件都在 Run 里，Boss 房自己会 Run.start_level()。
+const EXIT := Rect2(966, 360, 40, 60)
+const BOSS_SCENE := "res://scenes/boss1.tscn"
 ## 路线提示：有玩家走进 zone 就在 at 处亮出一块提示牌。
 ## 路线：上层往右 → 右端跳下 → 中层往左 → 左端跳下 → 底层往右打 Boss
 const HINTS := [
@@ -72,11 +76,13 @@ const HINTS := [
 	{"zone": Rect2(0, 140, 200, 74), "at": Vector2(24, 176), "text": "Drop down here", "arrow": "down"},
 	{"zone": Rect2(0, 330, 180, 90), "at": Vector2(120, 372), "text": "Go right", "arrow": "right"},
 	{"zone": Rect2(340, 300, 82, 120), "at": Vector2(400, 322), "text": "Hold {jump} in the air to fly", "arrow": "up"},
+	{"zone": Rect2(833, 330, 173, 90), "at": Vector2(980, 384), "text": "Boss ahead", "arrow": "right"},
 ]
 
 var hud: Hud
 var _debug := false
 var _retrying := false
+var _leaving := false
 
 
 func _ready() -> void:
@@ -206,6 +212,24 @@ func _on_crystal_broken() -> void:
 	_retry()
 
 
+func _physics_process(_delta: float) -> void:
+	if _leaving or _retrying:
+		return
+	for p in get_tree().get_nodes_in_group("player"):
+		if EXIT.has_point((p as Node2D).global_position):
+			_leave()
+			return
+
+
+func _leave() -> void:
+	_leaving = true
+	Game.flash(Color.BLACK, 1.0, 0.6)
+	await get_tree().create_timer(0.25, true, false, true).timeout
+	Engine.time_scale = 1.0
+	get_tree().paused = false
+	get_tree().change_scene_to_file(BOSS_SCENE)
+
+
 func _retry() -> void:
 	if _retrying:
 		return
@@ -228,3 +252,4 @@ func _draw() -> void:
 		draw_polyline(outline, Color(0.3, 1.0, 0.5, 0.9))
 	for h in HINTS:
 		draw_rect(h["zone"], Color(1.0, 0.8, 0.3, 0.6), false)
+	draw_rect(EXIT, Color(0.4, 0.7, 1.0, 0.9), false)

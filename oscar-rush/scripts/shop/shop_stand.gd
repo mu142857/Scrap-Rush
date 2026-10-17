@@ -14,16 +14,6 @@ const WARM := Color8(255, 211, 138)
 const DIM := Color(0.62, 0.6, 0.6)
 const POOR := Color8(220, 90, 70)
 const FADE_SPEED := 6.0
-## 小齿轮（价钱前面的零件符号），7×7
-const GEAR := [
-	".#.#.#.",
-	"#######",
-	".##.##.",
-	"###.###",
-	".##.##.",
-	"#######",
-	".#.#.#.",
-]
 
 ## 货的编号：charge / fuel / plating / damping / repair / refresh / weapon / mutation
 var id := ""
@@ -61,7 +51,6 @@ func _ready() -> void:
 	var unshaded := CanvasItemMaterial.new()
 	unshaded.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
 	_panel.material = unshaded
-	_panel.draw.connect(_draw_panel)
 	add_child(_panel)
 	_title = _make_label(WARM, -40)
 	_detail = _make_label(DIM, -30)
@@ -93,11 +82,11 @@ func refresh_view() -> void:
 	_detail.text = info.get("detail", "")
 	var price: int = info.get("price", 0)
 	if info.get("can_buy", false) or price > 0:
-		_price.text = ("x%d   %s  BUY" % [price, _key]) if price > 0 else ("FREE   %s" % _key)
+		_price.text = ("%d PART%s   %s: BUY" % [price, "S" if price > 1 else "", _key]) if price > 0 \
+				else ("FREE   %s: PULL" % _key)
 	else:
 		_price.text = ""
-	_price.label_settings = Hud.small_text(WARM if info.get("can_buy", false) else POOR) \
-			if _price.text != "" else _price.label_settings
+	_price.label_settings = Hud.small_text(WARM if info.get("can_buy", false) else POOR)
 	# 字不要伸出画面左右两边
 	var w := 0.0
 	for l in [_title, _detail, _price]:
@@ -106,7 +95,6 @@ func refresh_view() -> void:
 	var shift := clampf(0.0, half - global_position.x, 480.0 - half - global_position.x)
 	for l in [_title, _detail, _price]:
 		(l as Label).position.x = -80.0 + shift
-	_panel.queue_redraw()
 
 
 ## 买不起：字抖一下
@@ -151,17 +139,3 @@ func _draw() -> void:
 		var r := Rect2(-6 + i * 4, 10, 3, 2)
 		draw_rect(r, WARM if i < pips else Color(0.22, 0.2, 0.2))
 
-
-func _draw_panel() -> void:
-	if _price.text == "" or info.get("price", 0) <= 0:
-		return
-	# 价钱前面画一个小齿轮
-	var tw := Hud.font().get_string_size(_price.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
-	var x0 := roundf(_price.position.x + 80.0 - tw * 0.5) - 9.0
-	var col: Color = _price.label_settings.font_color
-	for y in GEAR.size():
-		var row: String = GEAR[y]
-		for x in row.length():
-			if row[x] == "#":
-				_panel.draw_rect(Rect2(x0 + x, _price.position.y + 2 + y + 1, 1, 1), Color(0.03, 0.03, 0.045))
-				_panel.draw_rect(Rect2(x0 + x, _price.position.y + 2 + y, 1, 1), col)

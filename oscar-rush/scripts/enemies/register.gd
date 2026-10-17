@@ -48,6 +48,8 @@ var _bite_cd := 0.0
 
 func _setup() -> void:
 	elite_name = "CASH REGISTER"
+	intro_title = "NO REFUNDS"
+	intro_frame = 4
 	texture_path = "res://art/enemies/register.png"
 	hframes = 6
 	frame_size = Vector2i(53, 32)

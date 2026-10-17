@@ -152,9 +152,9 @@ func _ready() -> void:
 	var key := PointLight2D.new()
 	key.texture = Game.light_texture()
 	key.color = Color(1.0, 0.78, 0.62)
-	key.energy = 0.75
-	key.texture_scale = 2.6
-	key.position = Vector2(-46, -70)
+	key.energy = 2.0
+	key.texture_scale = 3.6
+	key.position = Vector2(-40, -56)
 	key.range_item_cull_mask = 2
 	add_child(key)
 

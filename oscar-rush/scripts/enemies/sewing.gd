@@ -54,6 +54,8 @@ var _spool: Spool
 
 func _setup() -> void:
 	elite_name = "SEWING MACHINE"
+	intro_title = "STITCHED UP"
+	intro_frame = 3
 	texture_path = "res://art/enemies/sewing.png"
 	hframes = 6
 	frame_size = Vector2i(43, 28)

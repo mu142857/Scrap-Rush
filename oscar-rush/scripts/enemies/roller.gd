@@ -37,6 +37,8 @@ var _smoke: CPUParticles2D
 
 func _setup() -> void:
 	elite_name = "STEAM ROLLER"
+	intro_title = "FULL STEAM"
+	intro_frame = 2
 	texture_path = "res://art/enemies/roller.png"
 	hframes = 5
 	frame_size = Vector2i(54, 38)
@@ -73,11 +75,9 @@ func _tick(delta: float) -> void:
 	_blast.position = chimney
 	_smoke.position = chimney
 	if not _landed:
+		# 落地的那一震由 EliteBase 的出场动画负责，出场完了才走到这里
 		if is_on_floor():
 			_landed = true
-			Game.add_shake(5.0)
-			Game.sfx("land", -2.0, 0.5)
-			Game.dust(get_parent(), global_position, 8)
 		velocity.x = 0.0
 		move_and_slide()
 		set_frame(0)

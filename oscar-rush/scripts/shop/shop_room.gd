@@ -63,6 +63,9 @@ var _fire_light: PointLight2D
 
 
 func _ready() -> void:
+	# 调试：在编辑器里直接运行这个场景（F6）时，手上没零件就先给 6 个，方便试买
+	if OS.is_debug_build() and get_tree().current_scene == self and Run.parts == 0:
+		Run.add_part(6)
 	var bg := Sprite2D.new()
 	bg.texture = ROOM
 	bg.centered = false
@@ -82,8 +85,8 @@ func _ready() -> void:
 	_fire_light = PointLight2D.new()
 	_fire_light.texture = Game.light_texture()
 	_fire_light.color = Crystal.LIGHT_COLOR
-	_fire_light.energy = 0.55
-	_fire_light.texture_scale = 5.0
+	_fire_light.energy = 0.7
+	_fire_light.texture_scale = 5.5
 	_fire_light.position = Vector2(FIRE_X, FLOOR_LOW - 8)
 	add_child(_fire_light)
 
@@ -100,8 +103,8 @@ func _ready() -> void:
 
 	var exit_sign := HintSign.new()
 	exit_sign.zone = Rect2(380, 150, 100, 120)
-	exit_sign.position = Vector2(468, 230)
-	exit_sign.text = "Onward"
+	exit_sign.position = Vector2(462, 236)
+	exit_sign.text = "Exit"
 	exit_sign.arrow = "right"
 	add_child(exit_sign)
 
@@ -309,7 +312,7 @@ func _on_buy(st: ShopStand, p: Player) -> void:
 func _process(delta: float) -> void:
 	_time += delta
 	# 篝火的光一抖一抖
-	_fire_light.energy = 0.55 + 0.06 * sin(_time * 7.0) + 0.04 * sin(_time * 17.3)
+	_fire_light.energy = 0.7 + 0.06 * sin(_time * 7.0) + 0.04 * sin(_time * 17.3)
 	for sp in _crew:
 		sp.frame = int((_time + float(sp.get_meta("phase"))) / 0.2) % 4
 
