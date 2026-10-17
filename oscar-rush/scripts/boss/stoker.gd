@@ -51,6 +51,8 @@ var _stoke_damage := 0.0
 var _pressure := 0.0
 var _needle := 0.0
 var _last_pattern := ""
+var _bag: Array[String] = []
+var _bag_phase := 0
 var _breathe := 0
 
 var _parts: Node2D          # 会呼吸的那部分（身体、门、臂、表、灯、火光）
@@ -315,15 +317,7 @@ func _gap() -> float:
 func _fight_loop() -> void:
 	await _wait(0.6)
 	while active and not dead:
-		var pool: Array[String] = ["ember", "ring", "shovel", "fan"]
-		if phase >= 2:
-			pool.append("vents")
-		if phase >= 3:
-			pool.append("stoke")
-			pool.append("spiral")
-		pool.erase(_last_pattern)
-		var pick: String = pool.pick_random()
-		_last_pattern = pick
+		var pick := _next_pattern()
 		match pick:
 			"ember":
 				await _ember_volley()
@@ -345,6 +339,52 @@ func _fight_loop() -> void:
 		if phase == 3 and pick != "ember":
 			_ember_burst(5)
 		await _wait(_gap())
+
+
+## 这一阶段能用的招
+func _pool() -> Array[String]:
+	var pool: Array[String] = ["ember", "ring", "shovel", "fan"]
+	if phase >= 2:
+		pool.append("vents")
+	if phase >= 3:
+		pool.append("stoke")
+		pool.append("spiral")
+	return pool
+
+
+## 抽签不放回（2026-10-17 试玩：纯随机会让某一招很久都轮不到）：
+## 把这一阶段的招洗成一副牌一张张出，出完再洗；新一副的第一张不和上一张重复。
+## 换阶段时重新洗，新解锁的招排在最前面，马上就能看到。
+func _next_pattern() -> String:
+	if _bag_phase != phase:
+		var old := _bag_phase
+		_bag_phase = phase
+		_bag.clear()
+		var fresh: Array[String] = []
+		for p in _pool():
+			if old == 0 or not _pool_for(old).has(p):
+				fresh.append(p)
+		var rest := _pool().filter(func(p): return not fresh.has(p))
+		rest.shuffle()
+		fresh.shuffle()
+		# 牌堆是从后往前出：新招放最后（最先出）
+		_bag.assign(rest + fresh)
+	if _bag.is_empty():
+		_bag.assign(_pool())
+		_bag.shuffle()
+		if _bag.size() > 1 and _bag.back() == _last_pattern:
+			_bag.reverse()
+	var pick: String = _bag.pop_back()
+	_last_pattern = pick
+	return pick
+
+
+func _pool_for(ph: int) -> Array[String]:
+	var keep := phase
+	phase = ph
+	var out := _pool()
+	phase = keep
+	return out
 
 
 func _warn_at(pos: Vector2, t := 0.6) -> void:
@@ -380,11 +420,16 @@ func _ember_burst(n: int) -> void:
 		var vx: float
 		if i < n / 3:
 			# 三分之一瞄着人落：按抛物线算出落到人那一列要多快
-			var t_up := -vy / BossBullet.EMBER_GRAVITY
-			var t_down := sqrt(2.0 * (floor_y - (top.y - vy * vy / (2.0 * BossBullet.EMBER_GRAVITY))) / BossBullet.EMBER_GRAVITY)
-			vx = (target + randf_range(-18, 18) - top.x) / (t_up + t_down)
+			var g := BossBullet.EMBER_GRAVITY
+			var cap := BossBullet.EMBER_MAX_FALL
+			var t_up := -vy / g
+			var h := floor_y - (top.y - vy * vy / (2.0 * g))
+			# 往下落有速度上限：先加速到上限，再匀速落
+			var d1 := cap * cap / (2.0 * g)
+			var t_down := sqrt(2.0 * h / g) if h <= d1 else cap / g + (h - d1) / cap
+			vx = clampf((target + randf_range(-18, 18) - top.x) / (t_up + t_down), -150.0, 150.0)
 		else:
-			vx = randf_range(-230.0, -40.0) if randf() < 0.9 else randf_range(0.0, 40.0)
+			vx = randf_range(-170.0, -30.0) if randf() < 0.9 else randf_range(0.0, 30.0)
 		var b := BossBullet.spawn(bullet_parent, BossBullet.Kind.EMBER, top + Vector2(randf_range(-3, 3), 0), Vector2(vx, vy), i % 3 == 0)
 		b.arena = arena
 
@@ -430,7 +475,7 @@ func _rivet_ring() -> void:
 			if absi(i - gap_at) <= 1 or absi(i - gap_at) >= count - 1:
 				continue  # 缺口：三颗不发
 			var a := TAU * i / count + spin
-			var b := BossBullet.spawn(bullet_parent, BossBullet.Kind.RIVET, center, Vector2.from_angle(a) * 92.0)
+			var b := BossBullet.spawn(bullet_parent, BossBullet.Kind.RIVET, center, Vector2.from_angle(a) * 70.0)
 			b.arena = arena
 		await _wait(0.3)
 
@@ -450,7 +495,7 @@ func _rivet_fan() -> void:
 		Game.add_shake(1.0)
 		for k in range(-2, 3):
 			var b := BossBullet.spawn(bullet_parent, BossBullet.Kind.RIVET, center,
-				Vector2.from_angle(aim + k * deg_to_rad(11.0)) * 125.0)
+				Vector2.from_angle(aim + k * deg_to_rad(11.0)) * 95.0)
 			b.arena = arena
 		await _wait(0.32)
 
@@ -466,7 +511,7 @@ func _spiral() -> void:
 			return
 		for arm_i in 2:
 			var ang := a + PI * arm_i
-			var b := BossBullet.spawn(bullet_parent, BossBullet.Kind.RIVET, center + _parts.position, Vector2.from_angle(ang) * 95.0)
+			var b := BossBullet.spawn(bullet_parent, BossBullet.Kind.RIVET, center + _parts.position, Vector2.from_angle(ang) * 72.0)
 			b.arena = arena
 		a += deg_to_rad(14.0)
 		if i % 4 == 0:
@@ -474,8 +519,8 @@ func _spiral() -> void:
 		await _wait(0.06)
 
 
-## 铲煤：举铲（"!"）→ 一甩，把烧红的煤块高高抛出去，瞄着人现在的位置落；
-## 煤块穿过平台，落到地上接着一跳一跳往前滚。躲在平台下面也没用，要看落点挪开、跳过滚过来的。
+## 铲煤：举铲（"!"）→ 一甩，把烧红的煤块高高抛出去，落到人脚下那一列的地面上，接着一跳一跳往前滚。
+## 煤块只在贴地时伤人：专治站在地上的人（要跳过去）；站平台上的人交给往上喷的余烬。
 func _shovel_sweep() -> void:
 	_arm.frame = 1
 	_warn_at(Vector2(-60, -60), 0.6)
@@ -493,8 +538,8 @@ func _shovel_sweep() -> void:
 	var n: int = [5, 7, 9][phase - 1]
 	for i in n:
 		# 落点散在人周围；飞行时间 0.8~1.1 秒，按抛物线反算初速度
-		var land := Vector2(target.x + randf_range(-40.0, 40.0) + (i - n / 2) * 6.0, target.y)
-		var t := randf_range(0.8, 1.1)
+		var land := Vector2(target.x + randf_range(-40.0, 40.0) + (i - n / 2) * 6.0, floor_y - 3.0)
+		var t := randf_range(1.0, 1.3)
 		var v := Vector2((land.x - tip.x) / t, (land.y - tip.y) / t - 0.5 * BossBullet.COAL_GRAVITY * t)
 		var b := BossBullet.spawn(bullet_parent, BossBullet.Kind.COAL, tip + Vector2(-i * 2, 0), v)
 		b.floor_y = floor_y

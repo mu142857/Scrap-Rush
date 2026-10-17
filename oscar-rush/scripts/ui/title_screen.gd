@@ -8,8 +8,20 @@ extends Node2D
 ## 免得这些测试脚本被开始界面挡住。
 
 const LEVEL_SCENE := "res://scenes/test_level.tscn"
-## 开发用：标题界面按 F8，或者命令行带 --boss，直接进第一关 Boss 房
+## 开发用：命令行带 --boss 直接进第一关 Boss 房
 const BOSS_SCENE := "res://scenes/boss1.tscn"
+## 开发者模式（照 story_jam）：开始界面上直接按数字键跳关，按 F8 打开选关菜单看全部。
+##   1 第一关  2 第二关  3 第三关  4 第一关 Boss  5 商店
+## [显示的名字, 场景, 下一站（只对商店有用：商店出口去哪）]；数组顺序就是数字键顺序。
+## 场景文件不存在的显示成灰的"还没做"。第二关存成 scenes/level2.tscn 就会自动亮起来。
+const DEV_LEVELS := [
+	["LEVEL 1  Boiler Room", "res://scenes/test_level.tscn", ""],
+	["LEVEL 2  Switchboard", "res://scenes/level2.tscn", ""],
+	["LEVEL 3  Tube Warehouse", "res://scenes/level3.tscn", ""],
+	["LEVEL 1 BOSS  The Stoker", "res://scenes/boss1.tscn", ""],
+	["SHOP", "res://scenes/shop.tscn", "res://scenes/title.tscn"],
+]
+const DEV_KEYS := [KEY_1, KEY_2, KEY_3, KEY_4, KEY_5]
 const DEBUG_FLAGS: Array[String] = ["--autotest", "--probe", "--arc", "--tour", "--fx", "--players", "--enemy"]
 
 # —— 背景：和 test_level 用同一套视差图层 ——
@@ -58,6 +70,100 @@ var _fade: ColorRect
 var _selected := 0
 var _ready_for_input := false
 var _busy := false
+
+# —— 开发者模式：选关 ——
+
+var _dev := false
+var _dev_root: Control
+var _dev_labels: Array[Label] = []
+var _dev_sel := 0
+
+
+func _dev_ok(i: int) -> bool:
+	return ResourceLoader.exists(DEV_LEVELS[i][1])
+
+
+func _open_dev() -> void:
+	_dev = true
+	Game.sfx("ui_confirm", -8.0, 0.8)
+	for l in _option_labels:
+		l.modulate.a = 0.0
+	_hint.modulate.a = 0.0
+	_dev_root = Control.new()
+	_dev_root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_dev_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ui.add_child(_dev_root)
+	_label("DEVELOPER MODE", 92.0, 11, Color(1.0, 0.45, 0.35), 2, _dev_root)
+	_dev_labels.clear()
+	for i in DEV_LEVELS.size():
+		_dev_labels.append(_label("", 108.0 + i * 15.0, 11, DIM, 2, _dev_root))
+	var keys := _label("1-5 or W/S + Space    Esc back", 246.0, 11, DIM, 2, _dev_root)
+	keys.size.y = 12.0
+	_dev_sel = 0
+	_refresh_dev()
+
+
+func _close_dev() -> void:
+	_dev = false
+	Game.sfx("ui_back", -6.0)
+	_dev_root.queue_free()
+	for l in _option_labels:
+		l.modulate.a = 1.0
+	_hint.modulate.a = 1.0
+	_refresh()
+
+
+func _refresh_dev() -> void:
+	for i in _dev_labels.size():
+		var on := i == _dev_sel
+		var l := _dev_labels[i]
+		var base: String = "%d  %s" % [i + 1, DEV_LEVELS[i][0]]
+		if not _dev_ok(i):
+			base += "  (not built yet)"
+		l.text = ("> %s <" % base) if on else base
+		l.label_settings.font_color = (LIT if on else DIM) if _dev_ok(i) else Color(0.32, 0.32, 0.36)
+
+
+func _dev_input() -> void:
+	if Input.is_action_just_pressed("ui_up"):
+		_dev_sel = posmod(_dev_sel - 1, DEV_LEVELS.size())
+		Game.sfx("ui_move", -10.0)
+		_refresh_dev()
+	elif Input.is_action_just_pressed("ui_down"):
+		_dev_sel = posmod(_dev_sel + 1, DEV_LEVELS.size())
+		Game.sfx("ui_move", -10.0)
+		_refresh_dev()
+	elif Input.is_action_just_pressed("ui_cancel"):
+		_close_dev()
+	elif Input.is_action_just_pressed("ui_accept"):
+		_dev_go(_dev_sel)
+
+
+## 跳到 DEV_LEVELS 第 i 项；场景还没做就在屏幕上提示一下
+func _dev_go(i: int) -> void:
+	if not _dev_ok(i):
+		Game.sfx("ui_back", -8.0, 1.4)
+		_flash_note("%s: not built yet" % DEV_LEVELS[i][0])
+		return
+	_busy = true
+	Game.sfx("ui_confirm", -4.0)
+	Run.players = [{"input": "solo", "skin": Run.SKINS[0]}]
+	Run.reset_run()
+	var nxt: String = DEV_LEVELS[i][2]
+	if nxt != "":
+		ShopRoom.next_scene = nxt
+	get_tree().change_scene_to_file(DEV_LEVELS[i][1])
+	Game.flash(Color.BLACK, 1.0, 0.5)
+
+
+## 屏幕中间偏下闪一行字，1.5 秒后消失
+func _flash_note(text: String) -> void:
+	var l := _label(text, 214.0, 11, Color(1.0, 0.45, 0.35), 2)
+	var tw := l.create_tween()
+	tw.tween_interval(1.0)
+	tw.tween_property(l, "modulate:a", 0.0, 0.5)
+	tw.tween_callback(l.queue_free)
+
 
 # —— 多人加入 ——
 var _lobby := false
@@ -255,7 +361,9 @@ func _process(delta: float) -> void:
 	_animate_crew(delta)
 	if _busy:
 		return
-	if _lobby:
+	if _dev:
+		_dev_input()
+	elif _lobby:
 		_place_slot_labels()
 		_lobby_input()
 	elif _ready_for_input:
@@ -287,10 +395,15 @@ func _unhandled_input(event: InputEvent) -> void:
 	if _busy:
 		return
 	if event is InputEventKey and event.pressed and event.physical_keycode == KEY_F8:
-		Run.players = [{"input": "solo", "skin": Run.SKINS[0]}]
-		Run.reset_run()
-		get_tree().change_scene_to_file(BOSS_SCENE)
+		if not _dev and not _lobby:
+			_open_dev()
 		return
+	# 数字键直接跳关（多人加入界面里不算，那里的按键是玩家的）
+	if event is InputEventKey and event.pressed and not event.echo and not _lobby:
+		var i := DEV_KEYS.find(event.physical_keycode)
+		if i >= 0:
+			_dev_go(i)
+			return
 	if _lobby:
 		if event is InputEventKey and event.pressed and event.physical_keycode == KEY_ESCAPE:
 			_leave_lobby()

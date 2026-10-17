@@ -21,8 +21,6 @@ const TINT_LIGHT := {
 }
 ## 这几块屏幕不摆怪：起点那块、玄关、家乡
 const NO_ENEMY := ["entry", "hometown"]
-const SMALL := ["crawler", "moth", "flea", "shaver"]
-const ELITES := ["cuckoo", "register", "sewing", "vacuum", "piano", "roller"]
 const ENEMY_SCRIPTS := {
 	"crawler": "res://scripts/enemies/crawler.gd",
 	"moth": "res://scripts/enemies/moth.gd",
@@ -35,8 +33,9 @@ var _debug := false
 var _retrying := false
 var _leaving := false
 var _lights: Array[PointLight2D] = []
-## 还没砸下来的精英怪：{elite, tint, floor, rect}
-var _pending_elites: Array = []
+## 平时摆的小怪和它所在的屏幕：{node, rect}（rect 到地面为止）
+var _screen_mobs: Array = []
+var _wake_t := 0.0
 ## 出口：家门口。门在山坡上，比屏幕地面高一点，所以一直延到地面，走到门前就算
 var _exit := Rect2()
 
@@ -141,6 +140,8 @@ func _ready() -> void:
 			var sc: Node = load("res://scripts/debug/l3_scene_check.gd").new()
 			sc.set("scene_name", arg.trim_prefix("--l3scene="))
 			add_child(sc)
+		if arg == "--l3enc":
+			add_child(load("res://scripts/debug/l3_enc_check.gd").new())
 		if arg == "--l3check":
 			add_child(load("res://scripts/debug/l3_check.gd").new())
 		if arg.begins_with("--autotest="):
@@ -171,12 +172,22 @@ func _has_hole(s: Dictionary) -> bool:
 	return false
 
 
+## 摆怪（2026-10-17 作者试玩后改）：
+## - 精英怪只在关门的遭遇战里打：大屏幕、地上没洞，两边闸门锁住，打完才开；每种场景最多一场，一共 8 场左右。
+##   前一波是这个场景的两只小怪，后一波精英怪单独出来（不再带小怪），留出走位的地方。
+## - 平时的小怪少放：宽不到 SMALL_SCREEN 的屏幕不放（当喘口气的走廊），中等的 1 只，宽的 2 只；
+##   射击怪只放进宽屏幕；离左右入口至少 ENTRY_CLEAR，人一进来不会贴脸。
+## - 只有主角所在那块屏幕里的怪会动，别的屏幕里的怪定住（像暂停的电视画面），见 _wake_mobs。
+const SMALL_SCREEN := 160.0
+const WIDE_SCREEN := 240.0
+const ENTRY_CLEAR := 36.0
+
+
 func _place_enemies() -> void:
 	L3Mob.arena = D.BOUNDS
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 3
-	var fought := {}            # 每种场景的精英怪只打一次
-	var old_elite := 0
+	var fought := {}
 	for i in D.SCREENS.size():
 		var s: Dictionary = D.SCREENS[i]
 		if i == 0 or s["name"] in NO_ENEMY:
@@ -186,72 +197,59 @@ func _place_enemies() -> void:
 		var fy: float = s["floor"]
 		var tint: String = s["tint"]
 		var smalls := L3Mob.smalls(s["name"])
-		var elite := L3Mob.elite(s["name"])
-		# 这个场景的怪还没画：先用第一关的怪顶上
 		if smalls.is_empty():
-			smalls.assign(SMALL)
-			elite = ELITES[old_elite % ELITES.size()] if w >= 210.0 else ""
-		# 大屏幕、地上没洞：遭遇战，前两波是这个场景的小怪，最后一波出这个场景的精英怪
-		if w >= 180.0 and not _has_hole(s) and elite != "" and not fought.has(s["name"]) and L3Mob.exists(elite):
+			continue
+		var elite := L3Mob.elite(s["name"])
+		var bag := _shuffled(smalls, rng)
+		if w >= 180.0 and not _has_hole(s) and elite != "" and not fought.has(s["name"]):
 			fought[s["name"]] = true
-			if not L3Mob.exists(elite):
-				old_elite += 1
-			var bag := _shuffled(smalls, rng)
 			var enc := Encounter.new()
 			enc.left = rect[0] + 10
 			enc.right = rect[2] - 10
 			enc.ceil_y = rect[1]
 			enc.floor_left = fy
 			enc.floor_right = fy
-			enc.waves = [
-				[bag[0], bag[1 % bag.size()]],
-				[bag[2 % bag.size()], bag[3 % bag.size()], bag[0]],
-				[elite, bag[1 % bag.size()]],
-			]
-			enc.spawn_hook = _spawn_in_encounter.bind(tint, rect[1])
+			enc.waves = [[_not_shooter(bag, 0), _not_shooter(bag, 1)], [elite]]
+			enc.spawn_hook = _spawn_in_encounter.bind(tint, rect[1], rect[0] + 10, rect[2] - 10)
 			add_child(enc)
 			continue
-		# 别的屏幕：按大小摆 1~3 只这个场景的小怪，种类尽量不重复
-		var n := 1 if w < 120.0 else (2 if w < 200.0 else 3)
-		var bag := _shuffled(smalls, rng)
-		for k in n:
-			var kind: String = bag[k % bag.size()]
-			var x: float = rect[0] + (rect[2] - rect[0]) * (k + 1) / (n + 1) + rng.randf_range(-10, 10)
-			var e := _make_mob(kind, tint)
-			var flying := e is Moth
-			e.position = Vector2(x, fy - (30.0 if flying else 0.0))
-			add_child(e)
-	# 没放成遭遇战的场景：精英怪等主角第一次走进这种场景最大的那块屏幕时，从屏幕顶上砸下来（不关闸门）
-	for i in D.SCREENS.size():
-		var s: Dictionary = D.SCREENS[i]
-		var elite := L3Mob.elite(s["name"])
-		if i == 0 or elite == "" or fought.has(s["name"]) or s["name"] in NO_ENEMY:
+		if w < SMALL_SCREEN:
 			continue
-		var best := s
-		for t in D.SCREENS:
-			if t["name"] == s["name"] and t["rect"][2] - t["rect"][0] > best["rect"][2] - best["rect"][0]:
-				best = t
-		fought[s["name"]] = true
-		var r: Array = best["rect"]
-		_pending_elites.append({"elite": elite, "tint": best["tint"], "floor": best["floor"],
-			"rect": Rect2(r[0], r[1], r[2] - r[0], r[3] - r[1])})
+		var n := 2 if w >= WIDE_SCREEN else 1
+		var left: float = rect[0] + ENTRY_CLEAR
+		var right: float = rect[2] - ENTRY_CLEAR
+		for k in n:
+			var kind: String = bag[k % bag.size()] if w >= WIDE_SCREEN else _not_shooter(bag, k)
+			var x: float = left + (right - left) * (k + 1) / (n + 1) + rng.randf_range(-8, 8)
+			var e := _make_mob(kind, tint)
+			e.position = Vector2(x, fy - (30.0 if e is Moth else 0.0))
+			add_child(e)
+			_screen_mobs.append({"node": e, "rect": Rect2(rect[0], rect[1], w, fy - rect[1] + 2)})
+	_wake_mobs()
 
 
-## 精英怪砸在屏幕里离主角远的那一头，避开地上的洞
-func _drop_elite(pe: Dictionary, player_x: float) -> void:
-	var r: Rect2 = pe["rect"]
-	var h: float = L3Mob.DATA.MOBS[pe["elite"]]["frame_size"].y
-	var w: float = L3Mob.DATA.MOBS[pe["elite"]]["frame_size"].x
-	var x := r.end.x - w * 0.5 - 8 if player_x < r.get_center().x else r.position.x + w * 0.5 + 8
-	for hole in D.HOLES:
-		if x + w * 0.5 > hole[0] - 4 and x - w * 0.5 < hole[1] + 4 and (hole[2] == pe["floor"] or hole[3] == pe["floor"]):
-			x = r.get_center().x if absf(r.get_center().x - (hole[0] + hole[1]) * 0.5) > w else (r.position.x + w * 0.5 + 8 if hole[0] > r.get_center().x else r.end.x - w * 0.5 - 8)
-	var e := L3Mob.make(pe["elite"], pe["tint"])
-	e.position = Vector2(x, r.position.y + h + 4.0)
-	add_child(e)
-	Game.sparks(self, Vector2(x, r.position.y + 2), Color8(255, 120, 80), 20, 90.0, Vector2.DOWN)
-	Game.sfx("crack", -8.0, 0.8)
-	Run.add_emotion(10.0)
+## 袋子里第 k 只不是射击怪的（没有就照给）
+func _not_shooter(bag: Array, k: int) -> String:
+	var ok := bag.filter(func(n): return L3Mob.DATA.MOBS[n]["kind"] != "shoot")
+	return ok[k % ok.size()] if not ok.is_empty() else bag[k % bag.size()]
+
+
+## 只让有人在的那块屏幕里的怪动。别的屏幕里的怪定住：不追人、不开枪、不伤人
+func _wake_mobs() -> void:
+	var feet: Array[Vector2] = []
+	for n in get_tree().get_nodes_in_group("player"):
+		feet.append((n as Node2D).global_position)
+	for m in _screen_mobs.duplicate():
+		var node: Node = m["node"]
+		if not is_instance_valid(node):
+			_screen_mobs.erase(m)
+			continue
+		var r: Rect2 = m["rect"]
+		var awake := false
+		for f in feet:
+			if r.grow(6.0).has_point(f):
+				awake = true
+		node.process_mode = Node.PROCESS_MODE_INHERIT if awake else Node.PROCESS_MODE_DISABLED
 
 
 func _shuffled(arr: Array, rng: RandomNumberGenerator) -> Array:
@@ -272,13 +270,21 @@ func _make_mob(kind: String, tint: String) -> Node2D:
 
 
 ## 遭遇战生怪：第三关的怪由这里造（要按屏幕上色），别的交回 Encounter 自己造
-func _spawn_in_encounter(kind: String, x: float, tint: String, ceil_y: float) -> Node2D:
+func _spawn_in_encounter(kind: String, x: float, tint: String, ceil_y: float, left: float, right: float) -> Node2D:
 	if not L3Mob.exists(kind):
 		return null
+	var cfg: Dictionary = L3Mob.DATA.MOBS[kind]
+	# 精英怪落在场子里离主角远的那一头
+	if cfg["kind"] == "elite":
+		var px := (left + right) * 0.5
+		var players := get_tree().get_nodes_in_group("player")
+		if not players.is_empty():
+			px = (players[0] as Node2D).global_position.x
+		var half: float = cfg["frame_size"].x * 0.5 + 6.0
+		x = right - half if px < (left + right) * 0.5 else left + half
 	var e := L3Mob.make(kind, tint)
 	# 脚底离天花板至少一个身高，不然高的精英怪一生出来上半截就卡在外壳里
-	var h: float = L3Mob.DATA.MOBS[kind]["frame_size"].y
-	e.position = Vector2(x, ceil_y + h + 4.0)
+	e.position = Vector2(x, ceil_y + cfg["frame_size"].y + 4.0)
 	add_child(e)
 	return e
 
@@ -304,7 +310,11 @@ func _place_hints() -> void:
 		add_child(sign)
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	_wake_t -= delta
+	if _wake_t <= 0.0:
+		_wake_t = 0.15
+		_wake_mobs()
 	var cam := get_viewport().get_camera_2d()
 	if cam == null:
 		return
@@ -323,12 +333,7 @@ func _physics_process(_delta: float) -> void:
 		if _exit.has_point(p.global_position):
 			_leave()
 			return
-		for pe in _pending_elites.duplicate():
-			var r: Rect2 = pe["rect"]
-			var fp := p.global_position
-			if fp.x > r.position.x + 12 and fp.x < r.end.x - 12 and fp.y > r.position.y and fp.y <= pe["floor"] + 1:
-				_pending_elites.erase(pe)
-				_drop_elite(pe, fp.x)
+
 		# 洞里的电线：按住跳往上爬（关卡的 _physics_process 先于玩家跑，玩家那边再加重力也还是往上）
 		if Input.is_action_pressed(p.input_prefix + "_jump"):
 			for sh in D.SHAFTS:

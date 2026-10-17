@@ -1,19 +1,19 @@
 class_name L3Shoot
 extends EnemyBase
-## 第三关的射击小怪（咖啡壶、收音机……）：慢慢来回走，看到人就停下、转过去瞄准（枪口发亮、头顶冒"!"
-## 那么久），然后开一枪：rivet 直线、ember / note 抛物线。打完歇一会儿再走。
+## 第三关的射击小怪（咖啡壶、收音机……）：慢慢来回走，看到人就停下、转过去瞄准（枪口发亮那么久），
+## 然后开一枪：rivet 直线、ember / note 抛物线。打完歇一会儿再走。
 ## 帧：0、1 走路，2 瞄准，3 开火（后坐）。贴图、枪口、子弹种类都在 cfg 里（见 L3Mob）。
 
 enum { PATROL, AIM, FIRE, REST }
 
 const WALK_SPEED := 16.0
-const SEE_DIST := 170.0
+const SEE_DIST := 150.0
 const SEE_HEIGHT := 70.0
-const AIM_TIME := 0.6
+const AIM_TIME := 0.9
 const FIRE_TIME := 0.25
-const REST_TIME := 1.6
+const REST_TIME := 2.6
 const STEP_TIME := 0.22
-const BULLET_SPEED := 115.0
+const BULLET_SPEED := 85.0
 
 var cfg: Dictionary = {}
 var tint := "color"

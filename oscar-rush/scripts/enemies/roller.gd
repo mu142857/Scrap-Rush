@@ -16,7 +16,8 @@ extends EliteBase
 enum State { DRIVE, WINDUP, CHARGE, STUN, BLAST_WARN, BLAST, MORTAR_WARN, MORTAR }
 
 const DRIVE_SPEED := 20.0
-## 2026-10-17 第二次试玩嫌太难，整体降了一档：冲得慢、前摇长、冷却长、晕得久、煤渣炮少一发、伤害和血都低了
+## 2026-10-17 第二次试玩嫌太难，整体降了一档：冲得慢、前摇长、冷却长、晕得久、煤渣炮少一发、伤害低了
+## 第三次试玩：好躲可以，但太脆、招放不全。血翻倍；冷却更长且不跟着情绪值变短；冲撞和煤渣炮严格轮流
 const CHARGE_SPEED := 145.0
 const WINDUP_TIME := 1.2
 const BACKUP_SPEED := 14.0
@@ -26,7 +27,7 @@ const MORTAR_GAP := 0.45
 const MORTAR_MIN_DIST := 90.0
 const STUN_TIME := 3.0
 const STUN_DAMAGE_MULT := 2.0
-const CHARGE_COOLDOWN := 2.6
+const CHARGE_COOLDOWN := 3.2
 const SEE_HEIGHT := 28.0
 const BLAST_WARN_TIME := 0.5
 const BLAST_TIME := 0.8
@@ -57,7 +58,7 @@ func _setup() -> void:
 	frame_size = Vector2i(54, 38)
 	body_rect = Rect2(-24, -30, 48, 30)
 	led_pixel = Vector2i(7, 15)
-	max_hp = 1000.0
+	max_hp = 2000.0
 	contact_damage = 8.0
 
 
@@ -114,7 +115,8 @@ func _tick(delta: float) -> void:
 					dir = 1 if dx > 0.0 else -1
 				if _cooldown <= 0.0 and absf(dx) < 40.0 and dy < -24.0:
 					_enter(State.BLAST_WARN)
-				elif _cooldown <= 0.0 and absf(dx) > MORTAR_MIN_DIST and (_next_is_mortar or absf(dy) >= SEE_HEIGHT):
+				# 轮到煤渣炮就放（贴脸也放，炮弹是抛过来的）；不轮到时，主角离得远或者不同高也用它
+				elif _cooldown <= 0.0 and (_next_is_mortar or (absf(dx) > MORTAR_MIN_DIST and absf(dy) >= SEE_HEIGHT)):
 					_next_is_mortar = false
 					_enter(State.MORTAR_WARN)
 				elif _cooldown <= 0.0 and absf(dy) < SEE_HEIGHT and absf(dx) < 300.0:
@@ -210,7 +212,7 @@ func _enter(s: State) -> void:
 		State.BLAST:
 			Game.sfx("jet", -6.0, 1.5)
 		State.DRIVE:
-			_cooldown = CHARGE_COOLDOWN * interval_mult()
+			_cooldown = CHARGE_COOLDOWN
 
 
 func _crash() -> void:
@@ -267,7 +269,9 @@ func _fire_mortar(p: Player) -> void:
 	var from := global_position + _chimney_local() + Vector2(0, -2)
 	var target := p.global_position if p else from + Vector2(dir * 120, 0)
 	target.x += randf_range(-14, 14)
-	var t := randf_range(0.75, 0.95)
+	var t := randf_range(0.95, 1.2)
+	# 落到人脚下那一列的地面（和压路机同一层），贴地才伤人
+	target.y = global_position.y
 	var v := Vector2((target.x - from.x) / t, (target.y - 4.0 - from.y) / t - 0.5 * BossBullet.COAL_GRAVITY * t)
 	var b := BossBullet.spawn(get_parent(), BossBullet.Kind.COAL, from, v, true)
 	b.floor_y = global_position.y

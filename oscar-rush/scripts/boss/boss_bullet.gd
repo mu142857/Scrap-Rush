@@ -5,15 +5,22 @@ extends Area2D
 ##               往上飞时穿过平台，不会一出烟囱就撞天花板
 ##   RIVET 铆钉：直线飞，烧红的芯、灰白的壳，后面拖一条短尾巴
 ##   NOTE  音符：自动钢琴"琶音"弹出来的发光音符，和余烬一样抛物线落下，往下落时被平台、地面挡住
-##   COAL  煤块：被煤铲高高抛出，瞄着人落；穿过平台（躲在平台下面也没用），
-##               落到地上接着一跳一跳往前滚
+##   COAL  煤块：被高高抛出，落到人脚下那一列的地面上，接着一跳一跳往前滚。
+##               只有贴近地面（离地 COAL_HURT_HEIGHT 以内）才伤人：专治站在地上的人，
+##               站平台上的人由往上喷的余烬来管（2026-10-17 作者定的分工）
 ## 打中玩家走 Player.hurt（有无敌时间），打中放在地上的马灯走 Crystal.take_hit。
 
 enum Kind { EMBER, RIVET, COAL, NOTE }
 
 const DAMAGE := 8.0
-const EMBER_GRAVITY := 230.0
-const COAL_GRAVITY := 700.0
+## 2026-10-17 试玩嫌子弹太快：余烬重力从 230 降到 170（落得更慢更飘），煤块落地后滚动限速
+const EMBER_GRAVITY := 170.0
+const COAL_GRAVITY := 450.0
+## 余烬、音符往下飘的最快速度（像火星一样慢慢落，看得清落点）
+const EMBER_MAX_FALL := 130.0
+const COAL_HURT_HEIGHT := 20.0
+## 煤块落地以后最多滚这么快（主角跑 115，大约一半）
+const COAL_ROLL_SPEED := 60.0
 
 var kind := Kind.EMBER
 var velocity := Vector2.ZERO
@@ -70,17 +77,25 @@ func _physics_process(delta: float) -> void:
 	_life += delta
 	match kind:
 		Kind.EMBER:
-			velocity.y += EMBER_GRAVITY * delta
+			velocity.y = minf(velocity.y + EMBER_GRAVITY * delta, EMBER_MAX_FALL)
 			velocity.x *= 1.0 - 0.15 * delta
 		Kind.NOTE:
-			velocity.y += EMBER_GRAVITY * 0.85 * delta
+			velocity.y = minf(velocity.y + EMBER_GRAVITY * 0.85 * delta, EMBER_MAX_FALL)
 		Kind.COAL:
 			velocity.y += COAL_GRAVITY * delta
 			if position.y >= floor_y - 3.0 and velocity.y > 0.0:
 				position.y = floor_y - 3.0
+				if not _rolling:
+					# 第一次落地：扔出来时的水平速度太快，压到滚动速度
+					velocity.x = signf(velocity.x) * minf(absf(velocity.x), COAL_ROLL_SPEED)
 				_rolling = true
 				# 落地以后一跳一跳往前滚，每跳一次低一点
-				velocity.y = -absf(velocity.y) * 0.4 if absf(velocity.y) > 140.0 else -110.0
+				velocity.y = -absf(velocity.y) * 0.35 if absf(velocity.y) > 120.0 else -90.0
+	# 煤块飞在空中时不伤人，落到贴近地面才开始算
+	if kind == Kind.COAL:
+		var low := position.y >= floor_y - COAL_HURT_HEIGHT
+		set_collision_mask_value(2, low)
+		set_collision_mask_value(4, low)
 	# 余烬往下落的时候才会被平台、地面挡住（往上飞穿过去）
 	if kind == Kind.EMBER or kind == Kind.NOTE:
 		var falling := velocity.y > 0.0 and not _rolling

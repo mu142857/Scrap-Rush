@@ -14,8 +14,9 @@ extends EliteBase
 
 enum State { IDLE, SHUFFLE, WAVE_WARN, WAVE, CHORD_WARN, CHORD, ARP_WARN, ARP, RECOVER }
 
-## 2026-10-17 第二次试玩嫌太难，整体降了一档：歇得更久、预警更长、琴键更少更慢、伤害更低、血更少
-const IDLE_TIME := Vector2(2.0, 2.6)
+## 2026-10-17 第二次试玩嫌太难，整体降了一档：歇得更久、预警更长、琴键更少更慢、伤害更低
+## 第三次试玩：好躲可以，但死太快、三招放不全。血翻倍；招与招之间歇得更久，而且不跟着情绪值变快
+const IDLE_TIME := Vector2(2.6, 3.2)
 const ROLL_FRAME_TIME := 0.16
 ## 偶尔挪一下：每隔几轮招式挪 0.5 秒
 const SHUFFLE_EVERY := 3
@@ -68,7 +69,7 @@ func _setup() -> void:
 	frame_size = Vector2i(42, 30)
 	body_rect = Rect2(-19, -28, 38, 28)
 	led_pixel = Vector2i(20, 7)
-	max_hp = 750.0
+	max_hp = 1500.0
 	contact_damage = 8.0
 	_idle_time = 1.0
 
@@ -81,7 +82,8 @@ func _tick(delta: float) -> void:
 		State.IDLE:
 			_face_player()
 			_roll_frames()
-			if _state_t >= _idle_time * interval_mult() and is_on_floor():
+			# 精英怪的出招间隔不乘 interval_mult()：情绪高时间隔太短，招看不清
+			if _state_t >= _idle_time and is_on_floor():
 				_rounds += 1
 				if _rounds % SHUFFLE_EVERY == 0:
 					_enter(State.SHUFFLE)
@@ -264,7 +266,7 @@ func _play_note(i: int) -> void:
 	var target := p.global_position + Vector2(0, -6) if p else from + Vector2(_attack_dir * 100.0, 20.0)
 	target.x += (i - ARP_NOTES / 2) * 9.0 + randf_range(-5, 5)
 	var g := BossBullet.EMBER_GRAVITY * 0.85
-	var t := 0.75 + i * 0.03
+	var t := 0.95 + i * 0.04
 	var v := Vector2((target.x - from.x) / t, (target.y - from.y) / t - 0.5 * g * t)
 	var b := BossBullet.spawn(get_parent(), BossBullet.Kind.NOTE, from, v, i % 2 == 0)
 	b.arena = Rect2(global_position.x - 320, global_position.y - 240, 640, 280)
