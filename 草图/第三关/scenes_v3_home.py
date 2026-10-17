@@ -93,9 +93,14 @@ def dress_walls(tv, wallc, paper="stripe", wains=None, wains_h=None):
     S().fill_mask(inside & (YY < y0 + ceil), shade(wallc[3], -1))               # 天花板（背光，偏冷）
     S().fill_mask(inside & (YY == y0 + ceil), shade(wallc[1], 1))                # 顶角线：亮的一道
     S().fill_mask(inside & (YY == y0 + ceil + 1), shade(wallc[2], -1))           # 下面一道影子
+    if cls != "S":                                                                # 顶角线下一条花边：一串小菱形
+        fb = inside & (YY >= y0 + ceil + 3) & (YY <= y0 + ceil + 9)
+        cyb = y0 + ceil + 6
+        retone(fb & ((np.abs((XX - x0) % 10 - 5) + np.abs(YY - cyb)) <= 2), -1)
+        S().fill_mask(inside & (YY == y0 + ceil + 11), shade(wallc[2], -1))
     wains_h = wains_h or (12 if cls != "S" else 8)
     rail = fy - wains_h
-    pic = fy - int(wall_h * 0.62) if cls != "S" else None                         # 挂镜线（只在高墙上）
+    pic = pic_rail(tv)                                                             # 挂镜线（只在高墙上）
     top = (pic + 2) if pic else (y0 + ceil + 2)
     band = inside & (YY >= top) & (YY < rail - 1)
     if paper == "stripe":
@@ -113,6 +118,33 @@ def dress_walls(tv, wallc, paper="stripe", wains=None, wains_h=None):
     S().fill_mask(inside & (YY == rail), wc[1])
     S().fill_mask(inside & (YY == rail + 1), shade(wc[0], -1))
     S().fill_mask(inside & (YY >= fy - 2) & (YY < fy), shade(wc[0], -2))         # 踢脚线
+    return pic
+
+
+def pic_rail(tv):
+    rw, wall_h, cls = dims(tv)
+    return tv.fy - int(wall_h * (0.68 if cls == "L" else 0.62)) if cls != "S" else None
+
+
+def rail_painting(tv, x, y, w, h, kind="hill", fc=(112, 84, 80)):
+    """从挂镜线上用两根挂绳吊下来的画（高墙上用，绳子把画和挂镜线连起来，上半墙就不空了）。"""
+    pic = pic_rail(tv)
+    if pic is not None and pic + 3 < y - 2:
+        for wx in (x + 3, x + w - 4):
+            S().line(wx, pic + 2, wx, y - 3, (110, 92, 86))
+            S().put(wx, pic + 1, (150, 130, 110))
+    painting(x, y, w, h, kind, fc)
+
+
+def window_top(tv, sill=34):
+    """窗的上沿：大屏、中屏从挂镜线下面一点开始（高窗），小屏按墙高。返回 (上沿, 高)。"""
+    rw, wall_h, cls = dims(tv)
+    pic = pic_rail(tv)
+    if pic is not None:
+        top = pic + 14
+    else:
+        top = clampy(tv, tv.fy - sill - int(np.clip(wall_h * 0.3, 22, 40)), 14)
+    return top, tv.fy - sill - top
 
 
 # ================================================================ 墙上的东西
@@ -217,13 +249,14 @@ def sconce(x, y):
     """壁灯：一块小托板 + 发光的半圆灯罩。"""
     S().rect(x - 1, y + 2, x + 1, y + 6, (110, 86, 76))
     S().poly([(x - 4, y + 3), (x + 5, y + 3), (x + 3, y - 3), (x - 2, y - 3)], LAMP_LIT)
-    S().poly([(x + 1, y + 3), (x + 5, y + 3), (x + 3, y - 3), (x + 1, y - 3)], (232, 204, 150))
+    S().poly([(x + 1, y + 3), (x + 5, y + 3), (x + 3, y - 3), (x + 1, y - 3)], (190, 160, 122))
+    S().line(x - 4, y + 3, x + 4, y + 3, (120, 96, 84))
 
 
 def hanging_plant(x, ceil, y):
     """吊兰：三根绳从天花板收到盆上，叶子从盆沿垂下来。"""
-    for dx in (-4, 0, 4):
-        S().line(x, ceil, x + dx, y, (150, 126, 110))
+    S().line(x, ceil, x, y - 4, (150, 126, 110))
+    S().line(x, y - 4, x - 4, y, (150, 126, 110)); S().line(x, y - 4, x + 4, y, (150, 126, 110))
     box(x - 4, y, x + 4, y + 6, (196, 168, 150), depth=0.03)
     for i, (dx, ln) in enumerate([(-5, 14), (-3, 20), (2, 11), (5, 17), (0, 8)]):
         for t in range(ln):
@@ -247,7 +280,18 @@ def table_lamp(cx, yb):
     S().rect(cx, yb - 6, cx + 1, yb, (96, 80, 76))
     box(cx - 2, yb - 1, cx + 3, yb, (150, 120, 100))
     S().poly([(cx - 5, yb - 6), (cx + 6, yb - 6), (cx + 4, yb - 12), (cx - 3, yb - 12)], LAMP_LIT)
-    S().poly([(cx + 2, yb - 6), (cx + 6, yb - 6), (cx + 4, yb - 12), (cx + 2, yb - 12)], (232, 204, 150))
+    S().poly([(cx + 2, yb - 6), (cx + 6, yb - 6), (cx + 4, yb - 12), (cx + 2, yb - 12)], (190, 160, 122))   # 背光一侧不发光
+    S().line(cx - 5, yb - 6, cx + 5, yb - 6, (120, 96, 84))                                            # 灯罩口沿
+
+
+def floor_lamp(x, fy, top):
+    """落地灯（照 k.floor_lamp，灯罩背光一侧换成不发光的暗色 + 一道口沿：单色屏里灯罩在最亮的墙上也看得见）。"""
+    floor_shadow(x - 4, x + 4, fy)
+    S().line(x, top + 6, x, fy, (90, 70, 70)); S().line(x + 1, top + 6, x + 1, fy, (70, 56, 60))
+    box(x - 3, fy - 1, x + 3, fy, (90, 70, 70))
+    S().poly([(x - 6, top + 6), (x + 7, top + 6), (x + 4, top - 4), (x - 3, top - 4)], LAMP_LIT)
+    S().poly([(x + 2, top + 6), (x + 7, top + 6), (x + 4, top - 4), (x + 2, top - 4)], (190, 160, 122))
+    S().line(x - 6, top + 6, x + 6, top + 6, (120, 96, 84))
 
 
 def side_table(x, fy, w=12, h=15, c=WOODL):
@@ -336,82 +380,88 @@ def chair_side(x, fy, face=1, c=WOODL):
 
 # ================================================================ 客厅
 def room_living(tv):
-    """客厅（米色监控屏）：窗、书架和挂钟、沙发和茶几和一墙相框、扶手椅和落地灯、电视柜、第二扇窗。"""
+    """客厅（米色监控屏）：两扇高窗（落地窗帘）、书架和挂钟、沙发和茶几（上方挂镜线吊一幅大画、两盏壁灯、一墙相框和合照）、
+    扶手椅和落地灯和收音机、电视柜和老电视、吊兰。"""
     x0, y0, x1, fy = tv.sx0, tv.sy0, tv.sx1, tv.fy
     rw, wall_h, cls = dims(tv)
     sofa_w = 84 if cls != "S" else 64
-    groups = [("winA", 50, 3), ("books", 44, 4), ("sofa", sofa_w + 8, 0), ("lamp", 52 if cls != "S" else 16, 1),
-              ("media", 54, 2), ("winB", 48, 5)]
+    groups = [("winA", 56, 3), ("books", 44, 4), ("sofa", sofa_w + 8, 0), ("lamp", 52 if cls != "S" else 16, 1),
+              ("media", 54, 2), ("winB", 52, 5)]
     pos = place(tv, groups, seed=1)
     lamp_y = clampy(tv, fy - min(58, int(wall_h * 0.5)))
     lamps = []
     if "lamp" in pos:
         lamps.append((pos["lamp"] + (32 if cls != "S" else 7), lamp_y))
-    for g in ("winA", "winB"):
-        if g in pos:
-            lamps.append((pos[g] + 25, fy - int(wall_h * 0.45)))
-    if "sofa" in pos and cls == "L":
-        lamps.append((pos["sofa"] + sofa_w // 2, y0 + int(wall_h * 0.25)))
+    if "sofa" in pos and cls != "S":
+        lamps.append((pos["sofa"] + sofa_w // 2 + 4, fy - 72))
+    if "books" in pos:
+        lamps.append((pos["books"] + 21, fy - 60))
     main = lamps[0] if lamps else ((x0 + x1) // 2, y0 + 30)
     k.room_base(tv, k.WARM_WALL, k.WARM_FLOOR, main, lamps=lamps or None)
-    dress_walls(tv, k.WARM_WALL, "stripe", wains=((150, 112, 104), (186, 146, 128)))
-    win_h = int(np.clip(wall_h * 0.3, 24, 64))
-    win_top = clampy(tv, fy - 34 - win_h, 14)
+    pic = dress_walls(tv, k.WARM_WALL, "stripe", wains=((150, 112, 104), (186, 146, 128)))
+    wtop, wh = window_top(tv, 32)
 
     if "winA" in pos:
         gx = pos["winA"]
-        tall_window(tv, gx + 13, win_top, 24, win_h)
-        tall_plant(gx + 40, fy, 34) if cls == "L" else None
+        tall_window(tv, gx + 14, wtop, 28, wh)
+        if cls == "L":
+            tall_plant(gx + 44, fy, 34)
     if "books" in pos:
         gx = pos["books"]
         k.bookshelf(gx + 3, fy, 36, 44)
         sc.plat(gx + 3, gx + 39, fy - 44)
         k.wall_clock(gx + 21, clampy(tv, fy - 64, 10))
         if cls == "L":
-            painting(gx + 8, clampy(tv, fy - 104), 26, 18, "sea")
+            rail_painting(tv, gx + 8, pic + 22, 26, 18, "sea")
     if "sofa" in pos:
         gx = pos["sofa"]
-        k.rug(gx + sofa_w // 2 + 4, fy, sofa_w * 0.62)
-        # 沙发上方一墙相框：合照在正中，两边错落几幅小的
-        cy = clampy(tv, fy - 52, 8)
-        k.crew_photo(gx + sofa_w // 2 - 6, cy)
+        mid = gx + 4 + sofa_w // 2
+        k.rug(mid, fy, sofa_w * 0.62)
+        # 沙发上方：挂镜线吊一幅大画，两边一对壁灯；下面一排错落的小相框，合照在正中
+        cy = clampy(tv, fy - 50, 8)
+        k.crew_photo(mid - 10, cy)
         if cls != "S":
-            painting(gx + 6, cy - 6, 16, 20, "hill")
-            frame_cluster(gx + sofa_w // 2 + 22, cy - 2, 2, seed=3)
-        if cls == "L":
-            hanging_plant(gx + sofa_w - 6, y0 + 4, fy - int(wall_h * 0.48))
-            painting(gx + sofa_w // 2 - 14, clampy(tv, fy - 100), 34, 24, "blocks")
+            painting(gx + 8, cy - 4, 14, 18, "hill")
+            frame_cluster(mid + 18, cy - 2, 2, seed=3)
+            rail_painting(tv, mid - 22, (pic + 30) if cls == "L" else fy - 96, 44, 28, "blocks")
+            sconce(mid - 32, fy - 76); sconce(mid + 33, fy - 76)
         k.sofa(gx + 4, gx + 4 + sofa_w, fy)
         sc.plat(gx + 7, gx + sofa_w + 1, fy - 21)
         if cls != "S":
-            coffee_table(gx + sofa_w // 2 - 14, gx + sofa_w // 2 + 20, fy)
+            coffee_table(mid - 18, mid + 16, fy)
     if "lamp" in pos:
         gx = pos["lamp"]
         if cls != "S":
             k.armchair(gx + 3, fy)
             sc.plat(gx + 1, gx + 22, fy - 23)
-            k.floor_lamp(gx + 32, fy, lamp_y)
-            ty = side_table(gx + 38, fy, 12, 15)
-            radio(gx + 38, ty - 1)
+            floor_lamp(gx + 32, fy, lamp_y)
+            ty = side_table(gx + 38, fy, 13, 18)
+            radio(gx + 39, ty - 1)
+            if "media" in pos and pos["media"] + 13 - (gx + 22) > 56:           # 扶手椅和电视离得远时，收音机顶上也能站
+                sc.plat(gx + 39, gx + 51, ty - 8)
         else:
-            k.floor_lamp(gx + 7, fy, lamp_y)
+            floor_lamp(gx + 7, fy, lamp_y)
     if "media" in pos:
         gx = pos["media"]
         t0, t1, ty = media_unit(gx + 2, fy, 50)
         sc.plat(t0, t1, ty)
-        wall_shelf(gx + 4, gx + 50, clampy(tv, fy - 62))
         sy_ = clampy(tv, fy - 62)
+        wall_shelf(gx + 4, gx + 50, sy_)
         book_row(gx + 8, sy_ - 1, 7)
         vase(gx + 40, sy_ - 1)
+        if cls == "L":
+            rail_painting(tv, gx + 12, pic + 24, 26, 20, "hill", fc=(90, 80, 96))
     if "winB" in pos:
         gx = pos["winB"]
-        tall_window(tv, gx + 12, win_top + 6, 24, win_h - 6)
-        k.plant(gx + 36, fy) if cls == "L" else None
+        tall_window(tv, gx + 14, wtop + 8, 24, wh - 8, curtain=(150, 120, 140))
+        if cls == "L":
+            k.plant(gx + 40, fy)
+            hanging_plant(gx + 26, wtop - 2, wtop + 14)
     k.finish_room(tv, main)
 
 
 # ================================================================ 厨房
-def counter_run(tv, x0, x1, stove_x, sink_x, upper=True):
+def counter_run(tv, x0, x1, stove_x, sink_x, upper=True, skip=None, high_shelf=False):
     """一排橱柜：下柜 + 台面 + 灶台（烤箱门、旋钮）+ 水槽（龙头）；上面瓷砖墙、吊柜、抽油烟机（管子通到天花板）。
     返回台面的 y。"""
     fy, y0 = tv.fy, tv.sy0
@@ -461,9 +511,23 @@ def counter_run(tv, x0, x1, stove_x, sink_x, upper=True):
         return top
     # 吊柜（比视线低时露顶面），灶台上方换成抽油烟机，管子一直通到天花板
     ub_top = fy - 64
-    for sx_, ex_ in [(x0, stove_x - 3), (stove_x + 22, x1)]:
+    spans = [(x0, stove_x - 3), (stove_x + 22, x1)]
+    if skip:                                                               # 窗那一段不放吊柜
+        spans = [(a, min(b, skip[0] - 2)) if a < skip[0] else (max(a, skip[1] + 2), b) for a, b in spans]
+    for sx_, ex_ in spans:
         if ex_ - sx_ < 12:
             continue
+        if high_shelf:                                                     # 吊柜上面一层敞开的搁板：篮子、罐子
+            hy = ub_top - 14
+            wall_shelf(sx_, ex_, hy)
+            bx_ = sx_ + 3
+            for i in range((ex_ - sx_ - 6) // 9):
+                if i % 3 == 1:
+                    box(bx_, hy - 6, bx_ + 6, hy - 1, (196, 168, 120), depth=0.03)   # 编织篮
+                    S().line(bx_, hy - 4, bx_ + 6, hy - 4, (170, 140, 100))
+                else:
+                    jar(bx_ + 1, hy - 1, [(196, 120, 96), (176, 190, 200), (220, 200, 130)][i % 3], 6 + i % 2)
+                bx_ += 9 + (i % 2) * 2
         box(sx_, ub_top, ex_, up_bot - 1, c)
         d = sx_ + 2
         while d < ex_ - 9:
@@ -472,6 +536,7 @@ def counter_run(tv, x0, x1, stove_x, sink_x, upper=True):
     hc = (186, 186, 190)
     S().poly([(stove_x - 4, up_bot - 2), (stove_x + 22, up_bot - 2), (stove_x + 15, up_bot - 12), (stove_x + 3, up_bot - 12)], hc)
     S().line(stove_x - 4, up_bot - 2, stove_x + 22, up_bot - 2, shade(hc, -3))
+    S().rect(stove_x + 1, up_bot - 1, stove_x + 17, up_bot - 1, (252, 238, 196))      # 抽油烟机底下的灯（发光）
     S().rect(stove_x + 6, y0 + 3, stove_x + 12, up_bot - 13, shade(hc, -1))
     S().line(stove_x + 12, y0 + 3, stove_x + 12, up_bot - 13, shade(hc, -3))
     # 吊柜下挂着的勺子、锅铲
@@ -504,12 +569,35 @@ def hutch(x, fy, w=34):
     return fy - 20
 
 
+def pantry(x, fy, w=20, h=72, c=(176, 160, 146)):
+    """高的储物柜：上下两扇门，顶上一个纸箱。"""
+    floor_shadow(x, x + w, fy, 4)
+    box(x, fy - h, x + w, fy, c)
+    panel(x + 2, fy - h + 3, x + w - 2, fy - h // 2 - 2, c); panel(x + 2, fy - h // 2 + 1, x + w - 2, fy - 3, c)
+    S().put(x + w - 5, fy - h // 2 - 5, shade(c, -5)); S().put(x + w - 5, fy - h // 2 + 4, shade(c, -5))
+    box(x + 3, fy - h - 7, x + 13, fy - h - 1, (196, 170, 130))
+
+
+def pot_rack(x0, x1, ceil, y):
+    """天花板吊下来的锅架：两根链子、一根横杆，下面挂三只锅（大小不一）。"""
+    for cx in (x0 + 2, x1 - 2):
+        for yy in range(ceil, y):
+            S().put(cx, yy, (120, 112, 116) if yy % 3 else (150, 144, 150))
+    box(x0, y, x1, y + 1, (150, 120, 100), depth=0.03)
+    for px, r, c in [(x0 + 6, 4, (176, 120, 96)), (x0 + (x1 - x0) // 2, 5, (150, 156, 166)), (x1 - 7, 3, (176, 120, 96))]:
+        S().line(px, y + 2, px, y + 4, (90, 80, 84))
+        S().rect(px - r, y + 5, px + r, y + 5 + r, c)
+        S().line(px - r, y + 5, px + r, y + 5, shade(c, 2))
+        S().line(px + r, y + 6, px + r, y + 5 + r, shade(c, -2))
+
+
 def room_kitchen(tv):
-    """厨房（木壳彩电）：冰箱和日历、一排橱柜（灶台、水槽、吊柜、抽油烟机、窗）、餐桌和插四根蜡烛的蛋糕、碗柜、调料架。"""
+    """厨房（木壳彩电）：高储物柜和冰箱和日历、一排橱柜（灶台、水槽、窗、吊柜、抽油烟机、顶上一层篮子罐子）、
+    餐桌和插四根蜡烛的蛋糕（上方摆盘子的搁板、合照、挂钟、吊灯）、碗柜、调料架和锅架。"""
     x0, y0, x1, fy = tv.sx0, tv.sy0, tv.sx1, tv.fy
     rw, wall_h, cls = dims(tv)
-    run_w = 118 if cls == "L" else (96 if cls == "M" else 70)
-    groups = [("fridge", 34, 2), ("run", run_w, 0), ("dine", 66, 1), ("hutch", 38, 3), ("spice", 34, 4)]
+    run_w = 120 if cls == "L" else (96 if cls == "M" else 70)
+    groups = [("fridge", 56 if cls == "L" else 32, 2), ("run", run_w, 0), ("dine", 66, 1), ("hutch", 38, 3), ("spice", 34, 4)]
     if cls == "S":
         groups = [("run", run_w, 0), ("fridge", 26, 1)]
     pos = place(tv, groups, seed=2)
@@ -518,37 +606,46 @@ def room_kitchen(tv):
     if "dine" in pos:
         lamps.append((pos["dine"] + 34, lamp_y))
     if "run" in pos:
-        lamps.append((pos["run"] + run_w // 2 + (14 if cls != "S" else 0), lamp_y - 8))
-    if "spice" in pos:
-        lamps.append((pos["spice"] + 16, lamp_y))
+        lamps.append((pos["run"] + run_w // 2 + (14 if cls != "S" else 0), fy - 50))
+    if "hutch" in pos:
+        lamps.append((pos["hutch"] + 18, fy - 40))
     main = lamps[0]
-    k.room_base(tv, [(222, 206, 160), (206, 188, 146), (186, 166, 132), (160, 140, 120), (132, 114, 108)], k.TILE_FLOOR, main, lamps=lamps)
+    wallc = [(222, 206, 160), (206, 188, 146), (186, 166, 132), (160, 140, 120), (132, 114, 108)]
+    k.room_base(tv, wallc, k.TILE_FLOOR, main, lamps=lamps)
     for gx in range(x0, x1, 8):                                               # 地砖缝
         S().line(gx, fy + 1, gx, tv.sy1, (150, 142, 136))
-    wallc = [(222, 206, 160), (206, 188, 146), (186, 166, 132), (160, 140, 120)]
     dress_walls(tv, wallc, "dots", wains=((176, 160, 140), (200, 186, 160)), wains_h=6)
 
     if "fridge" in pos:
         gx = pos["fridge"]
+        if cls == "L":
+            pantry(gx + 2, fy, 20, 72)
+            fx = gx + 26
+        else:
+            fx = gx + 4
         if cls != "S":
-            calendar(gx + 22, clampy(tv, fy - 66))
-            k.fridge(gx + 4, fy, 22, 44)
-            box(gx + 8, fy - 52, gx + 18, fy - 45, (206, 186, 140))          # 冰箱顶上的面包篮
-            sc.plat(gx + 4, gx + 26, fy - 44)
+            calendar(fx + 4, clampy(tv, fy - 70))
+            k.fridge(fx, fy, 22, 44)
+            box(fx + 4, fy - 52, fx + 14, fy - 45, (206, 186, 140))          # 冰箱顶上的面包篮
+            sc.plat(fx, fx + 22, fy - 44)
         else:
             k.fridge(gx + 2, fy, 20, 40)
     if "run" in pos:
         gx = pos["run"]
         x_a, x_b = gx, gx + run_w
         stove = x_a + run_w // 2 + (6 if cls != "S" else -4)
-        sink = x_a + 8
-        if cls != "S":                                                         # 水槽上面一扇窗（有短窗帘）
-            wtop = clampy(tv, fy - 44 - 34 - (12 if cls == "L" else 4), 14)
-            k.window(sink - 2, wtop, 22, fy - 44 - 10 - wtop, frame=(150, 122, 116))
+        sink = x_a + 10
+        skip = None
+        if cls != "S":                                                         # 水槽上面一扇窗（有短窗帘），窗那一段不放吊柜
+            wtop = clampy(tv, fy - 44 - 30 - (22 if cls == "L" else 8), 14)
+            k.window(sink - 2, wtop, 22, fy - 44 - 8 - wtop, frame=(150, 122, 116))
+            box(sink - 6, fy - 49, sink + 24, fy - 48, (176, 150, 140), depth=0.04)
             S().rect(sink - 4, wtop - 3, sink + 22, wtop + 4, (206, 150, 150))
-            for fx in range(sink - 3, sink + 22, 3):
-                S().put(fx, wtop + 4, shade((206, 150, 150), -2))
-        top = counter_run(tv, x_a, x_b, stove, sink if cls != "S" else x_a + 30, upper=(cls != "S"))
+            for fx_ in range(sink - 3, sink + 22, 3):
+                S().put(fx_, wtop + 4, shade((206, 150, 150), -2))
+            vase(sink + 15, fy - 50, (196, 120, 110))
+            skip = (sink - 6, sink + 24)
+        top = counter_run(tv, x_a, x_b, stove, sink if cls != "S" else x_a + 30, upper=(cls != "S"), skip=skip, high_shelf=(cls == "L"))
         if cls == "S":
             k.crew_photo(x_a + 8, clampy(tv, fy - 48, 10))
         sc.plat(x_a, x_b, top)
@@ -569,18 +666,23 @@ def room_kitchen(tv):
         top = hutch(gx + 2, fy, 34)
         sc.plat(gx + 2, gx + 36, top)
         if cls == "L":
-            painting(gx + 8, clampy(tv, fy - 84), 22, 16, "hill")
+            rail_painting(tv, gx + 7, fy - 90, 24, 18, "hill")
     if "spice" in pos:
         gx = pos["spice"]
         sy_ = fy - 36
         wall_shelf(gx + 2, gx + 32, sy_)
         for i, jc in enumerate([(196, 120, 96), (220, 200, 130), (150, 176, 120), (176, 160, 196), (206, 150, 120)]):
             jar(gx + 5 + i * 5, sy_ - 1, jc, 5 + (i % 2) * 2)
-        sc.plat(gx + 2, gx + 32, sy_)
+        if "hutch" not in pos:                                                 # 大屏有碗柜，平台够了
+            sc.plat(gx + 2, gx + 32, sy_)
         stool(gx + 12, fy)
-        if cls == "L":
-            hanging_plant(gx + 17, y0 + 4, fy - int(wall_h * 0.5))
-    # 餐桌上的吊灯（主光）、灶台上的一盏
+        if cls == "L":                                                         # 大屏：调料架上面再开一扇高窗
+            wt, wh_ = window_top(tv, 52)
+            k.window(gx + 6, wt, 22, wh_, frame=(150, 122, 116))
+            box(gx + 2, fy - 49, gx + 32, fy - 48, (176, 150, 140), depth=0.04)
+            S().rect(gx + 4, wt - 3, gx + 30, wt + 5, (206, 150, 150))
+            for fx_ in range(gx + 5, gx + 30, 3):
+                S().put(fx_, wt + 5, shade((206, 150, 150), -2))
     if "dine" in pos:
         k.hanging_lamp(pos["dine"] + 34, y0, lamp_y)
     if "run" in pos and cls == "S":
@@ -630,44 +732,51 @@ def typewriter(x, yb):
 
 
 def room_bedroom(tv):
-    """卧室（灰色监控屏）：衣柜、床和两个床头柜和床头台灯、床头上方的搁板和合照、窗下的书桌和打字机、五斗柜和镜子。"""
+    """卧室（灰色监控屏）：衣柜（顶上帽盒）、床和两个床头柜和台灯（床头上方挂镜线吊一幅大画、合照、搁板）、
+    高窗和落地窗帘、窗前书桌和打字机、五斗柜和镜子、大盆栽。"""
     x0, y0, x1, fy = tv.sx0, tv.sy0, tv.sx1, tv.fy
     rw, wall_h, cls = dims(tv)
     bed_w = 60 if cls != "S" else 52
-    groups = [("wardrobe", 36, 3), ("bed", bed_w + 30, 0), ("window", 52, 1), ("dresser", 44, 2)]
+    groups = [("wardrobe", 38, 3), ("bed", bed_w + 30, 0), ("reading", 44, 4), ("window", 56, 1), ("dresser", 56 if cls == "L" else 42, 2)]
     if cls == "S":
         groups = [("bed", bed_w + 14, 0), ("dresser", 38, 1)]
     pos = place(tv, groups, seed=3)
-    win_h = int(np.clip(wall_h * 0.3, 24, 60))
+    wtop, wh = window_top(tv, 40)
     lamps = []
-    if "window" in pos:
-        lamps.append((pos["window"] + 26, fy - 34 - win_h // 2))
     if "bed" in pos:
-        lamps.append((pos["bed"] + 6, fy - 30))
-    if "dresser" in pos and cls == "L":
-        lamps.append((pos["dresser"] + 22, fy - 60))
+        lamps.append((pos["bed"] + (6 if cls != "S" else 30), fy - 26 if cls != "S" else fy - 50))
+    if "window" in pos:
+        lamps.append((pos["window"] + 15, fy - 28))
+    if "reading" in pos:
+        lamps.append((pos["reading"] + 6, fy - 52))
+    if "bed" in pos and cls != "S":
+        lamps.append((pos["bed"] + bed_w + 22, fy - 26))
     main = lamps[0]
     k.room_base(tv, k.BLUE_WALL, k.WARM_FLOOR, main, lamps=lamps)
     dress_walls(tv, k.BLUE_WALL, "dots", wains=((120, 128, 160), (156, 166, 192)))
 
     if "wardrobe" in pos:
         gx = pos["wardrobe"]
-        k.wardrobe(gx + 3, fy, 30, 54)
+        k.wardrobe(gx + 4, fy, 30, 54)
+        box(gx + 18, fy - 63, gx + 30, fy - 57, (176, 150, 186))               # 纸箱旁边一个帽盒
         if cls == "L":
-            painting(gx + 6, clampy(tv, fy - 100), 22, 28, "sea")
+            rail_painting(tv, gx + 8, fy - 108, 22, 28, "sea")
     if "bed" in pos:
         gx = pos["bed"]
         side = 14 if cls != "S" else 0
         bx = gx + side
-        # 床头上方：搁板（能站）+ 合照 + 书
+        # 床头上方：合照；床尾那边一条搁板（能站）；高墙上挂镜线吊一幅横的大画
+        k.crew_photo(bx + 2, clampy(tv, fy - 56, 8))
+        shx0 = bx + bed_w - 34 if cls != "S" else bx + 6
         shelf_y = fy - 38
-        k.crew_photo(bx + bed_w // 2 - 4, clampy(tv, fy - 64, 8))
-        wall_shelf(bx + 4, bx + 40, shelf_y)
-        book_row(bx + 8, shelf_y - 1, 6)
-        vase(bx + 32, shelf_y - 1, (176, 150, 186))
-        sc.plat(bx + 4, bx + 40, shelf_y)
+        wall_shelf(shx0, shx0 + 36, shelf_y)
+        book_row(shx0 + 4, shelf_y - 1, 6)
+        vase(shx0 + 28, shelf_y - 1, (176, 150, 186))
+        sc.plat(shx0, shx0 + 36, shelf_y)
         if cls == "L":
-            frame_cluster(bx + 2, clampy(tv, fy - 96), 3, seed=5)
+            rail_painting(tv, bx + 6, fy - 104, 48, 26, "hill", fc=(96, 90, 110))
+        elif cls == "M":
+            frame_cluster(bx + 28, clampy(tv, fy - 70), 2, seed=5)
         k.rug(bx + bed_w // 2 + 6, fy, bed_w * 0.55, (120, 110, 150), (140, 130, 168))
         if side:
             ty = nightstand(gx, fy)
@@ -675,16 +784,21 @@ def room_bedroom(tv):
         k.bed(bx, fy, bed_w)
         if cls != "S":
             ty = nightstand(bx + bed_w + 3, fy)
-            box(bx + bed_w + 5, ty - 4, bx + bed_w + 10, ty - 1, (200, 196, 186), depth=0.03)   # 闹钟
-            S().put(bx + bed_w + 7, ty - 3, (60, 60, 70))
+            table_lamp(bx + bed_w + 8, ty - 1)
+    if "reading" in pos:                                                       # 看书的角落：扶手椅、落地灯
+        gx = pos["reading"]
+        frame_cluster(gx + 12, clampy(tv, fy - 62), 2, seed=8)
+        floor_lamp(gx + 6, fy, clampy(tv, fy - 52))
+        k.armchair(gx + 17, fy)
+        sc.plat(gx + 15, gx + 36, fy - 23)
     if "window" in pos:
         gx = pos["window"]
-        tall_window(tv, gx + 14, clampy(tv, fy - 34 - win_h, 14), 24, win_h, curtain=(150, 140, 176), floor_len=False)
-        dt = desk(gx + 8, fy, 34)
-        typewriter(gx + 22, dt - 1)
-        table_lamp(gx + 13, dt - 1)
-        chair_side(gx + 42, fy, face=-1)
-        sc.plat(gx + 8, gx + 42, dt)
+        tall_window(tv, gx + 16, wtop, 24, wh, curtain=(150, 140, 176))
+        sc.plat(gx + 12, gx + 44, fy - 40 + 3)                                 # 窗台
+        dt = desk(gx + 10, fy, 34)
+        typewriter(gx + 24, dt - 1)
+        table_lamp(gx + 15, dt - 1)
+        chair_side(gx + 44, fy, face=-1)                                       # 桌面在窗台正下方，不再单算平台
     if "dresser" in pos:
         gx = pos["dresser"]
         dw = 34 if cls != "S" else 28
@@ -694,7 +808,10 @@ def room_bedroom(tv):
         vase(gx + dw - 4, top - 1, (150, 170, 186), stems=cls != "S")
         sc.plat(gx + 3, gx + 3 + dw, top)
         if cls == "L":
-            tall_plant(gx + 40, fy, 30) if gx + 52 < x1 else None
+            tall_plant(gx + 42, fy, 34)
+            k.wall_clock(gx + 20, fy - 92, 7)
+        if cls == "S":
+            k.crew_photo(gx + 6, clampy(tv, fy - 66, 8)) if "bed" not in pos else None
     k.finish_room(tv, main)
 
 
@@ -778,34 +895,71 @@ def mobile(x, ceil, y):
     S().line(x - 6, y + 23, x + 6, y + 21, (226, 196, 150))                  # 第二颗星球的环
 
 
+def bunting(x0, x1, y, sag=10, colors=None):
+    """一串三角彩旗：两头钉在墙上，中间往下垂；旗子按四个船员的颜色轮着来。"""
+    colors = colors or CREW + [(226, 214, 180)]
+    n = max(2, (x1 - x0) // 2)
+    pts = [(x0 + (x1 - x0) * i / n, y + sag * 4 * (i / n) * (1 - i / n)) for i in range(n + 1)]
+    for (ax, ay), (bx, by) in zip(pts, pts[1:]):
+        S().line(round(ax), round(ay), round(bx), round(by), (130, 110, 104))
+    j = 0
+    for i in range(3, n - 2, 4):
+        fx, fy_ = pts[i]
+        c = colors[j % len(colors)]
+        S().poly([(fx - 3, fy_ + 1), (fx + 3, fy_ + 1), (fx, fy_ + 7)], c)
+        S().poly([(fx, fy_ + 1), (fx + 3, fy_ + 1), (fx, fy_ + 7)], shade(c, -1))
+        j += 1
+    for x in (x0, x1):
+        S().rect(x - 1, y - 1, x, y, (110, 90, 86))
+
+
+def kite(x, y):
+    c = (206, 120, 110)
+    S().poly([(x, y - 9), (x + 6, y), (x, y + 11), (x - 6, y)], c)
+    S().poly([(x, y - 9), (x + 6, y), (x, y + 11)], shade(c, -1))
+    S().line(x, y - 9, x, y + 11, (236, 226, 200)); S().line(x - 6, y, x + 6, y, (236, 226, 200))
+    for t in range(16):                                                    # 尾巴，扭一扭
+        S().put(x + (1 if (t // 3) % 2 else -1), y + 12 + t, (150, 130, 120))
+        if t % 5 == 3:
+            S().rect(x - 1, y + 12 + t, x + 1, y + 13 + t, CREW[(t // 5) % 4])
+
+
 def room_kids(tv):
-    """儿童房（梅子色电视）：上下铺和星星贴纸、格子柜和泰迪熊、帐篷和火箭、书桌和小孩画、窗和星球吊饰、量身高的尺子。"""
+    """儿童房（梅子色电视）：上下铺和星星贴纸和合照、格子柜和泰迪熊和量身高的尺子、帐篷和火箭和积木搁板、
+    书桌和地球仪和小孩画、窗和盆栽；高墙上一串彩旗、一只风筝、星球吊饰。"""
     x0, y0, x1, fy = tv.sx0, tv.sy0, tv.sx1, tv.fy
     rw, wall_h, cls = dims(tv)
-    groups = [("bunk", 54, 0), ("cubby", 46, 2), ("play", 56, 3), ("desk", 52, 1), ("window", 46, 4)]
+    groups = [("bunk", 54, 0), ("cubby", 50, 2), ("play", 56, 3), ("desk", 52, 1), ("window", 46, 4)]
     if cls == "S":
         groups = [("bunk", 52, 0), ("cubby", 40, 1)]
     pos = place(tv, groups, seed=4)
-    lamp_y = clampy(tv, fy - min(66, int(wall_h * 0.5)))
+    lamp_y = clampy(tv, fy - min(66, int(wall_h * 0.42)))
     lamps = []
+    hang_x = pos.get("cubby", x0 + rw // 2) + 22
+    lamps.append((hang_x, lamp_y))
     if "desk" in pos:
         lamps.append((pos["desk"] + 10, fy - 30))
-    if "cubby" in pos:
-        lamps.append((pos["cubby"] + 22, lamp_y))
     if "window" in pos:
-        lamps.append((pos["window"] + 23, fy - 70))
-    if "bunk" in pos and cls == "S":
-        lamps.insert(0, (pos["bunk"] + 40, lamp_y))
+        lamps.append((pos["window"] + 23, fy - 50))
     main = lamps[0]
-    k.room_base(tv, k.GREEN_WALL, k.WARM_FLOOR, main, lamps=lamps)
-    dress_walls(tv, k.GREEN_WALL, "stripe", wains=((150, 160, 132), (186, 196, 166)), wains_h=8)
+    wall = [shade(c, -2) for c in k.GREEN_WALL]                             # 墙压暗两档，绿屏里灯、帐篷、纸才跳得出来
+    k.room_base(tv, wall, k.WARM_FLOOR, main, lamps=lamps)
+    dress_walls(tv, wall, "stripe", wains=((140, 150, 124), (176, 186, 156)), wains_h=8)
+    pic = pic_rail(tv)
 
+    if cls != "S":                                                          # 高墙：彩旗、风筝、星星
+        by = (pic + 16) if pic else clampy(tv, fy - 80)
+        bunting(x0 + 14, x0 + int(rw * 0.48), by, 12)
+        bunting(x0 + int(rw * 0.48), x1 - 14, by - 4, 9)
+        if cls == "L":
+            kite(x1 - 60, (pic or y0 + 40) - 30)
+        if (pic or fy - 60) - 14 > y0 + 20:
+            k.stars(x0 + 12, y0 + 18, x1 - 12, (pic or fy - 60) - 14, 10 if cls == "L" else 5)
     if "bunk" in pos:
         gx = pos["bunk"]
-        sy_a = clampy(tv, fy - int(wall_h * 0.7))
-        if fy - 66 > sy_a + 4:
-            k.stars(gx, sy_a, gx + 50, fy - 66, 4)
-        k.crew_photo(gx + 14, clampy(tv, fy - 66 + (0 if cls != "S" else 10), 8))
+        if cls != "S":
+            k.stars(gx + 4, fy - 84, gx + 46, fy - 66, 3)
+        k.crew_photo(gx + 14, clampy(tv, fy - 66 + (0 if cls != "S" else 8), 8))
         k.bunk(gx + 2, fy, 46)
         sc.plat(gx + 4, gx + 48, fy - 36)
     if "cubby" in pos:
@@ -814,8 +968,7 @@ def room_kids(tv):
         top = cubby(gx + 3, fy, cw_, 22)
         sc.plat(gx + 3, gx + 3 + cw_, top)
         if cls != "S":
-            k.rocket(gx + 30, top - 1) if cls == "L" else None
-            growth_chart(gx + cw_ + 6 if cls == "L" else gx + 10, top - 4 if cls != "L" else fy, clampy(tv, fy - 60))
+            growth_chart(gx + cw_ + 6, fy, clampy(tv, fy - 56))
     if "play" in pos:
         gx = pos["play"]
         tent(gx + 4, fy, 34, 34)
@@ -836,15 +989,13 @@ def room_kids(tv):
         sc.plat(gx + 4, gx + 36, dt)
     if "window" in pos:
         gx = pos["window"]
-        wh = int(np.clip(wall_h * 0.26, 22, 50))
-        tall_window(tv, gx + 11, clampy(tv, fy - 40 - wh, 14), 24, wh, curtain=(206, 176, 140), floor_len=False)
+        wtop, wh = window_top(tv, 40)
+        wtop += 10 if pic else 0
+        tall_window(tv, gx + 11, wtop, 24, wh - (10 if pic else 0), curtain=(206, 176, 140), floor_len=False)
         k.plant(gx + 18, fy)
-    if cls != "S":
-        mx = pos.get("cubby", pos.get("bunk", x0 + 30)) + 24
-        mobile(mx, y0 + 4, clampy(tv, fy - int(wall_h * 0.55)))
-        if fy - int(wall_h * 0.6) > y0 + 16:
-            k.stars(x0 + 10, y0 + 12, x1 - 10, fy - int(wall_h * 0.6), 6 if cls == "L" else 3)
-    k.hanging_lamp(lamps[-1][0] if cls == "S" else (pos.get("cubby", x0) + 22), y0, lamp_y) if cls != "L" or "cubby" in pos else None
+    if cls != "S" and "bunk" in pos:
+        mobile(pos["bunk"] + 30, y0 + 4, clampy(tv, (pic or fy - 70) + 30))
+    k.hanging_lamp(hang_x, y0, lamp_y)
     k.finish_room(tv, main)
 
 
@@ -866,8 +1017,10 @@ def stairs(tv, x, steps=8, rise=5, run=6, c=(150, 112, 92)):
         S().line(bx, by - 1, bx, by - 12, shade(c, -1))
     S().line(x + 10, up + 30 - 19, land_x1, up - 19, shade(c, 1)); S().line(x + 10, up + 30 - 18, land_x1, up - 18, shade(c, -1))
     # 楼梯下的三角墙 + 储物小门
-    S().poly([(x, fy + 1), (land_x0, top_y), (land_x1, top_y), (land_x1, fy + 1)], shade(c, -1))
-    panel(land_x0 - 4, fy - 22, land_x0 + 10, fy - 2, shade(c, -1))
+    under = (186, 156, 146)                                                   # 楼梯下面那块墙刷成浅色，锯齿形的踏步才看得出来
+    S().poly([(x, fy + 1), (land_x0, top_y), (land_x1, top_y), (land_x1, fy + 1)], under)
+    S().poly([(x + 2, fy + 1), (land_x0, top_y + 3), (land_x0, top_y + 7), (x + 8, fy + 1)], shade(c, -2))   # 斜梁
+    panel(land_x0 - 4, fy - 22, land_x0 + 10, fy - 2, shade(under, -2))
     S().put(land_x0 + 7, fy - 12, (226, 196, 130))
     floor_shadow(x, land_x1, fy, 3)
     treads = []
@@ -929,44 +1082,83 @@ def umbrella_stand(x, fy):
         S().put(x + dx + 1, fy - h - 3, (80, 70, 70))
 
 
+def hat_shelf(x0, x1, y, coats=True):
+    """挂衣板：一块搁板（上面放帽子，能站），下面一排挂钩挂着四个人的外套。"""
+    S().rect(x0, y + 3, x1, y + 8, shade(WOODL, -1))                       # 背板
+    wall_shelf(x0, x1, y)
+    box(x0 + 4, y - 4, x0 + 11, y - 1, (110, 100, 120), depth=0.03)         # 一顶帽子
+    S().rect(x0 + 2, y - 1, x0 + 13, y - 1, shade((110, 100, 120), -1))
+    if not coats:
+        return
+    n = 4
+    step = (x1 - x0 - 6) // n
+    for i, c in enumerate(CREW):
+        hx = x0 + 4 + i * step
+        S().rect(hx + 1, y + 6, hx + 2, y + 8, (200, 180, 140))               # 挂钩
+        top_ = y + 8
+        ln = [18, 15, 20, 13][i]
+        S().poly([(hx - 1, top_), (hx + 4, top_), (hx + 6, top_ + ln), (hx - 3, top_ + ln)], c)
+        S().poly([(hx + 2, top_), (hx + 4, top_), (hx + 6, top_ + ln), (hx + 2, top_ + ln)], shade(c, -2))
+        S().line(hx - 1, top_, hx - 3, top_ + ln, shade(c, 1))
+
+
+def grandfather_clock(x, fy, h=62, c=(120, 84, 70)):
+    """落地大座钟：钟面、玻璃门里的钟摆，顶上一个尖帽子。"""
+    floor_shadow(x, x + 14, fy, 4)
+    box(x, fy - h + 14, x + 14, fy, c)
+    box(x - 1, fy - h, x + 15, fy - h + 14, shade(c, 1))
+    S().poly([(x - 1, fy - h), (x + 7, fy - h - 6), (x + 15, fy - h)], shade(c, 1))
+    sc.disc(x + 7, fy - h + 7, 5, (236, 228, 206))
+    S().line(x + 7, fy - h + 7, x + 7, fy - h + 4, (60, 50, 50)); S().line(x + 7, fy - h + 7, x + 9, fy - h + 8, (60, 50, 50))
+    S().rect(x + 3, fy - h + 18, x + 11, fy - 8, shade(c, -3))
+    S().line(x + 7, fy - h + 18, x + 7, fy - 16, (200, 176, 120))
+    sc.disc(x + 7, fy - 15, 2, (226, 196, 130))
+    S().rect(x + 1, fy - 5, x + 13, fy - 1, shade(c, -1))
+
+
 def room_entry(tv):
-    """玄关（离家最近，信号最差）：衣帽架和换鞋凳、大门（两边侧窗、门上气窗、两盏壁灯）、
-    边桌上的转盘电话和镜子、上楼的楼梯（大屏）、伞架和盆栽。屏幕上几道雪花撕裂。"""
+    """玄关（离家最近，信号最差）：挂衣板（四件外套、帽子）和换鞋凳和合照、大门（两边侧窗、门上气窗、两盏壁灯）、
+    边桌上的转盘电话和镜子、上楼的楼梯（第二跑只画侧板）、落地大座钟、伞架和盆栽。屏幕上两道雪花撕裂。"""
     x0, y0, x1, fy = tv.sx0, tv.sy0, tv.sx1, tv.fy
     rw, wall_h, cls = dims(tv)
-    groups = [("coats", 54, 1), ("door", 54, 0), ("console", 42, 2), ("stairs", 108, 3), ("umb", 26, 4)]
+    # 大门放在最右边：玄关右边就是终点"家乡"，出了这扇门就到家
+    groups = [("stairs", 76, 3), ("coats", 46, 1), ("console", 40, 2), ("clock", 36, 4), ("door", 54, 0)]
     if cls == "S":
-        groups = [("coats", 22, 1), ("door", 40, 0), ("umb", 20, 2)]
+        groups = [("coats", 26, 1), ("door", 40, 0), ("clock", 20, 2)]
     pos = place(tv, groups, seed=5)
-    lamp_y = clampy(tv, fy - min(70, int(wall_h * 0.55)))
+    lamp_y = clampy(tv, fy - min(74, int(wall_h * 0.55)))
     lamps = []
     if "door" in pos:
         lamps.append((pos["door"] + 27, lamp_y))
     if "console" in pos:
-        lamps.append((pos["console"] + 20, fy - 40))
+        lamps.append((pos["console"] + 20, fy - 44))
     if "stairs" in pos:
-        lamps.append((pos["stairs"] + 70, fy - 90))
+        lamps.append((pos["stairs"] + 50, fy - 80))
     main = lamps[0]
     k.room_base(tv, k.WARM_WALL, k.WARM_FLOOR, main, lamps=lamps)
-    dress_walls(tv, k.WARM_WALL, "stripe", wains=((150, 112, 104), (186, 146, 128)))
+    pic = dress_walls(tv, k.WARM_WALL, "stripe", wains=((150, 112, 104), (186, 146, 128)))
 
     if "stairs" in pos:
         gx = pos["stairs"]
-        treads, (lx0, lx1, ly) = stairs(tv, gx + 4)
+        treads, (lx0, lx1, ly) = stairs(tv, gx + 2)
         sc.plat(treads[3][0], treads[4][1], treads[3][2])                     # 第四级（离地 20）
         sc.plat(lx0, lx1, ly)                                                 # 休息平台（离地 40）
-        painting(gx + 70, clampy(tv, ly - 34), 18, 14, "hill")
         if cls == "L":
-            k.window(lx0 + 2, clampy(tv, ly - 90, 14), 16, 26, frame=(150, 122, 116))
+            rail_painting(tv, gx + 6, ly - 70, 20, 14, "hill")
+            k.window(lx0 + 2, clampy(tv, ly - 96, 14), 16, 26, frame=(150, 122, 116))
+        else:
+            painting(gx + 4, clampy(tv, ly - 64, 10), 16, 12, "hill")
     if "coats" in pos:
         gx = pos["coats"]
         if cls != "S":
-            k.crew_photo(gx + 30, clampy(tv, fy - 52))
-            bench(gx + 16, fy, 36)
-            k.coat_rack(gx + 6, fy)
-            sc.plat(gx + 16, gx + 52, fy - 13) if False else None             # 凳子太低（13），不算平台
+            k.crew_photo(gx + 12, clampy(tv, fy - 66))
+            hat_shelf(gx + 4, gx + 42, fy - 40)
+            sc.plat(gx + 4, gx + 42, fy - 40)
+            bench(gx + 4, fy, 36)
         else:
-            k.coat_rack(gx + 8, fy)
+            k.crew_photo(gx + 2, clampy(tv, fy - 66, 8))
+            hat_shelf(gx + 1, gx + 25, fy - 38)
+            sc.plat(gx + 1, gx + 25, fy - 38)
     if "door" in pos:
         gx = pos["door"]
         dx = gx + 15
@@ -975,36 +1167,34 @@ def room_entry(tv):
                 S().rect(sx_ - 1, fy - 47, sx_ + 5, fy - 4, (150, 120, 112))
                 S().rect(sx_, fy - 46, sx_ + 4, fy - 5, (226, 200, 150))
                 S().rect(sx_, fy - 25, sx_ + 4, fy - 25, (150, 120, 112))
-            S().rect(dx - 10, fy - 60, dx + 34, fy - 52, (150, 120, 112))     # 门上的半圆气窗
+            S().rect(dx - 10, fy - 60, dx + 34, fy - 52, (150, 120, 112))     # 门上的气窗
             S().rect(dx - 9, fy - 59, dx + 33, fy - 53, (226, 200, 150))
             for fx in range(dx - 4, dx + 32, 6):
                 S().line(fx, fy - 59, fx + 2, fy - 53, (150, 120, 112))
-            sconce(dx - 14, fy - 40); sconce(dx + 38, fy - 40)
+            sconce(dx - 15, fy - 42); sconce(dx + 39, fy - 42)
         k.front_door(dx, fy, 24, 48)
-        if cls == "S":
-            k.crew_photo(dx + 30, clampy(tv, fy - 44, 8))
     if "console" in pos:
         gx = pos["console"]
-        top = console_table(gx + 4, fy, 34)
-        mirror(gx + 12, clampy(tv, top - 34), 18, 24)
-        rotary_phone(gx + 7, top - 1)
-        box(gx + 26, top - 3, gx + 34, top - 1, (150, 170, 186), depth=0.03)   # 放钥匙的碗
-        S().put(gx + 29, top - 4, (226, 200, 120))
-        sc.plat(gx + 4, gx + 38, top)
-    if "umb" in pos:
-        gx = pos["umb"]
-        umbrella_stand(gx + 2, fy)
+        top = console_table(gx + 3, fy, 34)
+        mirror(gx + 11, clampy(tv, top - 34), 18, 24)
+        rotary_phone(gx + 6, top - 1)
+        box(gx + 25, top - 3, gx + 33, top - 1, (150, 170, 186), depth=0.03)   # 放钥匙的碗
+        S().put(gx + 28, top - 4, (226, 200, 120))
+        sc.plat(gx + 3, gx + 37, top)
+    if "clock" in pos:
+        gx = pos["clock"]
         if cls != "S":
-            k.plant(gx + 14, fy)
+            grandfather_clock(gx + 2, fy, 62)
+            umbrella_stand(gx + 20, fy)
+            k.plant(gx + 28, fy) if cls == "L" else None
         else:
-            k.crew_photo(gx - 2, clampy(tv, fy - 60, 8)) if "door" not in pos else None
+            umbrella_stand(gx + 4, fy)
     k.hanging_lamp(main[0], y0, main[1])
-    if cls == "L":
-        hanging_plant(pos.get("coats", x0 + 30) + 30, y0 + 4, fy - int(wall_h * 0.5))
-    # 雪花：天花板下一道宽的、半墙一道、窗台高度一道细的；地面那一条不放（怪要看得清）
-    for a, b in [(0.22, 0.26), (0.55, 0.57), (0.78, 0.79)]:
+    # 雪花：天花板下一道宽的、半墙一道细的，大屏再加一道；地面那一条不放（怪要看得清）
+    bands = [(0.2, 0.24), (0.5, 0.515)] + ([(0.36, 0.37)] if cls == "L" else [])
+    for a, b in bands:
         ya, yb = y0 + int(wall_h * a), y0 + int(wall_h * b)
-        if yb < fy - 20:
+        if yb < fy - 30:
             k.static_band(tv, ya, max(ya + 1, yb))
     k.finish_room(tv, main)
 

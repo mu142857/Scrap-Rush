@@ -212,10 +212,13 @@ def room_base(tv, wallc, floorc, lamp, wainscot=None, lamps=None):
     lamps = lamps or [lamp]
     inside = tv.screen_mask()
     R = max(40.0, (fy - y0) * 0.45)
-    d = np.full(XX.shape, 99.0)
+    # 几盏灯的光加起来再分档：取最近一盏的话，几个圆叠在一起会成一串扇贝形的弧，像云
+    I = np.zeros(XX.shape)
     for lx, ly in lamps:
-        d = np.minimum(d, np.hypot((XX - lx) * 0.85, (YY - ly) * 1.2) / R)
-    d = polygonal(d + 0.12 * smooth_noise(*XX.shape, sx=30, sy=24, seed=int(x0) % 13), 12, 9, seed=int(y0) % 7)
+        I += np.exp(-((np.hypot((XX - lx) * 0.85, (YY - ly) * 1.2) / R) ** 2) * 0.9)
+    d = np.sqrt(-np.log(np.clip(I, 1e-4, 1.0)) / 0.9)
+    # 只加一点点扰动：多了档的边缘会弯成云或水渍（作者 2026-10-17 指出）
+    d = polygonal(d + 0.035 * smooth_noise(*XX.shape, sx=40, sy=32, seed=int(x0) % 13), 16, 12, seed=int(y0) % 7)
     band = np.clip((d * 1.7).astype(int), 0, len(wallc) - 2)
     wall = inside & (YY < fy)
     for i, c in enumerate(wallc):
@@ -249,15 +252,18 @@ def window(x0, y0, w, h, frame=(138, 108, 112), moon=True):
 
 
 def crew_photo(x, y):
-    """墙上的合照：四个船员（红、铜、蓝、绿）。每个房间都挂一张，是这一关的线索。"""
-    scr.rect(x - 2, y - 2, x + 21, y + 13, (112, 84, 80))
-    scr.rect(x, y, x + 19, y + 11, (226, 214, 180))
-    scr.rect(x, y + 7, x + 19, y + 11, (196, 196, 156))
+    """墙上的合照：四个船员（红、铜、蓝、绿）。每个房间都挂一张，是这一关的线索。
+    2026-10-17 改：原来是框里四根竖条，单色屏里像个电池图标。现在是四个有头、有身子、有腿的小人，
+    背景分天和地，单色屏里靠形状也认得出是一张合影。"""
+    scr.rect(x - 2, y - 2, x + 21, y + 14, (100, 74, 70))                 # 相框
+    scr.line(x - 2, y - 2, x + 21, y - 2, (136, 104, 92))
+    scr.rect(x, y, x + 19, y + 12, (214, 226, 236))                       # 天
+    scr.rect(x, y + 9, x + 19, y + 12, (150, 176, 120))                   # 草地
     for i, c in enumerate([(206, 72, 64), (190, 140, 96), (96, 136, 214), (110, 180, 100)]):
         fx = x + 2 + i * 5
-        scr.rect(fx, y + 3, fx + 2, y + 9, c)
-        scr.put(fx + 1, y + 2, c)
-
+        scr.rect(fx, y + 3, fx + 1, y + 4, (238, 214, 190))               # 头
+        scr.rect(fx - (1 if i % 2 else 0), y + 5, fx + 1, y + 8, c)       # 身子
+        scr.put(fx, y + 9, (60, 50, 56)); scr.put(fx + 1, y + 10, (60, 50, 56))   # 腿
 
 # ---------------------------------------------------------------- 体积：照 Oscar 的家具，每件都有侧面和顶面
 VP = [0, 0]          # 当前这块屏幕的灭点（屏幕中间、视线高度）
@@ -566,7 +572,7 @@ def plant(x, fy):
     scr.line(x, fy - 7, x + 8, fy - 7, shade(pot, 2))
 
 
-def light_pass(tv, light_at, gain=1.2, amp=0.4, cell=14, min_px=160, seed=0):
+def light_pass(tv, light_at, gain=1.0, amp=0.12, cell=22, min_px=160, seed=0):
     """Oscar 的色块：每个大面按离场景光源的远近切成一档一档，档的边是直线段（三角网格），
     再加一点低频扰动让边缘有棱角。发光的东西（最亮通道 >= 240）不动；
     小于 min_px 的颜色（灯罩、相框、小摆件）也不动，不然小东西会被切碎、和墙糊在一起。"""

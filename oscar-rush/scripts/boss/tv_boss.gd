@@ -10,6 +10,12 @@ extends StaticBody2D
 ##   测试卡 CH7：从屏幕中心射出一圈圈扫描线（穿过平台），三阶段变螺旋
 ##   重播台 CH9（二阶段起）：录下你的动作，1.2 秒后一个雪花做的"你"沿着你走过的路追你
 ##   雷雨 CH0（三阶段）：兔耳天线往你脚下劈闪电，落点先标红叉
+## 会动（和锅炉的站桩、总机的天车都不一样，它是地上乱跑的那种）：
+##   四条细木腿（代码画），每招之间换个位置；
+##   冲撞（一阶段起）：屏幕变红、蹲下抖 0.9 秒，然后沿地面冲到墙，撞墙晕一下（这时挨打伤害 ×1.5）。
+##     冲撞挡不住也跳不过，要先跳上搁板、再上吊着的电视躲；三阶段撞完掉头再冲一次
+##   跳砸（二阶段起）：地上先标落点，跳到你头上砸下来，落地往两边炸出声波，要跳
+## 三阶段：一个移动招 + 一个频道招同时出。
 ## 原点在脚底中间，屏幕朝左。图层坐标见 tools/draw_boss3.py。
 
 signal hp_changed(hp: float, max_hp: float)
@@ -18,17 +24,23 @@ signal defeated
 
 const BASE_HP := 3600.0
 const CONTACT_DAMAGE := 10.0
-const CANVAS_ORIGIN := Vector2(64, 119)
-const SCREEN := Rect2(Vector2(20, 42) - CANVAS_ORIGIN, Vector2(69, 51))
-const KNOBS := [Vector2(105, 50) - CANVAS_ORIGIN, Vector2(105, 63) - CANVAS_ORIGIN]
-const LED := Vector2(104, 99) - CANVAS_ORIGIN
-const TIPS := [Vector2(36, 4) - CANVAS_ORIGIN, Vector2(93, 2) - CANVAS_ORIGIN]
+const CANVAS_ORIGIN := Vector2(44, 78)
+const SCREEN := Rect2(Vector2(12, 30) - CANVAS_ORIGIN, Vector2(47, 31))
+const KNOBS := [Vector2(72, 36) - CANVAS_ORIGIN, Vector2(72, 46) - CANVAS_ORIGIN]
+const LED := Vector2(71, 62) - CANVAS_ORIGIN
+const TIPS := [Vector2(24, 3) - CANVAS_ORIGIN, Vector2(66, 1) - CANVAS_ORIGIN]
+## 四条腿的胯（相对原点），腿长；腿由 _draw_legs 画
+const LEGS_X := [-30.0, -14.0, 14.0, 30.0]
+const HIP_Y := -10.0
+const SLAM_DAMAGE := 14.0
+const DASH_SPEED := [200.0, 240.0, 280.0]
+const MOVES := ["charge", "hop"]
 const LED_COLOR := Color(1.0, 0.28, 0.18)
 const BAR_COLORS := [Color(0.92, 0.92, 0.92), Color(0.95, 0.92, 0.2), Color(0.2, 0.92, 0.95),
 	Color(0.2, 0.9, 0.25), Color(0.9, 0.25, 0.9), Color(0.95, 0.22, 0.2), Color(0.2, 0.3, 0.95)]
 const CHANNEL_NUM := {"snow": 2, "bars": 4, "test": 7, "rerun": 9, "storm": 0}
 const SCREEN_LIGHT := {"snow": Color(0.8, 0.82, 0.9), "bars": Color(0.9, 0.9, 1.0), "test": Color(0.6, 0.95, 1.0),
-	"rerun": Color(0.9, 0.6, 0.6), "storm": Color(0.7, 0.75, 1.0), "home": Color(1.0, 0.85, 0.6), "warm": Color(1.0, 0.92, 0.8)}
+	"rerun": Color(0.9, 0.6, 0.6), "storm": Color(0.7, 0.75, 1.0), "rage": Color(1.0, 0.35, 0.3), "home": Color(1.0, 0.85, 0.6), "warm": Color(1.0, 0.92, 0.8)}
 const HOME_TEX := preload("res://art/boss/hometown.png")
 
 var arena := Rect2(0, 0, 320, 180)
@@ -60,7 +72,17 @@ var _bag_phase := 0
 var _warn_t := 0.0
 var _warn_pos := Vector2.ZERO
 var _storm_spark := 0.0
+## 腿的状态："stand" "walk" "crouch" "dash" "air" "stun"
+var _mode := "stand"
+var _crouch := 0.0
+var _gait := 0.0
+var _rumble := 0.0
+var _contact_damage := CONTACT_DAMAGE
+var _shadow_t := 0.0
+var _shadow_x := 0.0
 
+var _parts: Node2D
+var _legs: Node2D
 var _body: Sprite2D
 var _deco: Node2D
 var _screen_light: PointLight2D
@@ -82,18 +104,18 @@ func _ready() -> void:
 
 	var shape := CollisionShape2D.new()
 	var rect := RectangleShape2D.new()
-	rect.size = Vector2(108, 72)
+	rect.size = Vector2(78, 44)
 	shape.shape = rect
-	shape.position = Vector2(0, -50)
+	shape.position = Vector2(0, -34)
 	add_child(shape)
 	_contact = Area2D.new()
 	_contact.collision_layer = 0
 	_contact.collision_mask = 2 | 8
 	var cs := CollisionShape2D.new()
 	var crect := RectangleShape2D.new()
-	crect.size = Vector2(104, 80)
+	crect.size = Vector2(72, 50)
 	cs.shape = crect
-	cs.position = Vector2(0, -46)
+	cs.position = Vector2(0, -31)
 	_contact.add_child(cs)
 	add_child(_contact)
 
@@ -102,20 +124,27 @@ func _ready() -> void:
 	sh.code = EnemyBase.FLASH_SHADER
 	_flash_mat.shader = sh
 
+	_legs = Node2D.new()
+	_legs.light_mask = 2
+	_legs.draw.connect(_draw_legs)
+	add_child(_legs)
+	# 会蹲、会抖的那部分：机壳 + 屏幕 + 旋钮
+	_parts = Node2D.new()
+	add_child(_parts)
 	_body = Sprite2D.new()
 	_body.texture = load("res://art/boss/tv_body.png")
 	_body.centered = false
 	_body.offset = -CANVAS_ORIGIN
 	_body.material = _flash_mat
 	_body.light_mask = 2
-	add_child(_body)
+	_parts.add_child(_body)
 
 	var unshaded := CanvasItemMaterial.new()
 	unshaded.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
 	_deco = Node2D.new()
 	_deco.material = unshaded
 	_deco.draw.connect(_draw_deco)
-	add_child(_deco)
+	_parts.add_child(_deco)
 
 	# 屏幕的光：照亮房间，颜色跟着频道变（不照电视自己）
 	_screen_light = PointLight2D.new()
@@ -163,7 +192,7 @@ func _ready() -> void:
 # —— 对外 ——
 
 func aim_point() -> Vector2:
-	return global_position + SCREEN.get_center()
+	return global_position + _parts.position + SCREEN.get_center()
 
 
 func is_targetable() -> bool:
@@ -204,6 +233,8 @@ func hurt(damage: float, _from_dir: Vector2, _full: bool) -> void:
 	_flash = 1.0
 	if not active:
 		return
+	if _mode == "stun":
+		damage *= 1.5
 	hp = maxf(hp - damage, 0.0)
 	hp_changed.emit(hp, max_hp)
 	if hp <= 0.0:
@@ -227,22 +258,25 @@ func _physics_process(delta: float) -> void:
 	_storm_spark = maxf(_storm_spark - delta, 0.0)
 	_warn.queue_redraw()
 	_hot = move_toward(_hot, 1.0 if (phase == 3 and not dead) else 0.0, delta)
-	# 三阶段整台电视跟着画面抖
-	_body.position.x = roundf(sin(_time * 40.0) * _hot * 0.8)
+	_shadow_t -= delta
+	_rumble = maxf(_rumble - delta, 0.0)
+	# 三阶段整台电视跟着画面抖；冲撞蓄力时抖得更厉害
+	_parts.position = Vector2(roundf(sin(_time * 40.0) * (_hot * 0.8 + (1.5 if _rumble > 0.0 else 0.0))), roundf(_crouch))
+	_legs.queue_redraw()
 	var target_light: Color = SCREEN_LIGHT.get(screen_mode, Color.WHITE)
 	_screen_light.color = _screen_light.color.lerp(target_light, delta * 6.0)
 	var lit := (1.0 - off_t) * on_t
 	if screen_mode == "off":
 		lit = 0.0
 	_screen_light.energy = lit * (1.3 + 0.2 * sin(_time * 17.0))
-	_static.volume_db = lerpf(-60.0, -16.0, lit) if screen_mode in ["snow", "storm"] else -60.0
+	_static.volume_db = lerpf(-60.0, -16.0, lit) if screen_mode in ["snow", "storm", "rage"] else -60.0
 	_deco.queue_redraw()
 	if active and not dead:
 		for body in _contact.get_overlapping_bodies():
 			if body is Player:
-				(body as Player).hurt(global_position + Vector2(0, -40), CONTACT_DAMAGE)
+				(body as Player).hurt(global_position + Vector2(0, -34), _contact_damage)
 			elif body is Crystal:
-				(body as Crystal).take_hit(global_position + Vector2(0, -40), CONTACT_DAMAGE)
+				(body as Crystal).take_hit(global_position + Vector2(0, -34), _contact_damage)
 
 
 # —— 出招 ——
@@ -256,9 +290,10 @@ func _gap() -> float:
 
 
 func _pool() -> Array[String]:
-	var pool: Array[String] = ["snow", "bars", "test"]
+	var pool: Array[String] = ["snow", "bars", "test", "charge"]
 	if phase >= 2:
 		pool.append("rerun")
+		pool.append("hop")
 	if phase >= 3:
 		pool.append("storm")
 	return pool
@@ -271,8 +306,8 @@ func _next_pattern() -> String:
 		_bag_phase = phase
 		_bag.assign(_pool())
 		_bag.shuffle()
-		for fresh in ["rerun", "storm"]:
-			if _bag.has(fresh) and old > 0 and not (old >= 2 and fresh == "rerun"):
+		for fresh in ["rerun", "hop", "storm"]:
+			if _bag.has(fresh) and old > 0 and not (old >= 2 and fresh != "storm"):
 				_bag.erase(fresh)
 				_bag.append(fresh)
 	if _bag.is_empty():
@@ -289,18 +324,38 @@ func _fight_loop() -> void:
 	await _wait(0.5)
 	while active and not dead:
 		var pick := _next_pattern()
-		_switch(pick)
-		await _wait(0.45)
-		if dead:
-			return
 		if phase == 3 and pick != "rerun":
-			# 三阶段：同时开两个台（画中画）
+			# 三阶段：一个移动招 + 一个频道招同时出（两个都是移动招就先后来）
 			var second := _next_pattern()
-			_run(second)
+			if pick in MOVES and second in MOVES:
+				await _show(pick)
+				await _run(pick)
+				pick = second
+			elif second in MOVES:
+				var tmp := pick
+				pick = second
+				second = tmp
+			if not (second in MOVES):
+				_show(second)
+				await _wait(0.45)
+				_run(second)
+		await _show(pick)
 		await _run(pick)
 		if dead:
 			return
 		await _wait(_gap())
+		if not dead and not (pick in MOVES):
+			await _stroll()
+
+
+## 出招前：频道招换台，移动招屏幕变红
+func _show(pick: String) -> void:
+	if pick in MOVES:
+		screen_mode = "rage"
+		Game.sfx("tvclick", -2.0, 0.7)
+		return
+	_switch(pick)
+	await _wait(0.45)
 
 
 func _run(pick: String) -> void:
@@ -315,6 +370,152 @@ func _run(pick: String) -> void:
 			await _rerun()
 		"storm":
 			await _storm()
+		"charge":
+			await _charge()
+		"hop":
+			await _hop()
+
+
+# —— 走位 ——
+
+func _x_min() -> float:
+	return arena.position.x + 8.0 + 40.0
+
+
+func _x_max() -> float:
+	return arena.end.x - 8.0 - 40.0
+
+
+## 招与招之间换个位置：走到离人远一点的地方（最多走 1.3 秒）
+func _stroll() -> void:
+	var p := _lead()
+	var px := p.global_position.x if p else arena.get_center().x
+	var options: Array[float] = []
+	for x in [_x_min() + 10.0, arena.get_center().x, _x_max() - 10.0]:
+		if absf(x - px) > 70.0 and absf(x - position.x) > 30.0:
+			options.append(x)
+	if options.is_empty():
+		return
+	await _walk_to(options.pick_random(), [55.0, 65.0, 80.0][phase - 1], 1.3)
+
+
+func _walk_to(x: float, speed: float, max_time := 9.0) -> void:
+	x = clampf(x, _x_min(), _x_max())
+	_mode = "walk"
+	var t := 0.0
+	while absf(position.x - x) > 0.5 and t < max_time and not dead:
+		await get_tree().physics_frame
+		var d := get_physics_process_delta_time()
+		t += d
+		var step := speed * d
+		position.x = move_toward(position.x, x, step)
+		_gait += step * 0.35
+	if not dead:
+		_mode = "stand"
+
+
+## 冲撞：屏幕变红、蹲下抖着蓄力，然后沿地面冲到墙；撞墙晕一下。三阶段撞完掉头再冲一次
+func _charge() -> void:
+	var times := 2 if phase == 3 else 1
+	for n in times:
+		if dead:
+			return
+		var p := _lead()
+		var dir := signf((p.global_position.x if p else arena.get_center().x) - position.x)
+		if n == 1:
+			dir = -signf(position.x - arena.get_center().x)
+		if dir == 0.0:
+			dir = -1.0
+		_mode = "crouch"
+		_rumble = 0.9
+		_warn_at(Vector2(0, -66), 0.9)
+		Game.sfx("static", -6.0, 0.6)
+		var tw := create_tween()
+		tw.tween_property(self, "_crouch", 5.0, 0.3)
+		await _wait(0.9)
+		if dead:
+			return
+		_mode = "dash"
+		_contact_damage = SLAM_DAMAGE
+		Game.sfx("scrape", -4.0, 1.3)
+		var end_x := _x_max() if dir > 0.0 else _x_min()
+		var dust_t := 0.0
+		while absf(position.x - end_x) > 0.5 and not dead:
+			await get_tree().physics_frame
+			var d := get_physics_process_delta_time()
+			position.x = move_toward(position.x, end_x, DASH_SPEED[phase - 1] * d)
+			_gait += DASH_SPEED[phase - 1] * d * 0.5
+			_crouch = move_toward(_crouch, 2.0, d * 20.0)
+			dust_t -= d
+			if dust_t <= 0.0:
+				dust_t = 0.07
+				Game.dust(get_parent(), Vector2(position.x - dir * 30.0, floor_y), 1, -dir)
+		_contact_damage = CONTACT_DAMAGE
+		if dead:
+			return
+		# 撞墙：一声闷响，屏幕跳成雪花，旋钮乱转，晕一下
+		_mode = "stun"
+		_crouch = 0.0
+		screen_mode = "snow"
+		_knob[0] += 3.0
+		_knob[1] += 2.0
+		Game.sfx("boom", -2.0, 0.9)
+		Game.sfx("clang", -6.0, 0.7)
+		Game.add_shake(8.0)
+		Game.hitstop(0.06)
+		Game.sparks(get_parent(), Vector2(position.x + dir * 40.0, floor_y - 30.0), Color(1.0, 0.85, 0.6), 12, 100.0, Vector2(-dir, -0.5))
+		await _wait([1.3, 1.1, 0.8][phase - 1])
+		if not dead:
+			_mode = "stand"
+			screen_mode = "rage"
+
+
+## 跳砸：地上先标落点，蹲一下，跳到人头上砸下来；落地往两边沿地面炸出声波
+func _hop() -> void:
+	var hops: int = 2 if phase == 2 else 3
+	for n in hops:
+		if dead:
+			return
+		var p := _lead()
+		var to_x := clampf(p.global_position.x if p else arena.get_center().x, _x_min(), _x_max())
+		_shadow_x = to_x
+		_shadow_t = 0.75
+		_mode = "crouch"
+		var tw := create_tween()
+		tw.tween_property(self, "_crouch", 6.0, 0.3)
+		await _wait(0.4)
+		if dead:
+			return
+		_mode = "air"
+		_crouch = -2.0
+		_contact_damage = SLAM_DAMAGE
+		Game.sfx("jump", -2.0, 0.6)
+		var from_x := position.x
+		var dur := 0.7
+		var t := 0.0
+		while t < dur and not dead:
+			await get_tree().physics_frame
+			t = minf(t + get_physics_process_delta_time(), dur)
+			var k := t / dur
+			position.x = lerpf(from_x, to_x, k)
+			position.y = floor_y - sin(k * PI) * 70.0
+		if dead:
+			position.y = floor_y
+			return
+		position.y = floor_y
+		_mode = "stand"
+		_crouch = 7.0
+		create_tween().tween_property(self, "_crouch", 0.0, 0.3)
+		Game.sfx("boom", -2.0, 1.1)
+		Game.add_shake(6.0)
+		Game.dust(get_parent(), Vector2(position.x, floor_y), 8)
+		for dir in [-1.0, 1.0]:
+			var b := BossBullet.spawn(bullet_parent, BossBullet.Kind.WAVE,
+				Vector2(position.x + dir * 36.0, floor_y - 5.0), Vector2(dir * 100.0, 0))
+			b.arena = arena
+		await _wait(0.2)
+		_contact_damage = CONTACT_DAMAGE
+		await _wait(0.35)
 
 
 ## 换台：旋钮转一下、"咔"、一小截雪花、左上角出 CH 几
@@ -340,12 +541,12 @@ func _snow() -> void:
 	for w in waves:
 		if dead:
 			return
-		# 两条缝都开在人能站的那半边（电视左边），电视上方不落雪
+		# 满屋落雪，留两条缝（电视会跑，所以缝开在哪都可能）
 		var zone := _play_zone()
-		var gaps := [randf_range(zone.x + 16, zone.y - 76), 0.0]
-		gaps[1] = minf(gaps[0] + randf_range(50, 80), zone.y - 14)
+		var gaps := [randf_range(zone.x + 16, zone.y - 110), 0.0]
+		gaps[1] = minf(gaps[0] + randf_range(60, 110), zone.y - 14)
 		var cols: Array[float] = []
-		for x in range(int(zone.x) + 4, int(zone.y) + 8, 10):
+		for x in range(int(zone.x) + 4, int(zone.y) + 4, 12):
 			if absf(x - gaps[0]) < 16 or absf(x - gaps[1]) < 16:
 				continue
 			cols.append(float(x))
@@ -355,7 +556,7 @@ func _snow() -> void:
 		hint.life = 0.7
 		bullet_parent.add_child(hint)
 		await _wait(0.7)
-		for row in 9:
+		for row in 8:
 			if dead:
 				return
 			for x in cols:
@@ -366,9 +567,9 @@ func _snow() -> void:
 		await _wait(0.4)
 
 
-## 人能站的那一段地面 (左, 右)：墙到电视左边
+## 雪花和彩条铺满的那一段 (左, 右)：墙到墙
 func _play_zone() -> Vector2:
-	return Vector2(arena.position.x + 8.0, global_position.x - 62.0)
+	return Vector2(arena.position.x + 8.0, arena.end.x - 8.0)
 
 
 ## 彩条台：七根彩条对应场地里七根柱子，先挑几根闪着预告，再变成光柱
@@ -397,7 +598,7 @@ func _bars() -> void:
 
 ## 测试卡：从屏幕中心射出一圈圈扫描线；三阶段变成两条转着射的螺旋
 func _test() -> void:
-	var center := global_position + SCREEN.get_center()
+	var center := global_position + _parts.position + SCREEN.get_center()
 	if phase == 3:
 		var a := randf() * TAU
 		for i in 40:
@@ -447,7 +648,7 @@ func _storm() -> void:
 		var p := _lead()
 		var target := p.global_position if p else Vector2(arena.get_center().x, floor_y)
 		target.x += randf_range(-14, 14)
-		var tip: Vector2 = global_position + TIPS[i % 2]
+		var tip: Vector2 = global_position + _parts.position + TIPS[i % 2]
 		var bolt := Bolt.new()
 		bolt.from = tip
 		bolt.to = target
@@ -482,7 +683,15 @@ func _die() -> void:
 	dead = true
 	active = false
 	_warn_t = 0.0
+	_shadow_t = 0.0
+	_rumble = 0.0
+	_contact_damage = CONTACT_DAMAGE
 	remove_from_group("enemy")
+	# 腿一软，整台跪在地上（空中死的先掉下来）
+	_mode = "dead"
+	var fall := create_tween().set_parallel(true)
+	fall.tween_property(self, "position:y", floor_y, 0.2)
+	fall.tween_property(self, "_crouch", 8.0, 0.4).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
 	for b in get_tree().get_nodes_in_group("boss_bullet"):
 		b.queue_free()
 	defeated.emit()
@@ -508,6 +717,37 @@ func _die() -> void:
 
 
 # —— 画 ——
+
+## 四条细木腿：胯在机壳底下，走路时对角两条一起迈；蹲下时膝盖往外撇；空中往下耷拉
+func _draw_legs() -> void:
+	var moving := _mode in ["walk", "dash"]
+	for i in 4:
+		var hx: float = LEGS_X[i]
+		var out := signf(hx)
+		var hip := Vector2(hx, HIP_Y + roundf(_crouch))
+		var foot := Vector2(hx + out * 2.0, 0.0)
+		match _mode:
+			"air":
+				foot = Vector2(hx + out * 4.0, hip.y + 9.0)
+			"dead":
+				foot = Vector2(hx + out * 7.0, 0.0)
+			_:
+				var ph := _gait + (0.0 if i % 3 == 0 else PI)
+				if moving:
+					foot.x += roundf(sin(ph) * 3.0)
+					foot.y -= roundf(maxf(cos(ph), 0.0) * 2.0)
+				foot.x += roundf(out * maxf(_crouch, 0.0) * 0.5)
+		var knee := (hip + foot) / 2.0 + Vector2(out * maxf(_crouch, 0.0) * 0.7, 0.0)
+		for seg in [[hip, knee], [knee, foot]]:
+			var a: Vector2 = seg[0]
+			var b: Vector2 = seg[1]
+			var n := maxi(int(a.distance_to(b)), 1)
+			for k in n + 1:
+				var q := a.lerp(b, float(k) / n).round()
+				_legs.draw_rect(Rect2(q + Vector2(-1, 0), Vector2(2, 1)), Color8(134, 77, 31))
+				_legs.draw_rect(Rect2(q + Vector2(-1, 0), Vector2(1, 1)), Color8(187, 117, 49))
+		_legs.draw_rect(Rect2(foot.round() + Vector2(-2, -1), Vector2(4, 1)), Color8(79, 42, 20))
+
 
 func _draw_deco() -> void:
 	var r := SCREEN
@@ -552,6 +792,13 @@ func _draw_screen(r: Rect2, lit: float) -> void:
 		_deco.draw_rect(sr, Color(0.95, 0.97, 1.0) * lit)
 		return
 	match screen_mode:
+		"rage":
+			# 红色雪花：要冲撞 / 跳砸了
+			_deco.draw_rect(r, Color(0.25, 0.04, 0.03) * lit)
+			for i in 200:
+				var p := r.position + Vector2(randi() % int(r.size.x), randi() % int(r.size.y))
+				var v := randf_range(0.4, 1.0) * lit
+				_deco.draw_rect(Rect2(p, Vector2(1 + randi() % 2, 1)), Color(v, v * 0.25, v * 0.2))
 		"snow", "storm":
 			_deco.draw_rect(r, Color(0.12, 0.12, 0.14))
 			for i in 260:
@@ -614,6 +861,13 @@ func _draw_osd(at: Vector2, text: String) -> void:
 
 
 func _draw_warn() -> void:
+	if _shadow_t > 0.0 and int(_shadow_t * 16.0) % 2 == 0:
+		# 跳砸落点：地上一道闪烁的红影，宽度就是机壳的宽度
+		var x0 := _shadow_x - global_position.x - 38.0
+		var y := floor_y - global_position.y
+		_warn.draw_rect(Rect2(x0, y - 2, 76, 2), Color(1.0, 0.25, 0.2, 0.85))
+		for k in range(0, 76, 6):
+			_warn.draw_rect(Rect2(x0 + k + 2, y - 5, 2, 2), Color(1.0, 0.3, 0.25, 0.6))
 	if _warn_t <= 0.0 or int(_warn_t * 14.0) % 2 == 0:
 		return
 	var p := _warn_pos.round()

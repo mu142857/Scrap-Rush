@@ -27,20 +27,27 @@ const SCENE_LAYERS := [
 ## 胶片自己发光，不吃场景压暗
 const FILM_TEX := preload("res://art/levels/level2_film.png")
 
-## 每场遭遇战的波次（和 D.ARENAS 一一对应）。第二关先复用第一关的怪（策划案第九节）
+## 每场遭遇战的波次（和 D.ARENAS 一一对应）。第二关"声音"有自己的一套怪（10-17 作者定）：
+## 小怪：电线蛇 wire_snake、保险丝甲虫 fuse、手摇电话 phone、拾荒者 scavenger、幻灯机 slide、胶片盘 reel；
+## 精英：总机台 switchboard（交换局）、留声机 gramophone（继电器机房、乐池）、放映机 projector（天桥换卷）。
+## 留一点第一关的扑灯蛾，配合放灯的玩法。
 const WAVES := [
-	[["crawler", "crawler"], ["moth", "flea"], ["cuckoo", "crawler"]],
-	[["shaver", "crawler", "flea"], ["moth", "moth", "flea"], ["register", "shaver", "moth"]],
-	[["crawler", "shaver", "crawler"], ["flea", "flea", "moth"], ["sewing", "shaver", "flea"]],
-	[["moth", "moth", "flea"], ["shaver", "shaver", "crawler"], ["flea", "flea", "moth", "moth"], ["piano", "flea"]],
+	# E1 接线员大厅：先认识电线蛇、保险丝甲虫、手摇电话
+	[["wire_snake", "fuse"], ["phone", "fuse", "fuse"], ["switchboard", "wire_snake"]],
+	# E2 继电器机房：拾荒者第一次出来偷灯，最后留声机
+	[["scavenger", "fuse"], ["wire_snake", "wire_snake", "phone"], ["slide", "fuse", "moth"], ["gramophone", "fuse"]],
+	# E3 电话簿仓库：总机台再来一次，带幻灯机
+	[["fuse", "fuse", "scavenger"], ["phone", "slide", "wire_snake"], ["switchboard", "slide"]],
+	# E4 放映厅乐池：最后一场，留声机
+	[["slide", "slide", "moth"], ["reel", "reel", "scavenger"], ["phone", "fuse", "fuse", "slide"], ["gramophone", "reel"]],
 ]
-## 天桥上两个换卷点的精英怪战
+## 天桥上两个换卷点的精英怪战：都是放映机，第二场小怪更多
 const REEL_WAVES := [
-	[["moth", "flea"], ["crawler", "shaver", "moth"], ["vacuum", "flea"]],
-	[["flea", "flea", "moth"], ["shaver", "shaver", "crawler"], ["roller"]],
+	[["reel", "reel"], ["slide", "reel", "moth"], ["projector"]],
+	[["reel", "reel", "slide"], ["scavenger", "reel", "slide"], ["projector", "reel"]],
 ]
-## 天桥上一直从画框里走出来的小怪
-const WANDERERS := ["crawler", "moth", "flea", "shaver", "crawler"]
+## 天桥上一直从画框里走出来的小怪：胶片天桥上主要是胶片盘
+const WANDERERS := ["reel", "reel", "moth", "slide", "scavenger", "fuse"]
 const WANDER_GAP := 2.4
 const WANDER_MAX := 4
 

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cjokwm7p5l6oy"
-path="res://.godot/imported/operator_body.png-71250f5d383a52d0cedf9cd5148ad530.ctex"
+uid="uid://cti3w375srs"
+path="res://.godot/imported/operator_head.png-91f84a78e812e4f25fedff3f330f9dd0.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/boss/operator_body.png"
-dest_files=["res://.godot/imported/operator_body.png-71250f5d383a52d0cedf9cd5148ad530.ctex"]
+source_file="res://art/boss/operator_head.png"
+dest_files=["res://.godot/imported/operator_head.png-91f84a78e812e4f25fedff3f330f9dd0.ctex"]
 
 [params]
 

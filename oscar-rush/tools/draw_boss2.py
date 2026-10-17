@@ -4,13 +4,14 @@
 
 Boss：一台成了精的巨型电话交换台。照怪物的统一画法（暗色机身、红色指示灯当眼睛、几条腿），
 颜色用第二关的暗红 + 黄铜 + 中性灰（从 level2_back/props 取的色）。朝左，地面是画布最后一行。
-会动的部分由游戏代码画：脸上的转盘拨号盘、头顶两只铃铛、转盘中间的红灯、插孔上方的信号小灯。
+会动的部分由游戏代码画：脸上的转盘拨号盘、头顶两只铃铛、转盘中间的红灯、插孔上方的信号小灯、天车缆绳。
+开打后上半截（head）离开桌子（desk），吊在天花板的天车轨道上满屋追人、往下砸；桌子留在原地当平台。
 
 房间：背景取第二关交换台大厅（level2 的 far/mid/back/props 四层，x=300 起），压暗；
-前景：三块铜板拼的地面（"占线"时会轮流通电）、黄铜栏杆的吊平台、黄铜格栅闸门。
+前景：三块铜板拼的地面（"占线"时会轮流通电）、两张立在地上的矮长凳、天花板的天车轨道、黄铜格栅闸门。
 竞技场 320×180，画布四边多 16 像素给震屏（352×212），坐标和 boss2_room.gd 对上。
 
-输出 art/boss/：operator_body.png、room2_bg.png、room2_fg.png、gate2.png、preview_operator.png
+输出 art/boss/：operator_head.png（会飞的上半截）、operator_desk.png（留在房间里的桌子）、room2_bg.png、room2_fg.png、gate2.png、preview_operator.png
 """
 from pathlib import Path
 
@@ -38,6 +39,7 @@ BELLS = [(23, 9), (73, 9)]  # 两只铃铛的中心（代码画）
 LED = (48, 40)              # 红灯 = 转盘中心
 HORN = (6, 52)              # 送话器喇叭口（声波从这里出）
 JACKS = (20, 24, 76, 60)    # 插孔板（插线从这里甩出去）
+HOOKS = (30, 66)            # 拱顶上两个吊环（缆绳挂这里，代码画缆绳）
 
 
 class G:
@@ -88,7 +90,8 @@ class G:
         return out
 
 
-def body():
+def desk():
+    """留在房间里的桌子：四条腿、下柜、插头架（台面就是一块平台，顶面是画布第 64 行）"""
     g = G(W, H)
     # 四条黄铜家具腿：上粗下细，脚是个小圆球
     for x in (22, 36, 60, 74):
@@ -101,7 +104,7 @@ def body():
     for dx0, dx1 in ((18, 46), (50, 78)):
         g.box(dx0, 74, dx1, 99, "R1", "R3", "R3", "R0", "R0")
         g.rect((dx0 + dx1) // 2 - 1, 86, (dx0 + dx1) // 2 + 1, 87, "B4")
-    # 插头架：往左探出去的台面，黄铜包边，上面一排竖着的插头
+    # 插头架：往左探出去的台面，黄铜包边，上面一排竖着的插头（总机飞起来以后插头留在桌上）
     g.rect(6, 64, 86, 69, "R3")
     g.rect(6, 64, 86, 64, "B5")
     g.rect(6, 69, 86, 69, "R0")
@@ -109,7 +112,13 @@ def body():
         g.rect(x, 59, x, 63, "G5")
         g.put(x, 59, "G6")
         g.put(x, 63, "B2")
-    # 上面的插孔板：暗红底，一排排黄铜小孔，两道铜铭牌
+    return g
+
+
+def head():
+    """会飞的那半截：插孔板、拱顶、转盘槽、铃铛架、送话器。吊在天车的两根缆绳上"""
+    g = G(W, H)
+    # 插孔板：暗红底，一排排黄铜小孔，两道铜铭牌
     jx0, jy0, jx1, jy1 = JACKS
     g.box(jx0 - 2, jy0 - 4, jx1 + 2, jy1 + 3, "R1", "R4", "R3", "R0", "R0")
     for y in range(jy0, jy1, 4):
@@ -121,11 +130,16 @@ def body():
     # 插线：一根根从孔里垂下来，又插回别的孔
     for x0, x1, y, d in [(21, 37, 28, 9), (33, 61, 36, 12), (57, 73, 26, 8), (25, 45, 48, 7), (53, 75, 50, 6)]:
         g.sag(x0, x1, y, d, "B6", "B1")
-    # 拱顶：木头弧形顶，铜包边
+    # 底边一道铜包边（飞起来以后看得到底）
+    g.rect(jx0 - 2, jy1 + 3, jx1 + 2, jy1 + 3, "B1")
+    # 拱顶：木头弧形顶，铜包边；两角各一个吊环（缆绳挂在这里）
     for y in range(10, 20):
         inset = max(0, 6 - (y - 10))
         g.rect(18 + inset, y, 78 - inset, y, "R3" if y > 11 else "R5")
     g.rect(20, 19, 76, 19, "B3")
+    for hx in HOOKS:
+        g.rect(hx - 1, 7, hx + 1, 9, "B2")
+        g.put(hx, 8, "G0")
     # 转盘的凹槽（转盘本身代码画）
     cx, cy, r = DIAL
     g.disk(cx, cy, r + 2, "R0")
@@ -149,7 +163,9 @@ M = 16
 AW, AH = 320, 180
 CW, CH = AW + 2 * M, AH + 2 * M
 FLOOR_Y, WALL, CEIL = 164, 8, 12
-PLATFORMS = [(26, 82, 126), (112, 168, 100), (36, 92, 74)]
+PLATFORMS = [(20, 70, 130), (108, 164, 124)]   # 两张话务员长凳（立在地上，不吊；上半空是 Boss 的天车道）
+DESK_X = 262                                     # 桌子（总机飞走以后留下的那半截）中心，台面也是平台
+SCONCES = [(WALL + 1, 58), (320 - WALL - 2, 58)]  # 两边墙上的壁灯（光由代码给）
 PLATES = [(8, 80), (80, 152), (152, 224)]        # 玩家这边的三块铜地板（会通电）
 BULBS = [60, 140, 220]                           # 天花板吊灯（代码不画，画在前景里，光由代码给）
 CROP = (300, 0)
@@ -208,25 +224,33 @@ def foreground():
         rect(img, edge, 0, edge, fy - 1, "B3")
         for ry in range(10, fy, 12):
             px(img, (edge - 3) if x0 == 0 else (edge + 3), ry, "B5")
-    # 天花板：一根黑梁，吊下三盏灯泡
+    # 天花板：一根黑梁，下面挂一条工字钢天车轨道（总机的滑车在上面跑，代码画）
     cy = CEIL + M
     rect(img, 0, 0, CW - 1, cy, "G2")
     rect(img, 0, cy, CW - 1, cy, "B3")
-    for bx in BULBS:
-        X = bx + M
-        rect(img, X, cy + 1, X, cy + 9, "G3")
-        rect(img, X - 2, cy + 10, X + 2, cy + 11, "B2")
-    # 吊平台：两根铜杆吊着，铜栏杆 + 暗红木板
+    rect(img, M + WALL, cy + 1, CW - M - WALL - 1, cy + 4, "G3")
+    rect(img, M + WALL, cy + 1, CW - M - WALL - 1, cy + 1, "G5")
+    rect(img, M + WALL, cy + 4, CW - M - WALL - 1, cy + 4, "G1")
+    for rx in range(M + WALL + 4, CW - M - WALL, 16):
+        px(img, rx, cy + 2, "G6")
+        rect(img, rx, cy - 3, rx, cy, "G4")
+    # 壁灯：铜底座 + 一个小灯罩
+    for sx, sy in SCONCES:
+        X, Y = sx + M, sy + M
+        rect(img, X - 1, Y, X + 1, Y + 4, "B2")
+        rect(img, X - 2, Y - 2, X + 2, Y - 1, "B5")
+    # 话务员长凳：暗红木板面 + 铜包边，两条铜腿立在地上，中间一根横撑
     for x0, x1, top in PLATFORMS:
         X0, X1, T = x0 + M, x1 + M, top + M
         for rx in (X0 + 3, X1 - 3):
-            rect(img, rx, cy + 1, rx, T - 1, "B1")
+            rect(img, rx - 1, T + 4, rx, fy - 1, "B1")
+            rect(img, rx - 1, T + 4, rx - 1, fy - 1, "B3")
+        rect(img, X0 + 3, (T + fy) // 2, X1 - 3, (T + fy) // 2, "B0")
         rect(img, X0, T, X1, T, "B6")
         rect(img, X0, T + 1, X1, T + 3, "R3")
         rect(img, X0, T + 4, X1, T + 4, "R0")
         for rx in range(X0 + 2, X1, 6):
             px(img, rx, T + 2, "B4")
-        rect(img, X0 + 2, T + 5, X1 - 2, T + 5, "G0")
     return img
 
 
@@ -242,8 +266,10 @@ def gate():
 
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
-    b = body().rgba()
-    Image.fromarray(b).save(OUT / "operator_body.png")
+    hd, dk = head().rgba(), desk().rgba()
+    Image.fromarray(hd).save(OUT / "operator_head.png")
+    Image.fromarray(dk).save(OUT / "operator_desk.png")
+    b = np.where(hd[..., 3:4] > 0, hd, dk)
     bg, fg, gt = background(), foreground(), gate()
     Image.fromarray(bg).save(OUT / "room2_bg.png")
     Image.fromarray(fg).save(OUT / "room2_fg.png")
@@ -254,7 +280,7 @@ def main():
     hero = Image.open(ROOT / "art/chars/red_body.png").convert("RGBA").crop((0, 0, 16, 20))
     prev.alpha_composite(hero, (40 + M - 8, FLOOR_Y + M - 20))
     prev.resize((CW * 3, CH * 3), Image.NEAREST).save(OUT / "preview_operator.png")
-    print("wrote operator_body.png room2_bg.png room2_fg.png gate2.png preview_operator.png")
+    print("wrote operator_head.png operator_desk.png room2_bg.png room2_fg.png gate2.png preview_operator.png")
 
 
 if __name__ == "__main__":

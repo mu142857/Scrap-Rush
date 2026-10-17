@@ -232,8 +232,9 @@ func _pose(p: int) -> void:
 
 ## 镜片的世界坐标
 func _lens() -> Vector2:
-	return global_position.round() + Vector2(LENS.x * _attack_dir if state != State.IDLE and state != State.WALK
-			else LENS.x * dir, LENS.y)
+	# 原图朝左：朝左时镜头在左边（LENS.x 是负的），朝右时镜像过去
+	var d := _attack_dir if state != State.IDLE and state != State.WALK else dir
+	return global_position.round() + Vector2(LENS.x * -d, LENS.y)
 
 
 ## 光斑那一块烫：主角、放在地上的马灯碰到就伤
@@ -391,11 +392,11 @@ func _draw_cone(lens: Vector2, spot: float, a: float) -> void:
 	var x0 := lens.x
 	var flick := 0.9 + 0.1 * sin(_time * 40.0)
 	a *= flick
-	# 外层淡、内层亮：镜头口 5 格高，落到地上 22 格宽（内层 12 格）
-	_cone(Vector2(x0, lens.y - 2.0), Vector2(x0, lens.y + 3.0),
-			Vector2(spot + s * (HOT_HALF + 2.0), _floor), Vector2(spot - s * (HOT_HALF + 2.0), _floor), Color(BEAM_COLOR, 0.16 * a))
+	# 外层淡、内层亮：外层镜头口 7 格高，落到地上 30 格宽；内层 3 格高、12 格宽
+	_cone(Vector2(x0, lens.y - 3.0), Vector2(x0, lens.y + 4.0),
+			Vector2(spot + s * (HOT_HALF + 6.0), _floor), Vector2(spot - s * (HOT_HALF + 6.0), _floor), Color(BEAM_COLOR, 0.14 * a))
 	_cone(Vector2(x0, lens.y - 1.0), Vector2(x0, lens.y + 2.0),
-			Vector2(spot + s * (HOT_HALF - 3.0), _floor), Vector2(spot - s * (HOT_HALF - 3.0), _floor), Color(BEAM_COLOR, 0.2 * a))
+			Vector2(spot + s * (HOT_HALF - 3.0), _floor), Vector2(spot - s * (HOT_HALF - 3.0), _floor), Color(BEAM_COLOR, 0.26 * a))
 	# 烫人的那一块：光柱贴地的最后一段亮一档
 	var hot := Rect2(roundf(spot - HOT_HALF), _floor - HOT_H, HOT_HALF * 2.0, HOT_H)
 	_beam.draw_rect(hot, Color(1.0, 0.85, 0.6, 0.16 * a))

@@ -2,12 +2,12 @@
 
     python3 tools/draw_boss3.py
 
-Boss：一台巨大的木壳老电视，照第三关的画法（Oscar 的光照色块：每个面按左上的光切成一档档，
+Boss：一台长了四条细木腿、会满地乱跑的木壳老电视（腿由游戏代码画），照第三关的画法（Oscar 的光照色块：每个面按左上的光切成一档档，
 暖棕木头 + 灰塑料，颜色取自 l3_* 图层）。朝左（屏幕正对玩家），地面是画布最后一行。
 屏幕里的频道内容、两个旋钮、电源红灯、天线尖上的电火花由游戏代码画。
 
 房间：背景是第三关电视墙的一角，整面压暗、褪色（屏幕全关了，只有 Boss 一台亮着）；
-前景：木地板 + 中间一块旧地毯（家的感觉）、三台用电线吊着的旧电视当平台、木头闸门。
+前景：木地板 + 中间一块旧地毯（家的感觉）、两边墙上的低搁板、三台用电线吊着的旧电视当平台、木头闸门。
 结局：从第三关终点那块"家乡"屏幕切出来的画面 hometown.png（444×245）。
 
 输出 art/boss/：tv_body.png、room3_bg.png、room3_fg.png、gate3.png、hometown.png、preview_tv.png
@@ -30,12 +30,13 @@ PAL = {
     "C0": (70, 24, 22), "C1": (98, 36, 30), "C2": (128, 52, 38), "C3": (170, 120, 70),
 }
 
-W, H = 128, 120
-GROUND = H - 1
-SCREEN = (20, 42, 88, 92)        # 屏幕玻璃（代码画内容）
-KNOBS = [(105, 50), (105, 63)]    # 两个旋钮（代码画）
-LED = (104, 99)                  # 电源红灯（代码画）
-ANTENNA_TIPS = [(36, 4), (93, 2)]
+W, H = 88, 79
+GROUND = H - 1                   # 腿由代码画（会走、会蹲、会跳），画布底下 12 行留给腿
+CASE = (4, 22, 84, 66)           # 木壳
+SCREEN = (12, 30, 58, 60)        # 屏幕玻璃（代码画内容）
+KNOBS = [(72, 36), (72, 46)]     # 两个旋钮（代码画）
+LED = (71, 62)                   # 电源红灯（代码画）
+ANTENNA_TIPS = [(24, 3), (66, 1)]
 
 
 class G:
@@ -93,49 +94,46 @@ class G:
 
 def body():
     g = G(W, H)
-    # 四条往外撇的木头小腿
-    for x, lean in [(18, -3), (34, -1), (94, 1), (110, 3)]:
-        for y in range(104, GROUND + 1):
-            k = (y - 104) / (GROUND - 104)
-            xx = round(x + lean * k)
-            g.rect(xx - 1, y, xx + 1, y, "W4" if lean < 0 else "W2")
-            g.put(xx - 1, y, "W6")
-        g.rect(round(x + lean) - 2, GROUND, round(x + lean) + 2, GROUND, "W2")
+    x0, y0, x1, y1 = CASE
     # 机壳：正面一大块，左上亮右下暗；顶面一条更亮（看得到一点顶）
-    g.rect(8, 34, 120, 104, "W4")
-    g.rect(8, 30, 120, 33, "W8")
-    g.rect(8, 30, 120, 30, "W9")
-    g.rect(118, 34, 120, 104, "W2")        # 右侧面暗
-    g.rect(8, 103, 120, 104, "W1")         # 底边阴影
-    g.rect(8, 34, 9, 102, "W6")            # 左边亮棱
+    g.rect(x0, y0 + 4, x1, y1, "W4")
+    g.rect(x0, y0, x1, y0 + 3, "W8")
+    g.rect(x0, y0, x1, y0, "W9")
+    g.rect(x1 - 2, y0 + 4, x1, y1, "W2")        # 右侧面暗
+    g.rect(x0, y1 - 1, x1, y1, "W1")            # 底边阴影
+    g.rect(x0, y0 + 4, x0 + 1, y1 - 2, "W6")    # 左边亮棱
     # 正面按光照切几块（色块派：亮面一档、暗面一档）
-    g.poly([(10, 34), (40, 34), (14, 70), (10, 70)], "W5")
-    g.poly([(70, 104), (117, 60), (117, 104)], "W3")
-    g.poly([(40, 104), (60, 96), (117, 96), (117, 104)], "W2")
+    g.poly([(x0 + 2, y0 + 4), (x0 + 22, y0 + 4), (x0 + 5, y0 + 26), (x0 + 2, y0 + 26)], "W5")
+    g.poly([(x0 + 42, y1), (x1 - 3, y0 + 18), (x1 - 3, y1)], "W3")
+    g.poly([(x0 + 24, y1), (x0 + 38, y1 - 5), (x1 - 3, y1 - 5), (x1 - 3, y1)], "W2")
+    # 底下四个腿座（腿本身代码画）
+    for lx in (14, 30, 58, 74):
+        g.rect(lx - 2, y1 + 1, lx + 2, y1 + 2, "W2")
+        g.put(lx - 2, y1 + 1, "W6")
     # 屏幕框：深灰塑料圆角框，玻璃那块代码画
     sx0, sy0, sx1, sy1 = SCREEN
-    g.rect(sx0 - 4, sy0 - 4, sx1 + 4, sy1 + 4, "P1")
-    g.rect(sx0 - 4, sy0 - 4, sx1 + 4, sy0 - 4, "P2")
-    g.rect(sx0 - 4, sy0 - 4, sx0 - 4, sy1 + 4, "P2")
-    for cx, cy in [(sx0 - 4, sy0 - 4), (sx1 + 4, sy0 - 4), (sx0 - 4, sy1 + 4), (sx1 + 4, sy1 + 4)]:
+    g.rect(sx0 - 3, sy0 - 3, sx1 + 3, sy1 + 3, "P1")
+    g.rect(sx0 - 3, sy0 - 3, sx1 + 3, sy0 - 3, "P2")
+    g.rect(sx0 - 3, sy0 - 3, sx0 - 3, sy1 + 3, "P2")
+    for cx, cy in [(sx0 - 3, sy0 - 3), (sx1 + 3, sy0 - 3), (sx0 - 3, sy1 + 3), (sx1 + 3, sy1 + 3)]:
         g.put(cx, cy, None)
     g.rect(sx0, sy0, sx1, sy1, "P0")
     # 右边的控制面板：灰塑料，两个旋钮的底座、喇叭格栅
-    g.rect(95, 40, 115, 96, "P2")
-    g.rect(95, 40, 115, 40, "P3")
-    g.rect(95, 40, 95, 96, "P3")
-    g.rect(115, 40, 115, 96, "P1")
+    g.rect(64, 28, 80, 62, "P2")
+    g.rect(64, 28, 80, 28, "P3")
+    g.rect(64, 28, 64, 62, "P3")
+    g.rect(80, 28, 80, 62, "P1")
     for kx, ky in KNOBS:
-        g.rect(kx - 5, ky - 5, kx + 5, ky + 5, "P1")
-    for y in range(74, 94, 2):
-        g.rect(98, y, 112, y, "P1")
-    g.rect(101, 97, 107, 101, "W2")       # 电源灯底座
+        g.rect(kx - 4, ky - 4, kx + 4, ky + 4, "P1")
+    for y in range(52, 59, 2):
+        g.rect(67, y, 77, y, "P1")
+    g.rect(69, 60, 73, 63, "W2")          # 电源灯底座
     # 兔耳天线：底座 + 两根细杆
-    g.rect(58, 26, 70, 29, "P2")
-    g.rect(58, 26, 70, 26, "P3")
+    g.rect(38, 18, 50, 21, "P2")
+    g.rect(38, 18, 50, 18, "P3")
     for tx, ty in ANTENNA_TIPS:
-        g.line(64, 26, tx, ty, "P3")
-        g.line(65, 26, tx + 1, ty, "P1")
+        g.line(44, 18, tx, ty, "P3")
+        g.line(45, 18, tx + 1, ty, "P1")
         g.rect(tx - 1, ty - 1, tx + 1, ty + 1, "P4")
     return g
 
@@ -145,7 +143,11 @@ M = 16
 AW, AH = 320, 180
 CW, CH = AW + 2 * M, AH + 2 * M
 FLOOR_Y, WALL, CEIL = 164, 8, 12
-PLATFORMS = [(22, 74, 124), (106, 158, 98), (34, 86, 70)]
+# 老电视会在地上来回冲撞、跳砸，所以场地是"往上躲"：
+#   两边墙上一块低搁板（踏脚用，挡不住冲撞）→ 两台吊着的旧电视（高过老电视的壳，冲撞时躲这里）→ 正中最高一台
+SHELVES = [(8, 52, 130), (268, 312, 130)]
+HANGING = [(36, 92, 94), (228, 284, 94), (134, 186, 62)]
+PLATFORMS = SHELVES + HANGING
 CROP = (2600, 420)
 
 
@@ -211,8 +213,25 @@ def foreground():
     cy = CEIL + M
     rect(img, 0, 0, CW - 1, cy, "P0")
     rect(img, 0, cy, CW - 1, cy, "P2")
+    # 墙上的搁板：一块木板，两个铁三角托架，上面摆几盒录像带
+    for xa, xb, top in SHELVES:
+        X0, X1, T = xa + M, xb + M, top + M
+        rect(img, X0, T, X1, T + 2, "W5")
+        rect(img, X0, T, X1, T, "W8")
+        rect(img, X0, T + 3, X1, T + 3, "W1")
+        wall_x = X0 if xa <= WALL else X1
+        inner = X1 - 6 if xa <= WALL else X0 + 6
+        for bx in (X0 + 10, X1 - 10):
+            for k in range(8):
+                px(img, bx, T + 4 + k, "P1")
+            for k in range(8):
+                xx = round(bx + (wall_x - bx) * k / 8)
+                px(img, xx, T + 4 + k, "P1")
+        for i, tx in enumerate(range(min(X0, X1) + 14, max(X0, X1) - 12, 5)):
+            rect(img, tx, T - 7, tx + 3, T - 1, "P1" if i % 2 else "P0")
+            rect(img, tx + 1, T - 5, tx + 2, T - 4, "C3" if i % 3 == 0 else "P3")
     # 吊着的旧电视当平台：两根电线吊着，顶面是平台，下面一个关着的小屏幕
-    for xa, xb, top in PLATFORMS:
+    for xa, xb, top in HANGING:
         X0, X1, T = xa + M, xb + M, top + M
         for rx in (X0 + 6, X1 - 6):
             rect(img, rx, cy + 1, rx, T - 1, "P1")
@@ -249,7 +268,7 @@ def main():
     base.crop((4503, 108, 4947, 353)).save(OUT / "hometown.png")
     prev = Image.fromarray(bg).convert("RGBA")
     prev.alpha_composite(Image.fromarray(fg))
-    prev.alpha_composite(Image.fromarray(tv), (256 + M - W // 2, FLOOR_Y + M - H + 1))
+    prev.alpha_composite(Image.fromarray(tv), (200 + M - W // 2, FLOOR_Y + M - H + 1))
     hero = Image.open(ROOT / "art/chars/red_body.png").convert("RGBA").crop((0, 0, 16, 20))
     prev.alpha_composite(hero, (40 + M - 8, FLOOR_Y + M - 20))
     prev.resize((CW * 3, CH * 3), Image.NEAREST).save(OUT / "preview_tv.png")

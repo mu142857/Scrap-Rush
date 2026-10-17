@@ -55,9 +55,9 @@ func _process(_delta: float) -> void:
 	_frame += 1
 	for p in get_tree().get_nodes_in_group("player"):
 		p.set("_invuln", 0.5)
-	var boss: Stoker = get_parent().get("boss")
+	var boss: Node2D = get_parent().get("boss")
 	if _frame % 60 == 0:
-		print("[boss] f=%d flash=%.2f hp=%.0f phase=%d active=%s mod=%s" % [_frame, boss.get("_flash"), boss.hp, boss.phase, boss.active, boss.get("_body").modulate])
+		print("[boss] f=%d hp=%.0f phase=%d active=%s pos=%s" % [_frame, boss.get("hp"), boss.get("phase"), boss.get("active"), boss.position.round()])
 	while _i < _steps.size() and _frame >= _steps[_i][0]:
 		var s: Array = _steps[_i]
 		_i += 1
@@ -69,9 +69,9 @@ func _process(_delta: float) -> void:
 			"shot":
 				_shot(s[2])
 			"phase":
-				boss.hurt(boss.hp - boss.max_hp * float(s[2]) + 1.0, Vector2.LEFT, true)
+				boss.call("hurt", float(boss.get("hp")) - float(boss.get("max_hp")) * float(s[2]) + 1.0, Vector2.LEFT, true)
 			"kill":
-				boss.hurt(boss.hp + 10.0, Vector2.LEFT, true)
+				boss.call("hurt", float(boss.get("hp")) + 10.0, Vector2.LEFT, true)
 			"quit":
 				get_tree().quit()
 

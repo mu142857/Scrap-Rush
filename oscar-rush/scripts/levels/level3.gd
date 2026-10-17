@@ -23,8 +23,8 @@ const TINT_LIGHT := {
 }
 ## 这几块屏幕不摆怪：玄关、家乡（出生点在第一块屏幕左边的走廊里，第一块屏幕照常摆）
 const NO_ENEMY := ["entry", "hometown"]
-## 洞口两边的矮墙只挡怪、不挡人（单独一层，只有屏幕里摆的怪会碰）：
-## 小怪来回走会掉进洞里，掉到别的屏幕，原来那块屏幕就空了（2026-10-17 作者说"有的屏幕没怪"）
+## 只挡怪、不挡人的墙（单独一层，只有屏幕里摆的怪会碰）：洞口两边各一堵矮墙，每块屏幕左右边上各一堵整面墙。
+## 小怪来回走会掉进洞里、或者从门口走到隔壁屏幕，原来那块屏幕就空了（2026-10-17 作者说"有的屏幕没怪"）
 const MOB_WALL_LAYER := 128
 const MOB_WALL_HEIGHT := 24.0
 ## 摆怪时离洞口至少这么远
@@ -232,27 +232,37 @@ func _place_enemies() -> void:
 			var kind: String = bag[k % bag.size()] if w >= SHOOTER_SCREEN else _not_shooter(bag, k)
 			var x: float = _off_hole(left + (right - left) * (k + 1) / (n + 1) + rng.randf_range(-8, 8), fy)
 			var e := _make_mob(kind, tint)
-			e.collision_mask |= MOB_WALL_LAYER
 			e.position = Vector2(x, fy - (30.0 if e is Moth else 0.0))
 			add_child(e)
+			# _ready 里会把 collision_mask 设成 1，所以加进场景以后再加上挡怪墙那一层
+			(e as CollisionObject2D).collision_mask |= MOB_WALL_LAYER
 			_screen_mobs.append({"node": e, "rect": Rect2(rect[0], rect[1], w, fy - rect[1] + 2)})
 	_wake_mobs()
 
 
-## 洞口两边各立一堵矮墙（只在洞所在的那层地面上），怪走过去会撞墙掉头
+## 洞口两边各立一堵矮墙（只在洞所在的那层地面上），每块屏幕左右边上各立一堵到天花板的墙，怪撞墙会掉头
 func _add_mob_walls() -> void:
 	for h in D.HOLES:
 		for x in [h[0] - 3.0, h[1]]:
-			var body := StaticBody2D.new()
-			body.collision_layer = MOB_WALL_LAYER
-			body.collision_mask = 0
-			var shape := CollisionShape2D.new()
-			var rect := RectangleShape2D.new()
-			rect.size = Vector2(3, MOB_WALL_HEIGHT)
-			shape.shape = rect
-			shape.position = Vector2(x + 1.5, h[2] - MOB_WALL_HEIGHT / 2.0)
-			body.add_child(shape)
-			add_child(body)
+			_mob_wall(Rect2(x, h[2] - MOB_WALL_HEIGHT, 3, MOB_WALL_HEIGHT))
+	for s in D.SCREENS:
+		var r: Array = s["rect"]
+		var fy: float = s["floor"]
+		for x in [r[0] - 3.0, r[2]]:
+			_mob_wall(Rect2(x, r[1], 3, fy - r[1]))
+
+
+func _mob_wall(r: Rect2) -> void:
+	var body := StaticBody2D.new()
+	body.collision_layer = MOB_WALL_LAYER
+	body.collision_mask = 0
+	var shape := CollisionShape2D.new()
+	var rect := RectangleShape2D.new()
+	rect.size = r.size
+	shape.shape = rect
+	shape.position = r.get_center()
+	body.add_child(shape)
+	add_child(body)
 
 
 ## 摆怪的 x 落在这层地面的洞上（或离洞口太近）就挪到洞外面离得近的那一边

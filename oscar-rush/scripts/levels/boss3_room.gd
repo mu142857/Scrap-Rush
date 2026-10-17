@@ -1,13 +1,15 @@
 extends BossArena
 ## 第三关 Boss 房「最深处」：最后一台老电视 THE SET。竞技场 320×180，镜头固定 1.5 倍。
-## 平台是三台吊着的小电视（画在 room3_fg 里），房间没有转灯，只靠电视屏幕的光。
+## 老电视长了腿满地跑、冲撞、跳砸，所以场地是"往上躲"：两边墙上一块低搁板（踏脚，挡不住冲撞）→
+## 两台吊着的旧电视（高过老电视的壳，冲撞时躲这里）→ 正中最高一台。画在 room3_fg 里。
+## 房间没有转灯，只靠电视屏幕的光。
 ## 打完不开门，直接进结局：
 ##   1. 电视关机以后安静一会儿，自己重新亮起，开始放录像（家乡）
 ##   2. 镜头推进屏幕，录像铺满全屏。雪花多少由剩下的水晶血量决定，旁白也分三档
 ##   3. 切到最后一个镜头：四个人在黑漆漆的废品场里，围着一台发光的电视坐着。THE END → 回标题
 ## 美术见 tools/draw_boss3.py。
 
-const BOSS_X := 248.0
+const BOSS_X := 240.0
 const ENDING_SHADER := """
 shader_type canvas_item;
 // 录像的雪花：noise 0~1 由水晶血量决定；fade 控制整体亮度
@@ -60,7 +62,7 @@ func _configure() -> void:
 	bg_tex = preload("res://art/boss/room3_bg.png")
 	fg_tex = preload("res://art/boss/room3_fg.png")
 	gate_tex = preload("res://art/boss/gate3.png")
-	platforms = [Vector3(22, 74, 124), Vector3(106, 158, 98), Vector3(34, 86, 70)]
+	platforms = [Vector3(8, 52, 130), Vector3(268, 312, 130), Vector3(36, 92, 94), Vector3(228, 284, 94), Vector3(134, 186, 62)]
 	# 没有转灯：这间屋只有电视屏幕在亮
 	lamps = []
 	darkness = Color(0.24, 0.24, 0.28)
@@ -208,8 +210,10 @@ func _final_shot(tv: TVBoss) -> void:
 			n.queue_free()
 	_dark.color = Color(0.07, 0.07, 0.09)
 	tv.screen_mode = "home"
+	# 黑场里把电视挪回房间右边，跪着放录像
+	tv.position = Vector2(262, floor_y)
 	# 四个人坐在电视前的地上，面朝电视（脸朝右），只露上半身
-	var seats := [Vector2(118, floor_y), Vector2(134, floor_y), Vector2(152, floor_y), Vector2(168, floor_y)]
+	var seats := [Vector2(150, floor_y), Vector2(166, floor_y), Vector2(184, floor_y), Vector2(200, floor_y)]
 	for i in Run.SKINS.size():
 		for part in ["body", "strip"]:
 			var sp := Sprite2D.new()
@@ -227,8 +231,8 @@ func _final_shot(tv: TVBoss) -> void:
 				unshaded.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
 				sp.material = unshaded
 			add_child(sp)
-	_cam.zoom = Vector2(2.2, 2.2)
-	_cam.position = Vector2(204, floor_y - 46)
+	_cam.zoom = Vector2(2.4, 2.4)
+	_cam.position = Vector2(216, floor_y - 40)
 
 
 func _lock_players() -> void:

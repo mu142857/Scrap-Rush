@@ -210,13 +210,13 @@ func _summon() -> void:
 
 
 func _alive_summons() -> int:
-	var n := 0
-	for e in _summons.duplicate():
-		if not is_instance_valid(e) or e.get("dead") == true:
-			_summons.erase(e)
-		else:
-			n += 1
-	return n
+	# 已经被释放的甲虫不能用 erase（类型数组会报错），整个重建
+	var alive: Array[Node2D] = []
+	for e in _summons:
+		if is_instance_valid(e) and e.get("dead") != true:
+			alive.append(e)
+	_summons = alive
+	return alive.size()
 
 
 func _in_wall(pos: Vector2) -> bool:

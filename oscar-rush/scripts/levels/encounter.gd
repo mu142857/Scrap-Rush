@@ -124,7 +124,8 @@ func _physics_process(delta: float) -> void:
 
 
 func _player_inside() -> bool:
-	var zone := Rect2(left + 24.0, ceil_y, right - left - 48.0, maxf(floor_left, floor_right) - ceil_y)
+	# 往地面下面多包 2 像素：脚底刚好踩在地面那一行（y == floor）时 has_point 不算在里面
+	var zone := Rect2(left + 24.0, ceil_y, right - left - 48.0, maxf(floor_left, floor_right) - ceil_y + 2.0)
 	for p in get_tree().get_nodes_in_group("player"):
 		if zone.has_point((p as Node2D).global_position):
 			return true

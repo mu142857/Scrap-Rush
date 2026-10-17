@@ -5,8 +5,9 @@ extends EliteBase
 ## - 唱针横扫：唱臂伸长，唱针贴着地面从脚下一直划到场子那头（撞墙或者到坑边停），要跳过去。
 ##   唱针头宽 6、高 8，碰到伤 12；伸出去的唱臂不伤人。划完抬起来收回去。
 ## - 声波：喇叭放出 3 圈往外扩的声波（空心圆弧，只往前半边放，越扩越淡），碰到伤 8、情绪 +5。
-##   每圈有一个缺口，缺口落在地面上的那一段会先用淡绿点标出来，站进去就钻过去了；
-##   三圈的缺口在两个位置之间来回换（B、A、B），要跟着节奏挪。躲到留声机背后也安全。
+##   三圈的缺口在同一个方向，缺口落在地面上的那一段（离主角现在站的地方 50 像素）先用淡绿点标出来，
+##   走过去站着，三圈都从身边钻过去。躲到留声机背后也安全。
+##   （试过三圈缺口来回换位置：前一圈还没扩到时下一圈的缺口已经要你站别处，两头顾不上，改成同一处。）
 ## 贴图 gramophone.png（草图/精英怪/l2_switch_gramophone.py 导出），6 帧：
 ## 0、1 走（唱片转）；2 横扫预警（唱臂抬起）；3 横扫（唱臂甩到前面朝下）；4 声波预警（喇叭口亮）；5 声波（喇叭口张大）。
 
@@ -29,9 +30,9 @@ const RECOVER_TIME := 0.9
 ## 帧内像素（朝左）：横扫时的臂尖、喇叭口中心
 const ARM_TIP := Vector2i(10, 30)
 const MOUTH := Vector2i(6, 11)
-## 声波缺口落在地面上的两个位置隔多远、每个多宽
+## 声波缺口离主角站的地方多远、地面上那一段的一半宽
 const ZONE_STEP := 50.0
-const ZONE_HALF := 18.0
+const ZONE_HALF := 20.0
 
 var state := State.MOVE
 var _state_t := 0.0
@@ -40,7 +41,8 @@ var _next := 0
 var _attack_dir := -1
 var _needle: Needle = null
 var _rings_left := 0
-var _zones: Array[float] = []
+## 声波缺口落在地面上的位置（离喇叭口的前向距离）
+var _zone := 80.0
 ## 声波缺口标在哪层地面上（主角当时站的地面）
 var _zone_floor := 0.0
 
@@ -191,17 +193,17 @@ func _sweep() -> void:
 	Game.add_shake(1.5)
 
 
-## 声波缺口：A 是主角现在站的地方，B 离它 ZONE_STEP（往留声机前面能站的那边），三圈按 B、A、B
+## 声波缺口：离主角现在站的地方 ZONE_STEP（优先往远处挪，远处没地就往近处），三圈都用这一处
 func _plan_zones(p: Player) -> void:
 	var m := mouth()
 	var a := clampf((p.global_position.x - m.x) * _attack_dir, 30.0, 140.0)
-	var b := a + ZONE_STEP if a + ZONE_STEP <= 150.0 else a - ZONE_STEP
 	var floor_y := p.global_position.y if p.is_on_floor() else global_position.y
+	var b := a + ZONE_STEP if a + ZONE_STEP <= 150.0 else a - ZONE_STEP
 	if not _floor_near(m.x + _attack_dir * b, floor_y):
 		b = a - ZONE_STEP if b > a else a + ZONE_STEP
-		if not _floor_near(m.x + _attack_dir * b, floor_y):
+		if b < 24.0 or not _floor_near(m.x + _attack_dir * b, floor_y):
 			b = a
-	_zones = [b, a, b]
+	_zone = b
 	_zone_floor = floor_y
 
 
@@ -215,8 +217,7 @@ func _ring(i: int) -> void:
 	r.dir = _attack_dir
 	r.center = mouth()
 	r.floor_y = _zone_floor
-	var d: float = _zones[i] if i < _zones.size() else 80.0
-	r.zone = Vector2(d - ZONE_HALF, d + ZONE_HALF)
+	r.zone = Vector2(_zone - ZONE_HALF, _zone + ZONE_HALF)
 	get_parent().add_child(r)
 	Game.sfx("bell", -8.0, 0.55 + 0.08 * i)
 	Game.sfx("voice", -10.0, 0.6)
