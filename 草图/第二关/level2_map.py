@@ -36,6 +36,9 @@ sys.path.insert(0, "/Users/jiamulin/Desktop/程序programs/AI Oscar")
 sys.path.insert(0, str(HERE))
 from oscarkit.canvas import Canvas  # noqa: E402
 from oscarkit.shade import step_color  # noqa: E402
+from oscarkit.light import smooth_noise  # noqa: E402
+from oscarkit.measure import srgb_to_oklab  # noqa: E402
+from oscarkit.palette import oklab_to_srgb  # noqa: E402
 import level2_bridge as LB  # noqa: E402
 import film_scenes as FS  # noqa: E402
 
@@ -203,15 +206,71 @@ def ball(c, cx, cy, r):
     LB.ball(c, int(cx), int(cy), r)
 
 
+_STEP = {}
+
+
+def nudge(c, x, y, k):
+    """把 (x, y) 这一格的颜色挪 k 档（OKLab 明暗 + 冷暖），透明的格子不动。纹理都用它画，不加新色相。"""
+    if not (0 <= x < c.w and 0 <= y < c.h) or c.a[y, x, 3] == 0:
+        return
+    col = (int(c.a[y, x, 0]), int(c.a[y, x, 1]), int(c.a[y, x, 2]))
+    key = (col, k)
+    if key not in _STEP:
+        _STEP[key] = step_color(col, k)
+    c.a[y, x, :3] = _STEP[key]
+
+
+RUST = [(58, 34, 24), (78, 44, 28), (98, 58, 34)]
+
+
+def metal_texture(c, x0, y0, x1, y1, seed=0, density=1.0):
+    """钢板上的纹理：横向接缝 + 铆钉、短划痕（亮一档）、锈斑（几格锈色）、铆钉往下淌的锈水（暗一档）。"""
+    rng = np.random.default_rng(seed)
+    w, h = x1 - x0, y1 - y0
+    if w < 6 or h < 6:
+        return
+    for yy in range(y0 + 28, y1 - 4, 30):                    # 横缝和一排铆钉
+        for x in range(x0, x1 + 1):
+            nudge(c, x, yy, -2)
+            nudge(c, x, yy + 1, 1)
+        for x in range(x0 + 5, x1 - 2, 9):
+            nudge(c, x, yy - 3, 2)
+            nudge(c, x, yy - 2, -1)
+    area = w * h
+    for _ in range(int(area / 260 * density)):               # 划痕
+        x, y = int(rng.integers(x0, x1)), int(rng.integers(y0, y1))
+        n = int(rng.integers(3, 7))
+        d = 1 if rng.random() < 0.5 else -1
+        for t in range(n):
+            nudge(c, x + t, y + (t * d) // 2, 1)
+    for _ in range(int(area / 1400 * density)):              # 锈斑
+        x, y = int(rng.integers(x0 + 2, x1 - 2)), int(rng.integers(y0 + 2, y1 - 2))
+        for t in range(int(rng.integers(3, 9))):
+            px, py = x + int(rng.integers(-2, 3)), y + int(rng.integers(-1, 2))
+            if x0 <= px <= x1 and y0 <= py <= y1 and c.a[py, px, 3]:
+                c.put(px, py, RUST[int(rng.integers(0, 3))])
+    for _ in range(int(area / 900 * density) if h > 12 else 0):   # 锈水痕
+        x, y = int(rng.integers(x0, x1)), int(rng.integers(y0, y1 - 8))
+        for t in range(int(rng.integers(4, 12))):
+            if y + t <= y1:
+                nudge(c, x, y + t, -1)
+
+
 def girder(c, x0, x1, y, th=GIRDER, under=True):
-    """钢梁楼层：顶面一条亮边，侧面分档，铆钉；底下挂一排三角桁架（不算碰撞）。"""
+    """钢梁楼层：顶面一条亮边，侧面分档，防滑花纹（一排排斜短线），铆钉；底下挂一排三角桁架（不算碰撞）。"""
     fill(c, x0, y, x1, y, GREY[7])
     fill(c, x0, y + 1, x1, y + 1, GREY[5])
     vgrad(c, x0, y + 2, x1, y + th - 1, GREY, 0.45, 0.2)
     fill(c, x0, y + th - 1, x1, y + th - 1, GREY[1])
+    for x in range(x0 + 1, x1 - 1, 4):                       # 防滑花纹钢板
+        for yy in range(y + 3, y + th - 2, 3):
+            o = 2 if ((yy - y) // 3) % 2 else 0
+            nudge(c, x + o, yy, 1)
+            nudge(c, x + o + 1, yy - 1, 1)
     for x in range(x0 + 6, x1 - 2, 14):
         c.put(x, y + 4, BRASS[4])
         c.put(x, y + 5, BRASS[1])
+    metal_texture(c, x0, y + 2, x1, y + th - 2, seed=x0 + y, density=0.6)
     if under:
         for x in range(x0, x1 - 10, 20):
             for t in range(11):
@@ -221,7 +280,7 @@ def girder(c, x0, x1, y, th=GIRDER, under=True):
 
 
 def block(c, x0, y0, x1, y1, seam=40):
-    """实心的地基：深灰，竖向接缝，接缝两边有螺栓。"""
+    """实心的钢板墙：深灰，竖向接缝，接缝两边有螺栓，再加横缝、划痕、锈斑、锈水。"""
     vgrad(c, x0, y0, x1, y1, DARK + [GREY[0], GREY[1]], 0.85, 0.15)
     for x in range(x0 + seam // 2, x1, seam):
         fill(c, x, y0 + 3, x, y1, DARK[0])
@@ -229,6 +288,39 @@ def block(c, x0, y0, x1, y1, seam=40):
         for yy in range(y0 + 10, y1, 30):
             c.put(x - 3, yy, GREY[3])
             c.put(x + 4, yy, GREY[3])
+    metal_texture(c, x0, y0, x1, y1, seed=x0 * 7 + y0)
+
+
+def wallpaper(c, x0, y0, x1, y1, seed=0):
+    """机房墙面：竖条暗纹壁纸（菱形小花），下半截护墙板，再加几块水渍和一两处剥落。"""
+    rng = np.random.default_rng(seed)
+    wains = y1 - 22
+    for x in range(x0, x1 + 1):
+        for y in range(y0, wains):
+            if (x - x0) % 10 == 0:
+                nudge(c, x, y, 1)
+            elif (x - x0) % 10 == 5 and (y - y0) % 12 in (5, 7):
+                nudge(c, x, y, 1)
+            elif (x - x0) % 10 in (4, 6) and (y - y0) % 12 == 6:
+                nudge(c, x, y, 1)
+    fill(c, x0, wains, x1, y1, WOOD[1])                       # 护墙板
+    fill(c, x0, wains, x1, wains, WOOD[3])
+    fill(c, x0, wains + 1, x1, wains + 1, WOOD[0])
+    for x in range(x0 + 4, x1, 26):
+        fill(c, x, wains + 4, x + 20, y1 - 3, WOOD[2])
+        fill(c, x, wains + 4, x + 20, wains + 4, WOOD[3])
+    noise = smooth_noise(y1 - y0 + 1, x1 - x0 + 1, 10, 30, seed=seed)
+    for y in range(y0, wains):                                # 水渍：细长的往下淌的暗痕，上沿亮一点
+        for x in range(x0, x1 + 1):
+            v = noise[y - y0, x - x0]
+            if v > 0.52:
+                nudge(c, x, y, -1)
+            elif v > 0.49:
+                nudge(c, x, y, 1)
+    for _ in range(2):                                        # 剥落：露出底下更暗的墙
+        px, py = int(rng.integers(x0 + 10, x1 - 20)), int(rng.integers(y0 + 6, wains - 14))
+        for t in range(int(rng.integers(5, 10))):
+            fill(c, px + t, py + (t % 3), px + t, py + 6 + (t * 7) % 5, DARK[1])
 
 
 # ================================================================ 物件
@@ -448,7 +540,8 @@ def room_interior(c, r, seed=0):
     """一间机房的室内（墙面 + 墙上的东西）。主题：switch 插线板、relay 继电器、books 电话簿、film 片库。"""
     rng = np.random.default_rng(seed)
     x0, x1, top, fl = r["x0"], r["x1"], r["top"], r["floor"]
-    vgrad(c, x0, top, x1 - 1, fl - 1, DARK, 0.85, 0.35)
+    vgrad(c, x0, top, x1 - 1, fl - 1, [DARK[2], DARK[3], DARK[4], (44, 38, 33), (52, 44, 37)], 0.9, 0.35)
+    wallpaper(c, x0, top, x1 - 1, fl - 1, seed=seed + 40)
     if r["theme"] == "switch":
         for i, x in enumerate(range(x0 + 8, x1 - 46, 52)):
             switch_panel(c, x, top + 6, 44, fl - top - 14, seed=seed * 10 + i)
@@ -609,6 +702,12 @@ def draw_far(design):
     fill(c, 0, 0, MW - 1, MH - 1, VOID)
     # 前半段背后：交换局大厅很高的后墙，一只巨大的转盘拨号盘，几根电线杆拉着满天的电话线
     vgrad(c, L.X(-60), L.Y(0), L.X(1060), L.Y(MH), DARK, 0.15, 0.7)
+    for y in range(L.Y(0), L.Y(MH), 8):                       # 砖缝：横缝每 8 像素，竖缝错开
+        for x in range(L.X(-60), L.X(1060)):
+            nudge(c, x, y, -1)
+            if (x + (16 if (y // 8) % 2 else 0)) % 32 == 0:
+                for t in range(1, 8):
+                    nudge(c, x, y + t, -1)
     rotary_dial(c, L.X(470), L.Y(300), 130)
     poles = [(-20, 40), (250, 70), (700, 50), (1040, 80)]
     for x, top in poles:
@@ -745,6 +844,7 @@ def draw_back(design):
     vgrad(c, B_X0, 214, 3100, BRIDGE_Y - 1, GREY, 0.3, 0.12)
     for x in range(B_X0 + 8, 3096, 22):                      # 墙板
         fill(c, x, 216, x, BRIDGE_Y - 2, GREY[0])
+    metal_texture(c, B_X0, 214, 3099, BRIDGE_Y - 1, seed=99)
     for k, x in enumerate(range(3030, 3090, 14)):            # 架子上的片盒
         sellipse(c, x, 236, 6, 3, GREY[4 - k % 2])
         sellipse(c, x, 234, 6, 3, GREY[5])
@@ -914,10 +1014,17 @@ def draw_solid(design):
     for x in range(3150, 3170, 5):
         fill(c, x, 287, x, BRIDGE_Y - 1, BRASS[1])
     # 观众席台阶
-    for rx, ry in ROWS:
-        fill(c, rx, ry, rx + 39, ry, VELVET[3])
-        vgrad(c, rx, ry + 1, rx + 39, MH - 1, DARK + [GREY[0]], 0.95, 0.2)
+    for i, (rx, ry) in enumerate(ROWS):
+        fill(c, rx, ry, rx + 39, ry, VELVET[4])
+        fill(c, rx, ry + 1, rx + 39, ry + 3, VELVET[2])           # 台阶边的地毯
+        for x in range(rx + 1, rx + 39, 3):
+            nudge(c, x, ry + 2, 1)
+        vgrad(c, rx, ry + 4, rx + 39, MH - 1, DARK + [GREY[0]], 0.95, 0.2)
         fill(c, rx, ry + 1, rx, MH - 1, GREY[1])
+        for y in range(ry + 10, MH - 1, 22):                       # 台阶立面上的木板缝
+            for x in range(rx + 1, rx + 39):
+                nudge(c, x, y, -1)
+        metal_texture(c, rx + 1, ry + 6, rx + 38, MH - 2, seed=i, density=0.5)
     # 乐池和舞台
     fill(c, ROWS[-1][0] + 40, ORCH_Y, MW - 1, ORCH_Y, GREY[5])
     vgrad(c, ROWS[-1][0] + 40, ORCH_Y + 1, MW - 1, MH - 1, DARK, 0.8, 0.2)
@@ -969,6 +1076,29 @@ def draw_near(design):
         for k in range(3):
             seat_back(c, rx + 2 + k * 13, ry - 10, 11)
     return L
+
+
+# ================================================================ 褪色
+def fade(c, chroma=0.55, lift=0.07, gain=0.88, warm=(0.004, 0.012)):
+    """整层调成褪色老胶片的感觉（作者 10-17：像胶片那段，但没那么夸张）：
+    饱和度乘 chroma，往暖褐偏一点（warm 是 OKLab a/b 的偏移），黑色提亮到 lift，高光压到 lift+gain。
+    按颜色一一映射，不会多出噪点。"""
+    a = c.a
+    m = a[..., 3] > 0
+    if not m.any():
+        return
+    cols, inv = np.unique(a[m][:, :3], axis=0, return_inverse=True)
+    lab = srgb_to_oklab(cols.astype(np.uint8))
+    lab[:, 0] = lift + gain * lab[:, 0]
+    lab[:, 1] = lab[:, 1] * chroma + warm[0]
+    lab[:, 2] = lab[:, 2] * chroma + warm[1]
+    out = oklab_to_srgb(lab)
+    px = a[m]
+    px[:, :3] = out[inv.reshape(-1)]
+    a[m] = px
+
+
+FADE = {"film": dict(chroma=0.85, lift=0.03, gain=0.95, warm=(0.002, 0.006))}
 
 
 # ================================================================ 输出
@@ -1098,9 +1228,15 @@ def main():
     game_layers, design_layers = [], []
     for name, fn, s, mod in builders:
         g = fn(False)
+        fade(g.c, **FADE.get(name, {}))
         g.c.save(ART / f"level2_{name}.png")
         game_layers.append((g.c.a, s, mod))
-        design_layers.append(g if s == 1.0 else fn(True))
+        if s == 1.0:
+            design_layers.append(g)
+        else:
+            d = fn(True)
+            fade(d.c, **FADE.get(name, {}))
+            design_layers.append(d)
         print("layer", name)
     overview = compose(design_layers)
     overview.save(MAPDIR / "level2_overview.png")

@@ -340,10 +340,12 @@ func _snow() -> void:
 	for w in waves:
 		if dead:
 			return
+		# 两条缝都开在人能站的那半边（电视左边），电视上方不落雪
+		var zone := _play_zone()
+		var gaps := [randf_range(zone.x + 16, zone.y - 76), 0.0]
+		gaps[1] = minf(gaps[0] + randf_range(50, 80), zone.y - 14)
 		var cols: Array[float] = []
-		var gaps := [randf_range(arena.position.x + 20, arena.end.x - 140), 0.0]
-		gaps[1] = fmod(gaps[0] + randf_range(70, 130), arena.size.x - 60) + 20
-		for x in range(int(arena.position.x) + 12, int(arena.end.x) - 8, 10):
+		for x in range(int(zone.x) + 4, int(zone.y) + 8, 10):
 			if absf(x - gaps[0]) < 16 or absf(x - gaps[1]) < 16:
 				continue
 			cols.append(float(x))
@@ -364,10 +366,16 @@ func _snow() -> void:
 		await _wait(0.4)
 
 
+## 人能站的那一段地面 (左, 右)：墙到电视左边
+func _play_zone() -> Vector2:
+	return Vector2(arena.position.x + 8.0, global_position.x - 62.0)
+
+
 ## 彩条台：七根彩条对应场地里七根柱子，先挑几根闪着预告，再变成光柱
 func _bars() -> void:
 	var rounds: int = 1 if phase == 1 else 2
-	var w := arena.size.x / 7.0
+	var zone := _play_zone()
+	var w := (zone.y - zone.x) / 7.0
 	var last: Array = []
 	for r in rounds:
 		if dead:
@@ -381,7 +389,7 @@ func _bars() -> void:
 		last = pick
 		for i in pick:
 			var bar := BarPillar.new()
-			bar.rect = Rect2(arena.position.x + w * i, ceil_y, w, floor_y - ceil_y)
+			bar.rect = Rect2(zone.x + w * i, ceil_y, w, floor_y - ceil_y)
 			bar.color = BAR_COLORS[i]
 			bullet_parent.add_child(bar)
 		await _wait(BarPillar.WARN + BarPillar.LIVE + 0.2)

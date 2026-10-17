@@ -208,11 +208,16 @@ func _label(text: String, y: float, size: int, color: Color, outline: int, paren
 	return l
 
 
-## 开场动画（intro.gd）已经铺垫过了，菜单一出来就是完整的，不再一条条显示
+## 菜单一出来就是完整的，不再一条条显示。游戏刚打开时，开场动画（intro.gd）
+## 叠在菜单上面播，播完露出菜单，这才能操作
 func _animate_in() -> void:
 	for l in [_title, _sub, _hint] + _option_labels:
 		l.modulate.a = 1.0
 	_refresh()
+	if not IntroOverlay.played:
+		var intro := IntroOverlay.new()
+		add_child(intro)
+		await intro.finished
 	_ready_for_input = true
 
 

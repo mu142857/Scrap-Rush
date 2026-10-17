@@ -202,13 +202,21 @@ class TV:
 
 
 # ---------------------------------------------------------------- 房间：墙、地板、光
-def room_base(tv, wallc, floorc, lamp, wainscot=None):
+def room_base(tv, wallc, floorc, lamp, wainscot=None, lamps=None):
+    """房间壳：墙和地板按灯光分档。
+    2026-10-17 改（作者：背景太乱）：原来档宽按屏幕宽度算，大屏里一档七十几格、边缘是锯齿，像水渍。
+    现在按真实距离分档（半径跟墙高走），边缘是剪纸那样的直线段；离灯远的墙停在中间那档，不会一大片黑。
+    lamps 可以给多盏灯（大房间放两三盏，光斑分开）。"""
     set_vp(tv)
     x0, y0, x1, y1, fy = tv.sx0, tv.sy0, tv.sx1, tv.sy1, tv.fy
-    rw = x1 - x0 + 1
+    lamps = lamps or [lamp]
     inside = tv.screen_mask()
-    dist = np.hypot((XX - lamp[0]) * 0.8, (YY - lamp[1]) * 1.1) + ((XX // 7 + YY // 5) % 3) * 2.5
-    band = np.clip((dist / (rw * 0.16)).astype(int), 0, len(wallc) - 1)
+    R = max(40.0, (fy - y0) * 0.45)
+    d = np.full(XX.shape, 99.0)
+    for lx, ly in lamps:
+        d = np.minimum(d, np.hypot((XX - lx) * 0.85, (YY - ly) * 1.2) / R)
+    d = polygonal(d + 0.12 * smooth_noise(*XX.shape, sx=30, sy=24, seed=int(x0) % 13), 12, 9, seed=int(y0) % 7)
+    band = np.clip((d * 1.7).astype(int), 0, len(wallc) - 2)
     wall = inside & (YY < fy)
     for i, c in enumerate(wallc):
         scr.fill_mask(wall & (band == i), c)
@@ -216,7 +224,10 @@ def room_base(tv, wallc, floorc, lamp, wainscot=None):
         scr.fill_mask(inside & (YY >= fy - 8) & (YY < fy), wainscot[0])
         scr.fill_mask(inside & (YY == fy - 8), wainscot[1])
     fl = inside & (YY >= fy)
-    fband = np.clip(((np.abs(XX - lamp[0]) * 0.5 + (YY - fy) * 2.2) / (rw * 0.12)).astype(int), 0, len(floorc) - 1)
+    dx = np.full(XX.shape, 9e9)
+    for lx, ly in lamps:
+        dx = np.minimum(dx, np.abs(XX - lx))
+    fband = np.clip(((dx * 0.5 + (YY - fy) * 2.2) / (R * 0.9)).astype(int), 0, len(floorc) - 1)
     for i, c in enumerate(floorc):
         scr.fill_mask(fl & (fband == i), c)
     for gy in range(fy + 3, y1, 4):
@@ -555,7 +566,7 @@ def plant(x, fy):
     scr.line(x, fy - 7, x + 8, fy - 7, shade(pot, 2))
 
 
-def light_pass(tv, light_at, gain=2.6, amp=0.9, cell=9, min_px=160, seed=0):
+def light_pass(tv, light_at, gain=1.2, amp=0.4, cell=14, min_px=160, seed=0):
     """Oscar 的色块：每个大面按离场景光源的远近切成一档一档，档的边是直线段（三角网格），
     再加一点低频扰动让边缘有棱角。发光的东西（最亮通道 >= 240）不动；
     小于 min_px 的颜色（灯罩、相框、小摆件）也不动，不然小东西会被切碎、和墙糊在一起。"""
@@ -575,7 +586,7 @@ def light_pass(tv, light_at, gain=2.6, amp=0.9, cell=9, min_px=160, seed=0):
         sel = (key == kv) & m
         if sel.sum() < min_px:
             continue
-        kk = np.clip(np.round(F[sel] - F[sel].mean()), -2, 2).astype(int)
+        kk = np.clip(np.round(F[sel] - F[sel].mean()), -1, 1).astype(int)   # 只差一档，不再碎成污渍
         out = np.array([shade(col, v) for v in range(-2, 3)], np.uint8)[kk + 2]
         sub[..., :3][sel] = out
 
@@ -624,7 +635,8 @@ def finish_room(tv, light_at):
         light_at = (tv.sx0 + tv.sx1 - light_at[0], light_at[1])
     if VARIANT["hue"] and tv.tint == "color":
         hue_shift(tv, VARIANT["hue"])
-    if not getattr(tv, "flat", False):
+    # 室外（天空、海、沙丘）不加光照色块：大片天空上会变成一块块污渍（作者 2026-10-17）
+    if not getattr(tv, "flat", False) and not getattr(tv, "outdoor", False):
         light_pass(tv, light_at, seed=tv.sx0 % 97)
     tint(m, TINTS[tv.tint])
     scanlines(tv.sx0, tv.sy0, tv.sx1, tv.sy1)

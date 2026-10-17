@@ -25,9 +25,20 @@ const TYPES := {
 	"piano": "res://scripts/enemies/piano.gd",
 	"vacuum": "res://scripts/enemies/vacuum.gd",
 	"roller": "res://scripts/enemies/roller.gd",
+	# 第二关（"声音"：电话交换局 + 老电影院）的小怪
+	"wire_snake": "res://scripts/enemies/wire_snake.gd",
+	"fuse": "res://scripts/enemies/fuse_beetle.gd",
+	"phone": "res://scripts/enemies/phone.gd",
+	"scavenger": "res://scripts/enemies/scavenger.gd",
+	"slide": "res://scripts/enemies/slide_projector.gd",
+	"reel": "res://scripts/enemies/film_reel.gd",
+	# 第二关的精英怪
+	"switchboard": "res://scripts/enemies/switchboard.gd",
+	"gramophone": "res://scripts/enemies/gramophone.gd",
+	"projector": "res://scripts/enemies/projector.gd",
 }
 ## 精英怪：登场情绪 +10（策划案第八节）；落在场子里离主角远的那一头，预警更久、火花更大
-const ELITES := ["cuckoo", "sewing", "register", "piano", "vacuum", "roller"]
+const ELITES := ["cuckoo", "sewing", "register", "piano", "vacuum", "roller", "switchboard", "gramophone", "projector"]
 const ELITE_WARN_TIME := 1.0
 const WARN_TIME := 0.45
 const WAVE_GAP := 0.8

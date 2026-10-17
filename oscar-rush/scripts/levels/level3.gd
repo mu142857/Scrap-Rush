@@ -10,7 +10,7 @@ extends Node2D
 
 const D := preload("res://scripts/levels/level3_data.gd")
 const DARKNESS := Color(0.36, 0.35, 0.41)
-const CLIMB_SPEED := 110.0
+const CLIMB_SPEED := 140.0
 ## 单向平台（家具顶、屋顶、伞、洞口的格栅）单独一层：只有主角和马灯会踩，怪和精英直接落到地上
 const PLATFORM_LAYER := 64
 ## 镜头中心多远以内的屏幕灯才开
@@ -21,8 +21,14 @@ const TINT_LIGHT := {
 	"green": Color(0.5, 0.9, 0.56),
 	"amber": Color(1.0, 0.68, 0.32),
 }
-## 这几块屏幕不摆怪：起点那块、玄关、家乡
+## 这几块屏幕不摆怪：玄关、家乡（出生点在第一块屏幕左边的走廊里，第一块屏幕照常摆）
 const NO_ENEMY := ["entry", "hometown"]
+## 洞口两边的矮墙只挡怪、不挡人（单独一层，只有屏幕里摆的怪会碰）：
+## 小怪来回走会掉进洞里，掉到别的屏幕，原来那块屏幕就空了（2026-10-17 作者说"有的屏幕没怪"）
+const MOB_WALL_LAYER := 128
+const MOB_WALL_HEIGHT := 24.0
+## 摆怪时离洞口至少这么远
+const HOLE_CLEAR := 12.0
 const ENEMY_SCRIPTS := {
 	"crawler": "res://scripts/enemies/crawler.gd",
 	"moth": "res://scripts/enemies/moth.gd",
@@ -104,6 +110,7 @@ func _ready() -> void:
 		add_child(l)
 		_lights.append(l)
 
+	_add_mob_walls()
 	_place_enemies()
 	_place_hints()
 
@@ -144,6 +151,8 @@ func _ready() -> void:
 			var sc: Node = load("res://scripts/debug/l3_scene_check.gd").new()
 			sc.set("scene_name", arg.trim_prefix("--l3scene="))
 			add_child(sc)
+		if arg == "--l3fix":
+			add_child(load("res://scripts/debug/l3_fix_check.gd").new())
 		if arg == "--l3enc":
 			add_child(load("res://scripts/debug/l3_enc_check.gd").new())
 		if arg == "--l3check":
@@ -194,7 +203,7 @@ func _place_enemies() -> void:
 	rng.seed = 3
 	for i in D.SCREENS.size():
 		var s: Dictionary = D.SCREENS[i]
-		if i == 0 or s["name"] in NO_ENEMY:
+		if s["name"] in NO_ENEMY:
 			continue
 		var rect: Array = s["rect"]
 		var w: float = rect[2] - rect[0]
@@ -221,12 +230,39 @@ func _place_enemies() -> void:
 		var right: float = rect[2] - ENTRY_CLEAR
 		for k in n:
 			var kind: String = bag[k % bag.size()] if w >= SHOOTER_SCREEN else _not_shooter(bag, k)
-			var x: float = left + (right - left) * (k + 1) / (n + 1) + rng.randf_range(-8, 8)
+			var x: float = _off_hole(left + (right - left) * (k + 1) / (n + 1) + rng.randf_range(-8, 8), fy)
 			var e := _make_mob(kind, tint)
+			e.collision_mask |= MOB_WALL_LAYER
 			e.position = Vector2(x, fy - (30.0 if e is Moth else 0.0))
 			add_child(e)
 			_screen_mobs.append({"node": e, "rect": Rect2(rect[0], rect[1], w, fy - rect[1] + 2)})
 	_wake_mobs()
+
+
+## 洞口两边各立一堵矮墙（只在洞所在的那层地面上），怪走过去会撞墙掉头
+func _add_mob_walls() -> void:
+	for h in D.HOLES:
+		for x in [h[0] - 3.0, h[1]]:
+			var body := StaticBody2D.new()
+			body.collision_layer = MOB_WALL_LAYER
+			body.collision_mask = 0
+			var shape := CollisionShape2D.new()
+			var rect := RectangleShape2D.new()
+			rect.size = Vector2(3, MOB_WALL_HEIGHT)
+			shape.shape = rect
+			shape.position = Vector2(x + 1.5, h[2] - MOB_WALL_HEIGHT / 2.0)
+			body.add_child(shape)
+			add_child(body)
+
+
+## 摆怪的 x 落在这层地面的洞上（或离洞口太近）就挪到洞外面离得近的那一边
+func _off_hole(x: float, floor_y: float) -> float:
+	for h in D.HOLES:
+		if h[2] != floor_y:
+			continue
+		if x > h[0] - HOLE_CLEAR and x < h[1] + HOLE_CLEAR:
+			return h[0] - HOLE_CLEAR if x - h[0] < h[1] - x else h[1] + HOLE_CLEAR
+	return x
 
 
 ## 袋子里第 k 只不是射击怪的（没有就照给）

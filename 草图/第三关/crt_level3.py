@@ -52,24 +52,7 @@ HOLES = [                                        # (下层, 上层, 目标 x)
     (2, 3, 735), (2, 3, 2010), (2, 3, 2710),
 ]
 
-ROOMS = {"kitchen": k.room_kitchen, "living": k.room_living, "bedroom": k.room_bedroom,
-         "kids": k.room_kids, "study": k.room_study, "entry": k.room_entry}
-SCENES = {
-    # 名字: (函数, 最小屏宽, 能用的显示方式)
-    "kitchen": (k.room_kitchen, 130, ["color", "bw"]), "living": (k.room_living, 140, ["color", "amber"]),
-    "bedroom": (k.room_bedroom, 130, ["bw", "color"]), "kids": (k.room_kids, 130, ["green", "color"]),
-    "study": (k.room_study, 140, ["amber"]), "bathroom": (sc.sc_bathroom, 130, ["color", "bw"]),
-    "workshop": (sc.sc_workshop, 140, ["amber", "color"]), "subway": (sc.sc_subway, 150, ["amber", "bw"]),
-    "classroom": (sc.sc_classroom, 150, ["color", "green"]), "ferris": (sc.sc_ferris, 150, ["color"]),
-    "rooftop": (sc.sc_rooftop, 130, ["color", "amber"]), "beach": (sc.sc_beach, 140, ["color"]),
-    "harbor": (sc.sc_harbor, 130, ["color", "bw"]), "rain_street": (sc.sc_rain_street, 130, ["bw"]),
-    "snow_yard": (sc.sc_snow_yard, 120, ["color"]), "forest": (sc.sc_forest, 110, ["green", "color"]),
-    "aquarium": (sc.sc_aquarium, 80, ["color", "green"]), "space": (sc.sc_space, 100, ["color"]),
-    "weather": (sc.sc_weather, 80, ["color"]), "test_card": (sc.sc_test_card, 70, ["color"]),
-    "static": (sc.sc_static, 70, ["color"]), "attic": (sc.sc_attic, 100, ["amber"]),
-    "desert": (sc.sc_desert, 100, ["color", "amber"]),
-}
-FLAT = {"test_card", "weather", "static"}
+from l3_registry import SCENES, FLAT, OUTDOOR, draw as draw_scene  # noqa: E402
 USED = {name: 0 for name in SCENES}
 
 
@@ -178,6 +161,7 @@ def assign_scenes(rows):
         for tv in row:
             tv.tint = "color" if tv.name in ("hometown", "entry") else pick_tint(tv.name, left_tint)
             tv.flat = tv.name in FLAT
+            tv.outdoor = tv.name in OUTDOOR
             left_tint = tv.tint
 
     return True
@@ -390,12 +374,9 @@ for row in rows:
         SEEN[tv.name] = nth + 1
         k.VARIANT["mirror"] = nth % 2 == 1 and not tv.flat
         k.VARIANT["hue"] = [0.0, 0.0, 28.0, -28.0][nth % 4]
-        if tv.name in ROOMS:
-            draw_local(tv, lambda t: sc.room(ROOMS[t.name], t))
-        elif tv.name == "hometown":
-            END = draw_local(tv, sc.sc_hometown)
-        else:
-            draw_local(tv, SCENES[tv.name][0])
+        r = draw_local(tv, lambda t: draw_scene(t.name, t))
+        if tv.name == "hometown":
+            END = r
         if k.VARIANT["mirror"]:
             sc.PLATFORMS[n0:] = [(tv.sx0 + tv.sx1 - b, tv.sx0 + tv.sx1 - a, y) for a, b, y in sc.PLATFORMS[n0:]]
         tv.platforms = sc.PLATFORMS[n0:]

@@ -11,9 +11,11 @@ var out_dir := ""
 var shot := ""
 ## [传送到, 天桥状态（-1 不管）, 镜头卷轴 x, 第几帧截图]
 const SHOTS := {
-	"A1": [Vector2(420, 96), -1, 0.0, 70],
-	"A3": [Vector2(600, 200), -1, 0.0, 40],
-	"A2": [Vector2(500, 300), -1, 0.0, 40],
+	"R1": [Vector2(250, 540), -1, 0.0, 70],
+	"R2": [Vector2(700, 430), -1, 0.0, 70],
+	"R3": [Vector2(250, 250), -1, 0.0, 70],
+	"R4": [Vector2(760, 300), -1, 0.0, 50],
+	"tube": [Vector2(412, 540), -1, 0.0, 60],
 	"bridge": [Vector2(1340, 300), 2, 1360.0, 50],
 	"burn": [Vector2(1135, 300), 2, 1360.0, 40],
 	"reel": [Vector2(1660, 300), 2, 1636.0, 90],
@@ -38,9 +40,10 @@ var _stuck := 0
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	if shot == "":
+		var tree := get_tree()
 		get_parent().tree_exiting.connect(func():
-			print("[l2tour] f%d level left, scene=%s" % [_frame, get_tree().current_scene])
-			get_tree().quit())
+			print("[l2tour] f%d level left (exit reached or reload)" % _frame)
+			tree.quit())
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	Game.invincible = true
 	get_parent().set("_debug", true)
@@ -102,6 +105,9 @@ func _autopilot() -> void:
 func _single() -> void:
 	var s: Array = SHOTS[shot]
 	var lvl := get_parent()
+	if _frame == 2 and shot == "tube":
+		var encs: Array = lvl.get("_encounters")
+		encs[0].cleared = true
 	if _frame == 3:
 		_run([0, "teleport", s[0]])
 		if s[1] >= 0:
