@@ -34,8 +34,11 @@ const CRAWLER_PATH := "res://scripts/enemies/crawler.gd"
 const CORD_ROOT := Vector2i(8, 33)
 ## 甲虫从键架前面掉下来：离脚底中间往前多远
 const DROP_X := [20.0, 30.0]
+## 不吃光照的那层叠图多不透明（暗处也看得出身子的样子）
+const FILL_ALPHA := 0.4
 
 var state := State.MOVE
+var _fill: Sprite2D
 var _state_t := 0.0
 var _move_time := 1.4
 ## 下一招：0 插线，1 拔线
@@ -57,6 +60,29 @@ func _setup() -> void:
 	led_pixel = Vector2i(16, 7)
 	max_hp = 1250.0
 	contact_damage = 10.0
+
+
+## 遭遇战把怪的脚底放在天花板下 14 像素（encounter.gd），第二关的机房有实心天花板，
+## 这只 46 高，一出生身子就卡在天花板里，被物理挤到天花板上面去了（看得见血条、看不见怪）。
+## 出生时先往上探一下：头顶有天花板就把自己往下挪到天花板下面。
+func _after_ready() -> void:
+	var feet := global_position
+	var top := feet.y + body_rect.position.y - 2.0
+	var q := PhysicsRayQueryParameters2D.create(Vector2(feet.x, feet.y - 1.0), Vector2(feet.x, top), 1)
+	var hit := get_world_2d().direct_space_state.intersect_ray(q)
+	if not hit.is_empty():
+		global_position.y = (hit.position as Vector2).y - body_rect.position.y + 1.0
+	# 第二关机房很暗，背后又是一整面插孔板，深灰的身子融进墙里只剩红灯（作者 10-17 找不到它）。
+	# 叠一层不吃光照的同一张图，半透明，暗处也看得出形状；亮处基本看不出差别
+	_fill = Sprite2D.new()
+	_fill.texture = _sprite.texture
+	_fill.hframes = hframes
+	_fill.centered = false
+	var unshaded := CanvasItemMaterial.new()
+	unshaded.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+	_fill.material = unshaded
+	add_child(_fill)
+	move_child(_fill, _sprite.get_index() + 1)
 
 
 func _tick(delta: float) -> void:
@@ -239,6 +265,17 @@ func _on_die() -> void:
 func _on_respawn() -> void:
 	_enter(State.MOVE)
 
+
+
+## 叠图跟着贴图走（放在 _process 里：出场动画会在 _update_visual 之后再改帧和位置）
+func _process(_delta: float) -> void:
+	if _fill == null:
+		return
+	_fill.frame = _sprite.frame
+	_fill.flip_h = _sprite.flip_h
+	_fill.offset = _sprite.offset
+	_fill.position = _sprite.position
+	_fill.modulate = Color(_sprite.modulate.lerp(Color(3, 3, 3), _flash), FILL_ALPHA)
 
 ## 预警时板子抖、一闪一闪发红，越接近放招越快（照钢琴）
 func _update_visual() -> void:

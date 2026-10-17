@@ -90,6 +90,8 @@ func _text(tip: String) -> String:
 			return "%s  Put the lantern down: you take the hits, but moths go for it" % Controls.key_name(s, "crystal")
 		"low":
 			return "The lantern is almost out. The shop can mend it"
+		"heal":
+			return "Clearing a fight and lamp oil from wrecks mend the lantern"
 		"resumed":
 			return "Back at the last cleared fight"
 	return ""
@@ -177,6 +179,8 @@ func _watch() -> void:
 
 
 func _on_crystal_changed(hp: float, max_hp: float) -> void:
+	if _last_hp >= 0.0 and hp > _last_hp + 0.01 and not Run.get("_resuming"):
+		_want("heal")
 	if _last_hp >= 0.0 and hp < _last_hp - 0.01:
 		_want("lantern")
 		if hp / maxf(max_hp, 1.0) < 0.3:

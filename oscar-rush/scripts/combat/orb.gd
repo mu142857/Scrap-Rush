@@ -4,9 +4,9 @@ extends Area2D
 ## 蓄满：直线飞、略微追踪、伤害 100、打中有顿帧，能穿透（一路上每只怪各打一次，撞墙才停）。
 ## 没蓄满：伤害按比例，受重力，蓄得越少掉得越快，可以当手雷往下抛。
 
-const FULL_SPEED := 280.0
+const FULL_SPEED := 340.0
 const FULL_DAMAGE := 100.0
-const HOMING := 5.0
+const HOMING := 8.0
 const LIFETIME := 1.6
 const TRAIL := 6
 
@@ -35,9 +35,10 @@ func setup(p: Player, pos: Vector2, dir: Vector2, charge: float, tgt: Node2D, co
 		damage = FULL_DAMAGE
 		target = tgt
 	else:
-		velocity = dir * lerpf(120.0, 230.0, charge)
-		fall_gravity = lerpf(650.0, 150.0, charge)
-		damage = 20.0 + 50.0 * charge
+		# 没蓄满也要能用：伤害 35~80，只微微往下坠（作者：闪光灯太弱）
+		velocity = dir * lerpf(180.0, 290.0, charge)
+		fall_gravity = lerpf(320.0, 40.0, charge)
+		damage = 35.0 + 45.0 * charge
 
 
 func _ready() -> void:
@@ -45,7 +46,7 @@ func _ready() -> void:
 	collision_mask = 1 | 4
 	var shape := CollisionShape2D.new()
 	var circle := CircleShape2D.new()
-	circle.radius = 3.0 if full else 2.0
+	circle.radius = 4.0 if full else 2.5
 	shape.shape = circle
 	add_child(shape)
 	body_entered.connect(_on_body_entered)
@@ -88,9 +89,10 @@ func _on_body_entered(body: Node) -> void:
 		Game.sfx("hit", -2.0 if full else -8.0, 1.0 + 0.12 * (_hit.size() - 1), 0.1)
 		Game.sparks(get_parent(), global_position, color.lerp(Color.WHITE, 0.5), 10 if full else 5, 90.0)
 		if full:
-			Game.add_shake(2.0)
-			if _hit.size() == 1:
-				Game.hitstop(0.05)
+			# 每穿一只都有反馈：第一只顿得最久，后面的短顿一下、音调一只比一只高
+			Game.add_shake(2.5 if _hit.size() == 1 else 1.5)
+			Game.hitstop(0.07 if _hit.size() == 1 else 0.03)
+			Game.sparks(get_parent(), global_position, Color.WHITE, 6, 120.0, velocity.normalized())
 			# 穿过去接着飞：追踪的目标打过了就不再拐弯
 			target = null
 			return
@@ -107,8 +109,9 @@ func _draw() -> void:
 		var p := (_trail[i] - global_position).round()
 		draw_rect(Rect2(p, Vector2.ONE), Color(color.r, color.g, color.b, a))
 	if full:
-		draw_rect(Rect2(-1, -2, 3, 5), color)
-		draw_rect(Rect2(-2, -1, 5, 3), color)
+		draw_rect(Rect2(-1, -3, 3, 7), color)
+		draw_rect(Rect2(-3, -1, 7, 3), color)
+		draw_rect(Rect2(-2, -2, 5, 5), color.lerp(Color.WHITE, 0.5))
 		draw_rect(Rect2(-1, -1, 3, 3), Color.WHITE)
 	else:
 		draw_rect(Rect2(-1, -1, 2, 2), color.lerp(Color.WHITE, 0.4))

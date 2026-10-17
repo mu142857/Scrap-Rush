@@ -5,7 +5,7 @@ extends Area2D
 
 const SPEED := 360.0
 const LIFETIME := 0.42
-const DAMAGE := 9.0
+const DAMAGE := 11.0
 
 var velocity := Vector2.ZERO
 var damage := DAMAGE

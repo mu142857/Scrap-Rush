@@ -57,7 +57,10 @@ static var next_scene := "res://scenes/title.tscn"
 
 ## 信息框（屏幕坐标，480×270）：屏幕上方正中。放在下面会挡住站在地上的主角；上面这块是洞洞板的边框，
 ## 挡不到货（货的图标在屏幕 y 70 以下），也让开了左上角的马灯血条和零件数
-const INFO_RECT := Rect2(110, 4, 260, 44)
+## 高 56：底边在屏幕 y 58，洞洞板那排卡片顶在 y 60 左右，选中的角标不会碰到
+const INFO_RECT := Rect2(96, 2, 288, 56)
+## 选武器界面那三把的数值（POWER / RATE / REACH），信息卡上照样画格子条；没有的武器不画
+const WEAPON_CARDS := preload("res://scripts/ui/weapon_select.gd").CARDS
 const INTRO_TIME := 6.0
 
 var _stands: Array[ShopStand] = []
@@ -72,6 +75,10 @@ var _info_box: Control
 var _info_lines: Array[Label] = []
 var _info_focus: ShopStand = null
 var _info_intro := INTRO_TIME
+var _card_icon := "part"
+var _card_kind := ""
+var _card_pop := 0.0
+var _card_deny := 0.0
 var _key := "V"
 
 
@@ -298,7 +305,8 @@ func _on_buy(st: ShopStand, p: Player) -> void:
 	var info := st.info
 	if not info.get("can_buy", false):
 		st.deny()
-		Game.sfx("hit", -12.0, 0.6)
+		_card_deny = 1.0
+		Game.sfx("ui_back", -8.0)
 		return
 	var price: int = info.get("price", 0)
 	match st.id:
@@ -322,26 +330,26 @@ func _on_buy(st: ShopStand, p: Player) -> void:
 	if st.id == "refresh":
 		_restock()
 	st.pop()
-	Game.sfx("lantern_pick", -4.0, 1.2)
+	_card_pop = 1.0
+	Game.sfx("ui_confirm", -4.0)
+	Game.sfx("lantern_pick", -10.0, 1.2)
 	Game.sparks(self, st.global_position, Color8(255, 211, 138), 8, 60.0)
 	_update_all()
 
 
-## 屏幕下方的信息框：半透明黑底、暖色细边，三行字（名字 / 说明 / 价钱和按键）
+## 信息卡：和开局选武器界面同一套画法（UiStyle）。左边一格放大 3 倍的图标，右边名字 / 说明 / 价钱三行，
+## 底下一排格子条（武器：POWER / RATE / REACH；装备：LEVEL，下一级一闪一闪；修灯：马灯血量）。
+## 切换货时"嘀"一声（ui_move），买到时卡片弹一下（ui_confirm），买不起时边变红、抖一下（ui_back）
 func _build_info_box(ui: CanvasLayer) -> void:
 	_info_box = Control.new()
 	_info_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_info_box.position = INFO_RECT.position
 	_info_box.size = INFO_RECT.size
-	_info_box.draw.connect(func():
-		_info_box.draw_rect(Rect2(Vector2.ZERO, INFO_RECT.size), Color(0.03, 0.025, 0.03, 0.82))
-		_info_box.draw_rect(Rect2(Vector2.ZERO, INFO_RECT.size), Color(ShopStand.WARM, 0.55), false, 1.0))
+	_info_box.pivot_offset = INFO_RECT.size * 0.5
+	_info_box.draw.connect(_draw_card)
 	ui.add_child(_info_box)
 	for i in 3:
-		var l := Label.new()
-		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		l.size = Vector2(INFO_RECT.size.x, 12)
-		l.position = Vector2(0, 3 + i * 13)
+		var l := UiStyle.label("", UiStyle.TEXT, Vector2(60, 2 + i * 12), INFO_RECT.size.x - 66)
 		_info_box.add_child(l)
 		_info_lines.append(l)
 	_show_intro()
@@ -350,42 +358,50 @@ func _build_info_box(ui: CanvasLayer) -> void:
 func _set_info(lines: Array, colors: Array) -> void:
 	for i in 3:
 		_info_lines[i].text = lines[i] if i < lines.size() else ""
-		_info_lines[i].label_settings = Hud.small_text(colors[i] if i < colors.size() else ShopStand.DIM)
+		_info_lines[i].label_settings = Hud.small_text(colors[i] if i < colors.size() else UiStyle.DIM)
 
 
 func _show_intro() -> void:
+	_card_icon = "part"
+	_card_kind = "intro"
 	_set_info(["SPEND YOUR PARTS", "walk up to a glowing item", "%s: BUY" % _key],
-			[ShopStand.WARM, Color(0.85, 0.85, 0.85), ShopStand.WARM])
+			[UiStyle.WARM, UiStyle.TEXT, UiStyle.WARM])
 
 
 ## 站到哪件前面就显示哪件；都没站时，进门那几秒显示提示，之后收起来
 func _update_info_box(delta: float) -> void:
+	_card_pop = maxf(_card_pop - delta * 4.0, 0.0)
+	_card_deny = maxf(_card_deny - delta * 2.5, 0.0)
 	var focus: ShopStand = null
 	for st in _stands:
 		if st.focused:
 			focus = st
 			break
+	if focus != _info_focus and focus != null:
+		Game.sfx("ui_move", -12.0)
 	if focus:
 		_info_intro = 0.0
 		var info := focus.info
 		var price_line := ""
-		var price_col := ShopStand.WARM
+		var price_col := UiStyle.WARM
 		var tag := focus.tag_text()
 		if tag in ["MAX", "SOLD"]:
 			price_line = "MAXED OUT" if tag == "MAX" else "SOLD OUT"
-			price_col = ShopStand.DIM
+			price_col = UiStyle.DIM
 		elif tag == "SOON":
 			price_line = "NOT FOR SALE YET"
-			price_col = ShopStand.DIM
+			price_col = UiStyle.DIM
 		elif focus.can_buy():
 			var price: int = info.get("price", 0)
-			price_line = ("%d PART%s   %s: BUY" % [price, "S" if price > 1 else "", _key]) if price > 0 else ("FREE   %s: PULL" % _key)
+			price_line = ("%d PART%s      %s: BUY" % [price, "S" if price > 1 else "", _key]) if price > 0 else ("FREE      %s: PULL" % _key)
 		else:
 			var price: int = info.get("price", 0)
 			price_line = "NEED %d PART%s  (YOU HAVE %d)" % [price, "S" if price > 1 else "", Run.parts] if price > 0 else ""
-			price_col = ShopStand.POOR
+			price_col = UiStyle.POOR
 		_set_info([info.get("title", ""), info.get("detail", ""), price_line],
-				[ShopStand.WARM, Color(0.85, 0.85, 0.85), price_col])
+				[UiStyle.WARM, UiStyle.TEXT, price_col])
+		_card_icon = focus.icon
+		_card_kind = focus.id
 		_info_box.visible = true
 		_info_box.position = INFO_RECT.position + Vector2(roundf(sin(focus.shake * 60.0) * 2.0 * signf(focus.shake)), 0)
 	elif _info_intro > 0.0:
@@ -395,7 +411,51 @@ func _update_info_box(delta: float) -> void:
 		_info_box.position = INFO_RECT.position
 	else:
 		_info_box.visible = false
+	var sc := 1.0 + 0.08 * sin(_card_pop * PI)
+	_info_box.scale = Vector2(sc, sc)
 	_info_focus = focus
+	_info_box.queue_redraw()
+
+
+func _draw_card() -> void:
+	var box := _info_box
+	var r := Rect2(Vector2.ZERO, INFO_RECT.size)
+	var base := UiStyle.WARM
+	if _info_focus != null:
+		base = _info_focus.edge_color()
+	var edge := base.lerp(UiStyle.POOR, clampf(_card_deny * 2.0, 0.0, 1.0))
+	UiStyle.panel(box, r, true, _time, edge)
+	# 图标格
+	var ir := Rect2(4, 4, 50, 48)
+	UiStyle.panel(box, ir, false, _time, UiStyle.WARM, Color(0.03, 0.03, 0.04, 0.9))
+	var bob := roundf(sin(_time * 3.0) * 1.5)
+	var dim := _info_focus != null and not _info_focus.can_buy()
+	UiStyle.icon(box, ShopStand.ICONS, maxi(ShopStand.ICON_NAMES.find(_card_icon), 0), Vector2(5, 4 + bob), 3,
+			UiStyle.DIM_MOD if dim else Color.WHITE)
+	# 底下一排格子条
+	var y := 43.0
+	match _card_kind:
+		"weapon":
+			for c in WEAPON_CARDS:
+				if c[0] == _card_icon:
+					for k in 3:
+						var x := 60.0 + k * 74.0
+						var lab: String = ["POWER", "RATE", "REACH"][k]
+						var lw := Hud.font().get_string_size(lab, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
+						box.draw_string(Hud.font(), Vector2(x, y + 5), lab, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, UiStyle.DIM)
+						UiStyle.bars(box, Vector2(x + lw + 4.0, y), c[4 + k], 5, 5.0, 3.0, 1.0)
+		"charge", "fuel", "plating", "damping":
+			var lv := Upgrades.level(_card_kind)
+			box.draw_string(Hud.font(), Vector2(60, y + 5), "LEVEL", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, UiStyle.DIM)
+			UiStyle.bars(box, Vector2(98, y), lv, Upgrades.MAX_LEVEL, 16.0, 3.0, 2.0, UiStyle.WARM, _time,
+					lv if lv < Upgrades.MAX_LEVEL else -1)
+		"repair":
+			var ratio := Run.crystal_hp / maxf(Run.crystal_max, 1.0)
+			box.draw_string(Hud.font(), Vector2(60, y + 5), "LANTERN", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, UiStyle.DIM)
+			box.draw_rect(Rect2(110, y, 120, 3), UiStyle.BAR_OFF)
+			var add := clampf(Upgrades.REPAIR_AMOUNT / maxf(Run.crystal_max, 1.0), 0.0, 1.0 - ratio)
+			box.draw_rect(Rect2(110 + 120 * ratio, y, 120 * add, 3), UiStyle.BAR_OFF.lerp(UiStyle.WARM, 0.35 + 0.35 * sin(_time * 8.0)))
+			box.draw_rect(Rect2(110, y, 120 * ratio, 3), UiStyle.WARM)
 
 
 func _process(delta: float) -> void:

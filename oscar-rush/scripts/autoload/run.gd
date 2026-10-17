@@ -148,6 +148,14 @@ func damage_crystal(amount: float) -> void:
 		crystal_broken.emit()
 
 
+## 马灯回血（清场回血、灯油、商店修灯都可以走这里），不超过上限
+func heal_crystal(amount: float) -> void:
+	if crystal_hp <= 0.0 or amount <= 0.0:
+		return
+	crystal_hp = minf(crystal_hp + amount, crystal_max)
+	crystal_changed.emit(crystal_hp, crystal_max)
+
+
 func add_emotion(amount: float) -> void:
 	emotion = clampf(emotion + amount, 0.0, 100.0)
 

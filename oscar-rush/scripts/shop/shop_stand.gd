@@ -1,6 +1,7 @@
 class_name ShopStand
 extends Node2D
-## 商店里的一件货：一个图标（可选等级小格），下面常驻一个小价签。主角走到它前面就"选中"，
+## 商店里的一件货：一张小卡片（和开局选武器界面同一套画法，见 UiStyle）里放图标和等级格，下面挂一个价签。
+## 主角走到它前面就"选中"：卡片边变暖黄、四角角标一张一缩、图标放大浮动，没选中的买不起的调暗。
 ## 名字、说明和价钱显示在屏幕下方的信息框里（ShopRoom 管），按互动键（和捡灯同一个键）就买。
 ## 买不买得起、买了以后怎么样由 ShopRoom 决定。
 ## 原点在图标正中。
@@ -37,22 +38,31 @@ var tag_y := 13.0
 var shake := 0.0
 
 var _sprite: Sprite2D
+var _back: Node2D
 var _marks: Node2D
 var _tag: Label
 var _pop := 0.0
 var _t := 0.0
+var _focus_s := 0.0
+
+const CARD := Rect2(-11, -11, 22, 22)
 
 
 func _ready() -> void:
 	z_index = 4
+	# 卡片底、价签、角标都不吃场景光照，暗处也看得清；卡片底在图标后面，价签和角标在最上面
+	var unshaded := CanvasItemMaterial.new()
+	unshaded.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+	_back = Node2D.new()
+	_back.material = unshaded
+	_back.z_index = -1
+	_back.draw.connect(_draw_back)
+	add_child(_back)
 	_sprite = Sprite2D.new()
 	_sprite.texture = ICONS
 	_sprite.hframes = ICON_NAMES.size()
+	_sprite.material = unshaded
 	add_child(_sprite)
-
-	# 价签和亮框不吃场景光照，暗处也看得清
-	var unshaded := CanvasItemMaterial.new()
-	unshaded.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
 	_marks = Node2D.new()
 	_marks.material = unshaded
 	_marks.z_index = 30
@@ -73,13 +83,13 @@ func refresh_view() -> void:
 	if _sprite == null:
 		return
 	_sprite.frame = maxi(ICON_NAMES.find(icon), 0)
-	_sprite.modulate = Color(0.45, 0.42, 0.42) if info.get("dim", false) else Color.WHITE
 	var text := tag_text()
 	_tag.text = text
 	_tag.label_settings = Hud.small_text(tag_color())
-	# 价签左边留 5 像素画小齿轮（只有写着价钱的时候画）
-	var gear := 5.0 if text.is_valid_int() else 0.0
-	_tag.position = Vector2(-20.0 + gear * 0.5 + 1.0, tag_y + (4.0 if pips >= 0 else 0.0))
+	# 价签左边留 6 像素画小齿轮（只有写着价钱的时候画）
+	var gear := 6.0 if text.is_valid_int() else 0.0
+	_tag.position = Vector2(-20.0 + gear * 0.5, tag_y)
+	_back.queue_redraw()
 	_marks.queue_redraw()
 
 
@@ -100,15 +110,24 @@ func tag_text() -> String:
 
 func tag_color() -> Color:
 	if not info.has("price") or info.get("dim", false):
-		return DIM
-	return WARM if info.get("can_buy", false) else POOR
+		return UiStyle.DIM
+	return UiStyle.WARM if info.get("can_buy", false) else UiStyle.POOR
 
 
 func can_buy() -> bool:
 	return info.get("can_buy", false)
 
 
-## 买不起：价签和信息框抖一下
+## 选中时卡片边的颜色：买得起暖黄；有价钱但零件不够红；不用买（马灯满了、买满、卖完、还没做）灰
+func edge_color() -> Color:
+	if can_buy():
+		return UiStyle.WARM
+	if int(info.get("price", 0)) > 0 and not info.get("dim", false) and tag_text() not in ["MAX", "SOLD"]:
+		return UiStyle.POOR
+	return UiStyle.DIM
+
+
+## 买不起：卡片和信息卡抖一下
 func deny() -> void:
 	shake = 0.3
 
@@ -135,40 +154,65 @@ func _physics_process(delta: float) -> void:
 		focused = true
 		if Input.is_action_just_pressed(p.input_prefix + "_crystal"):
 			buy_pressed.emit(self, p)
-	_marks.position = Vector2(roundf(sin(shake * 60.0) * 2.0 * signf(shake)), 0)
-	_sprite.position = Vector2(0, -roundf(sin(_pop * PI) * 3.0))
+	_focus_s = move_toward(_focus_s, 1.0 if focused else 0.0, delta * 8.0)
+	var sh := Vector2(roundf(sin(shake * 60.0) * 2.0 * signf(shake)), 0)
+	_marks.position = sh
+	_back.position = sh
+	# 选中：图标放大一点、上下浮；买到：往上弹一下；买不起或还没做的：调暗（和选武器界面没选中的卡一样）
+	var bob := roundf(sin(_t * 3.0) * 1.0) if focused else 0.0
+	_sprite.position = sh + Vector2(0, bob - roundf(sin(_pop * PI) * 3.0))
+	var sc := 1.0 + 0.15 * _focus_s + 0.2 * sin(_pop * PI)
+	_sprite.scale = Vector2(sc, sc)
+	var usable := can_buy() or focused
+	_sprite.modulate = Color.WHITE if usable else UiStyle.DIM_MOD
+	if info.get("dim", false):
+		_sprite.modulate = Color(0.45, 0.42, 0.42)
+	_back.queue_redraw()
 	_marks.queue_redraw()
 
 
-func _draw_marks() -> void:
-	# 等级小格，在图标下面
-	if pips >= 0:
-		for i in Upgrades.MAX_LEVEL:
-			_marks.draw_rect(Rect2(-6 + i * 4, 10, 3, 2), WARM if i < pips else Color(0.22, 0.2, 0.2))
-	# 价签前面的小齿轮
-	if _tag.text.is_valid_int():
-		var w := Hud.font().get_string_size(_tag.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
-		var gx := roundf(_tag.position.x + 20.0 - w * 0.5) - 6.0
-		var gy := _tag.position.y + 3.0
-		var col := tag_color()
-		_marks.draw_rect(Rect2(gx + 1, gy, 3, 5), col)
-		_marks.draw_rect(Rect2(gx, gy + 1, 5, 3), col)
-		_marks.draw_rect(Rect2(gx + 2, gy + 2, 1, 1), Color(0.1, 0.08, 0.08))
-	# 四角亮框：买得起的一直一闪一闪，站到前面时变实；买不起的只在站到前面时出一个暗红框
-	var a := 0.0
-	var col := WARM
-	if focused:
-		a = 1.0
-		col = WARM if can_buy() else POOR
-	elif can_buy():
-		a = 0.35 + 0.35 * (0.5 + 0.5 * sin(_t * 4.0))
-	if a <= 0.0:
+## 卡片底：和选武器界面的卡片一样（近黑底 + 细边；选中暖黄边，买不起的选中是红边）。
+## 买得起、没选中的：边一明一暗地泛暖黄，告诉你"这个能买"。拉杆那种没图标的不画卡片
+func _draw_back() -> void:
+	if not _sprite.visible:
 		return
-	col.a = a
-	var r := 10.0 if focused else 9.0
-	for sx: float in [-1.0, 1.0]:
-		for sy: float in [-1.0, 1.0]:
-			var cx: float = sx * r
-			var cy: float = sy * r - (1.0 if sy < 0.0 else 0.0)
-			_marks.draw_rect(Rect2(minf(cx, cx - sx * 3.0), cy, 3, 1), col)
-			_marks.draw_rect(Rect2(cx, minf(cy, cy - sy * 3.0), 1, 3), col)
+	var on := focused
+	UiStyle.panel(_back, CARD, false, _t, UiStyle.WARM, Color(UiStyle.PANEL, 0.82))
+	if not on and can_buy():
+		var a := 0.25 + 0.3 * (0.5 + 0.5 * sin(_t * 4.0))
+		var c := Color(UiStyle.WARM, a)
+		_back.draw_rect(Rect2(CARD.position, Vector2(CARD.size.x, 1)), c)
+		_back.draw_rect(Rect2(CARD.position.x, CARD.end.y - 1, CARD.size.x, 1), c)
+		_back.draw_rect(Rect2(CARD.position, Vector2(1, CARD.size.y)), c)
+		_back.draw_rect(Rect2(CARD.end.x - 1, CARD.position.y, 1, CARD.size.y), c)
+	# 等级格：卡片底边里面三小格
+	if pips >= 0:
+		UiStyle.bars(_back, Vector2(-8, 8), pips, Upgrades.MAX_LEVEL, 5.0, 1.0, 1.0)
+
+
+func _draw_marks() -> void:
+	var col := edge_color()
+	# 选中：卡片四角外面一张一缩的角标（拉杆没有卡片，就围着拉杆那一块）
+	if focused:
+		var r := CARD if _sprite.visible else Rect2(-7, -9, 14, 18)
+		UiStyle.corners(_marks, r, _t, col, 3.0)
+		if _sprite.visible:
+			_marks.draw_rect(Rect2(CARD.position, Vector2(CARD.size.x, 1)), col)
+			_marks.draw_rect(Rect2(CARD.position.x, CARD.end.y - 1, CARD.size.x, 1), col)
+			_marks.draw_rect(Rect2(CARD.position, Vector2(1, CARD.size.y)), col)
+			_marks.draw_rect(Rect2(CARD.end.x - 1, CARD.position.y, 1, CARD.size.y), col)
+	# 价签：一块小黑底，价钱前面一个小齿轮
+	if _tag.text == "":
+		return
+	var w := Hud.font().get_string_size(_tag.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
+	var gear := 6.0 if _tag.text.is_valid_int() else 0.0
+	var tw := roundf(w + gear + 4.0)
+	var tr := Rect2(-roundf(tw * 0.5), tag_y + 1.0, tw, 10)
+	_marks.draw_rect(tr, Color(UiStyle.PANEL, 0.88))
+	if gear > 0.0:
+		var gx := tr.position.x + 2.0
+		var gy := tr.position.y + 3.0
+		var tc := tag_color()
+		_marks.draw_rect(Rect2(gx + 1, gy, 3, 5), tc)
+		_marks.draw_rect(Rect2(gx, gy + 1, 5, 3), tc)
+		_marks.draw_rect(Rect2(gx + 2, gy + 2, 1, 1), Color(0.1, 0.08, 0.08))

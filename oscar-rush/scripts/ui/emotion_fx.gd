@@ -108,6 +108,8 @@ var _heal_t := 0.0
 var _heal_sweep := 0.0
 var _time := 0.0
 var _dark := false
+## 重生后这段时间里马灯血量的变化不放特效
+var _quiet_until := 0.0
 
 
 func _ready() -> void:
@@ -153,6 +155,8 @@ func _ready() -> void:
 	tier = _tier_for(Run.emotion, 0)
 	_last_hp = Run.crystal_hp
 	Run.crystal_changed.connect(_on_crystal_changed)
+	if Run.has_signal("resumed"):
+		Run.resumed.connect(func(): _quiet_until = _time + 0.6; _last_hp = Run.crystal_hp)
 
 
 func _label(pos: Vector2, w: float, color: Color) -> Label:
@@ -327,6 +331,9 @@ func _pop_number(v: float) -> void:
 func _on_crystal_changed(hp: float, _max: float) -> void:
 	var d := hp - _last_hp
 	_last_hp = hp
+	# 从存档点重来那一下补到三成，是重生动画管的（"三个主要bug修复"会话做），这里不放回血特效
+	if Run.get("_resuming") or _time < _quiet_until:
+		return
 	if d > 0.05:
 		_heal_t = maxf(_heal_t, 1.2)
 		_heal_sweep = 1.0

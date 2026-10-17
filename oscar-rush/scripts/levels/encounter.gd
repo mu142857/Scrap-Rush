@@ -41,6 +41,8 @@ const TYPES := {
 ## 精英怪：登场情绪 +10（策划案第八节）；落在场子里离主角远的那一头，预警更久、火花更大
 const ELITES := ["cuckoo", "sewing", "register", "piano", "vacuum", "roller", "switchboard", "gramophone", "projector"]
 const ELITE_WARN_TIME := 1.0
+## 打完一场马灯回这么多血
+const CLEAR_HEAL := 12.0
 const WARN_TIME := 0.45
 const WAVE_GAP := 0.8
 const GATE_W := 8.0
@@ -97,7 +99,9 @@ func _ready() -> void:
 	_label.label_settings = Hud.small_text(LABEL_COLOR)
 	_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_label.size = Vector2(120, 12)
-	_label.position = Vector2((left + right) / 2.0 - 60.0, ceil_y + 6.0)
+	# 字放在地面上方 72 像素（不低于天花板）：镜头放大 2 倍时只看得到地面上方约 100 像素，
+	# 原来挂在天花板下面，上层场子的天花板在画面外，AMBUSH / CLEAR 根本看不到
+	_label.position = Vector2((left + right) / 2.0 - 60.0, maxf(ceil_y + 6.0, minf(floor_left, floor_right) - 72.0))
 	_label.visible = false
 	var unshaded := CanvasItemMaterial.new()
 	unshaded.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
@@ -239,7 +243,9 @@ func _finish() -> void:
 	for g in _gates:
 		g.rise()
 	Game.sfx("ready", -6.0)
-	_show_label("CLEAR")
+	# 清场回血（策划案第七节"关卡内回血"）：和 CHECKPOINT 一起出
+	Run.heal_crystal(CLEAR_HEAL)
+	_show_label("CLEAR   LANTERN +%d" % int(CLEAR_HEAL))
 	var part := Part.new()
 	part.position = Vector2((left + right) / 2.0, ceil_y + 20.0)
 	get_parent().add_child.call_deferred(part)
