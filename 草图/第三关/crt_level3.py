@@ -41,8 +41,11 @@ FLOOR = 1180
 MAXH = 270
 BOTTOMS = [FLOOR - MAXH * i for i in range(4)]   # 1180 / 910 / 640 / 370
 ROW_X0, ROW_X1 = 110, 4600
-PATTERN = ["L", "L", "M", "L", "S", "L", "L", "M"]
-BREAKS = [[1900], [1200, 2800], [2250], [1400]]  # 每层在这些 x 附近断开（实心外壳，不打通）
+# 大屏大致隔一块出现一次，遭遇战沿路线均匀（作者：别一连好几个没有、又一连好几个都是）
+PATTERN = ["L", "M", "L", "S", "L", "M", "L", "M"]
+# 每层在这些 x 附近断开（实心外壳，不打通）。洞口盖了格栅以后只能往上走，所以最下层和最上层不断开
+# （断开的话下层右半段进不去、上层左半段是上去就下不来的死胡同）
+BREAKS = [[], [1200, 2800], [2250], []]
 HOLES = [                                        # (下层, 上层, 目标 x)
     (0, 1, 520), (0, 1, 1575), (0, 1, 2360), (0, 1, 3500),
     (1, 2, 385), (1, 2, 1750), (1, 2, 3325),
@@ -157,7 +160,10 @@ def assign_scenes(rows):
     if len(arenas) < len(elite_scenes):
         return False
     random.shuffle(elite_scenes)
-    picked = sorted(random.sample(range(len(arenas)), len(elite_scenes)))
+    # 按路线顺序（一层一层、每层从左到右）均匀挑场子
+    picked = sorted({int(round(v)) for v in np.linspace(0, len(arenas) - 1, len(elite_scenes))})
+    if len(picked) < len(elite_scenes):
+        return False
     for name, ai in zip(elite_scenes, picked):
         arenas[ai].name = name
         arenas[ai].encounter = True
@@ -197,17 +203,18 @@ def choose_hole(rows, lo, up, target):
 
 
 def connected(rows, holes):
+    """洞口盖了格栅，只能往上爬。要求：从起点（左下）只往上走能到每一段，每一段（最上层除外）都有往上的出口。"""
     nodes = {(tv.row, tv.seg) for row in rows for tv in row}
-    adj = {n: set() for n in nodes}
+    up = {n: set() for n in nodes}
     for x, u, l in holes:
-        adj[(u.row, u.seg)].add((l.row, l.seg)); adj[(l.row, l.seg)].add((u.row, u.seg))
+        up[(l.row, l.seg)].add((u.row, u.seg))
     seen, q = {(0, 0)}, deque([(0, 0)])
     while q:
         n = q.popleft()
-        for m_ in adj[n]:
+        for m_ in up[n]:
             if m_ not in seen:
                 seen.add(m_); q.append(m_)
-    return seen == nodes
+    return seen == nodes and all(up[n] for n in nodes if n[0] < 3)
 
 
 # 换种子直到：所有段都连得上，而且没开洞的大屏够 23 种场景当场子
@@ -374,16 +381,25 @@ def draw_local(tv, fn):
 
 
 END = None
+SEEN = {}
 for row in rows:
     for tv in row:
         n0 = len(sc.PLATFORMS)
+        # 同一种场景第二次出现左右镜像，第三次再偏一点色相（作者：场景重复、连背景都一样）
+        nth = SEEN.get(tv.name, 0)
+        SEEN[tv.name] = nth + 1
+        k.VARIANT["mirror"] = nth % 2 == 1 and not tv.flat
+        k.VARIANT["hue"] = [0.0, 0.0, 28.0, -28.0][nth % 4]
         if tv.name in ROOMS:
             draw_local(tv, lambda t: sc.room(ROOMS[t.name], t))
         elif tv.name == "hometown":
             END = draw_local(tv, sc.sc_hometown)
         else:
             draw_local(tv, SCENES[tv.name][0])
+        if k.VARIANT["mirror"]:
+            sc.PLATFORMS[n0:] = [(tv.sx0 + tv.sx1 - b, tv.sx0 + tv.sx1 - a, y) for a, b, y in sc.PLATFORMS[n0:]]
         tv.platforms = sc.PLATFORMS[n0:]
+k.VARIANT.update(mirror=False, hue=0.0)
 
 PASSAGES, HOLE_DATA = [], []
 for row in rows:
@@ -395,6 +411,7 @@ for row in rows:
 
 for x, u, l in picks:
     k.drop_hole(u, l, x)
+    sc.PLATFORMS.append((x - 3, x + 25, u.fy))          # 洞口的格栅：单向平台
     HOLE_DATA.append({"x0": x, "x1": x + 22, "top": u.fy, "bottom": l.fy, "ladder_x": x + 11,
                       "upper": [u.row, u.seg], "lower": [l.row, l.seg]})
 

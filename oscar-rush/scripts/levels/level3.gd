@@ -11,6 +11,8 @@ extends Node2D
 const D := preload("res://scripts/levels/level3_data.gd")
 const DARKNESS := Color(0.36, 0.35, 0.41)
 const CLIMB_SPEED := 110.0
+## 单向平台（家具顶、屋顶、伞、洞口的格栅）单独一层：只有主角和马灯会踩，怪和精英直接落到地上
+const PLATFORM_LAYER := 64
 ## 镜头中心多远以内的屏幕灯才开
 const LIGHT_RANGE := 620.0
 const TINT_LIGHT := {
@@ -112,12 +114,14 @@ func _ready() -> void:
 		p.skin = Run.players[i]["skin"]
 		p.position = D.START + Vector2(i * 14, 0)
 		add_child(p)
+		p.collision_mask |= PLATFORM_LAYER
 		if first == null:
 			first = p
 
 	var crystal := Crystal.new()
 	crystal.position = D.START
 	add_child(crystal)
+	crystal.collision_mask |= PLATFORM_LAYER
 	crystal.pick_up(first, true)
 
 	var cam := Level3Camera.new()
@@ -152,7 +156,7 @@ func _ready() -> void:
 
 func _add_box(r: Rect2, one_way: bool) -> void:
 	var body := StaticBody2D.new()
-	body.collision_layer = 1
+	body.collision_layer = PLATFORM_LAYER if one_way else 1
 	var shape := CollisionShape2D.new()
 	var rect := RectangleShape2D.new()
 	rect.size = r.size
@@ -361,13 +365,15 @@ func _on_crystal_broken() -> void:
 
 func _leave() -> void:
 	_leaving = true
-	hud.show_banner("HOME")
+	hud.show_banner("SCREENS CLEARED")
 	await get_tree().create_timer(1.6, true, false, true).timeout
 	Game.flash(Color.BLACK, 1.0, 0.8)
 	await get_tree().create_timer(0.4, true, false, true).timeout
 	Engine.time_scale = 1.0
 	get_tree().paused = false
-	get_tree().change_scene_to_file("res://scenes/title.tscn")
+	# 最后一次商店就在老电视门口，出去就是最终 Boss（boss3），打完进结局
+	ShopRoom.next_scene = "res://scenes/boss3.tscn"
+	get_tree().change_scene_to_file("res://scenes/shop.tscn")
 
 
 func _retry() -> void:

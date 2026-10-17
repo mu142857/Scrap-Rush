@@ -14,10 +14,12 @@ const LEVELS := [
 	[KEY_2, "Level 2", "res://scenes/level2.tscn", ""],
 	[KEY_3, "Level 3", "res://scenes/level3.tscn", ""],
 	[KEY_4, "Boss 1", "res://scenes/boss1.tscn", ""],
-	[KEY_5, "Shop", "res://scenes/shop.tscn", "res://scenes/title.tscn"],
+	[KEY_5, "Boss 2", "res://scenes/boss2.tscn", ""],
+	[KEY_6, "Boss 3", "res://scenes/boss3.tscn", ""],
+	[KEY_7, "Shop", "res://scenes/shop.tscn", "res://scenes/title.tscn"],
 	[KEY_0, "Title", "res://scenes/title.tscn", ""],
 ]
-const HELP := "F1 invincible   1 Level 1   2 Level 2   3 Level 3   4 Boss   5 Shop   0 Title\nP +5 parts   H fill lantern   G unbreakable lantern\nK kill all   U max gear   [ ] emotion -/+   T slow-mo"
+const HELP := "F1 invincible   1 Level 1   2 Level 2   3 Level 3   4 Boss 1   5 Boss 2   6 Boss 3   7 Shop   0 Title\nP +5 parts   H fill lantern   G unbreakable lantern\nK kill all   U max gear   [ ] emotion -/+   T slow-mo"
 
 var on := false
 var god := false
@@ -68,7 +70,7 @@ func _input(event: InputEvent) -> void:
 		return
 	var used := true
 	match k.physical_keycode:
-		KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_0:
+		KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_0:
 			go(k.physical_keycode)
 		KEY_P:
 			Run.add_part(5)

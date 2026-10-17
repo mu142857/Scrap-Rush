@@ -593,8 +593,37 @@ def static_band(tv, y0, y1):
     scr.a[y1 + 1:y1 + 4, tv.sx0 + 3:tv.sx1] = seg
 
 
+## 同一种场景第二、三次出现时的变化（crt_level3.py 在画之前填）：mirror 左右镜像，hue 彩色屏的色相偏移（度）
+VARIANT = {"mirror": False, "hue": 0.0}
+
+
+def mirror_screen(tv):
+    """把屏幕里的画面左右翻过来（在上色、扫描线、反光之前做，反光还在左上角）。"""
+    m = tv.screen_mask()
+    ys, xs = np.nonzero(m)
+    a = scr.a.copy()
+    scr.a[ys, xs] = a[ys, tv.sx0 + tv.sx1 - xs]
+
+
+def hue_shift(tv, deg):
+    from oscarkit.measure import srgb_to_oklab
+    from oscarkit.palette import oklab_to_srgb
+    m = tv.screen_mask() & (scr.a[..., 3] > 0)
+    px = scr.a[..., :3][m]
+    keys, inv = np.unique(px, axis=0, return_inverse=True)
+    lab = srgb_to_oklab(keys.astype(np.uint8))
+    C, h = np.hypot(lab[:, 1], lab[:, 2]), np.arctan2(lab[:, 2], lab[:, 1]) + np.radians(deg)
+    new = oklab_to_srgb(np.stack([lab[:, 0], C * np.cos(h), C * np.sin(h)], 1))
+    scr.a[..., :3][m] = new[inv.ravel()]
+
+
 def finish_room(tv, light_at):
     m = tv.screen_mask()
+    if VARIANT["mirror"] and not getattr(tv, "flat", False):   # 测试卡、天气预报上有字，不翻
+        mirror_screen(tv)
+        light_at = (tv.sx0 + tv.sx1 - light_at[0], light_at[1])
+    if VARIANT["hue"] and tv.tint == "color":
+        hue_shift(tv, VARIANT["hue"])
     if not getattr(tv, "flat", False):
         light_pass(tv, light_at, seed=tv.sx0 % 97)
     tint(m, TINTS[tv.tint])
@@ -759,6 +788,13 @@ def drop_hole(upper, lower, x, w=22):
             scr.put(bx + side * -k, upper.fy - 1 + k // 2, (104, 72, 66))
     for xx in range(x - 2, x + w + 3, 3):                              # 下面房间天花板上的碎玻璃
         scr.put(xx, lower.sy0 + 6 + (xx % 2), GLARE)
+    # 洞口盖一块铁格栅（作者 2026-10-17：走着走着容易掉下去）：从下面爬上来能穿过去，站在上面不会掉
+    for xx in range(x - 3, x + w + 4):
+        near.put(xx, upper.fy - 1, (168, 168, 178) if xx % 3 else (120, 120, 132))
+        near.put(xx, upper.fy, (96, 96, 110) if xx % 3 else (60, 60, 72))
+        near.put(xx, upper.fy + 1, (60, 60, 72) if xx % 3 == 0 else (0, 0, 0, 0))
+    for bx in (x - 3, x + w + 3):
+        near.rect(bx - 1, upper.fy - 2, bx, upper.fy + 1, (120, 120, 132))
     # 电线梯子：一根垂到下面房间地板附近，每隔 5 格一个结
     cx = x + w // 2
     for y in range(upper.fy - 6, lower.fy - 22):

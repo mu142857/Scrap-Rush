@@ -1,6 +1,6 @@
 """把 Art_Assets 里 Oscar 的 aseprite 原稿切成游戏用的 PNG。
 
-用法：python3 tools/export_art.py
+用法：python3 tools/export_art.py（只导开场动画：加 --intro）
 原稿只读，输出写到 art/ 下面。Oscar 改了原稿就重跑一次。
 """
 import json
@@ -137,9 +137,25 @@ def _all_layers(src: Path) -> list[str]:
     return [l.strip() for l in r.stdout.splitlines() if l.strip()]
 
 
+def export_intro(tmp: Path) -> None:
+    """开场动画.aseprite：28 帧 480×270，原样逐帧导出成 art/intro/00.png ……
+    每帧时长写在 scripts/ui/intro.gd 的 DURATIONS 里，Oscar 改了帧数或时长要对着改。"""
+    src = SRC / "开场动画.aseprite"
+    frames = export_frames(src, tmp)
+    for i, f in enumerate(frames):
+        save(f, ROOT / "art" / "intro" / f"{i:02d}.png")
+    data = json.loads((tmp / (src.stem + ".json")).read_text())
+    print("intro durations (ms):", [f["duration"] for f in data["frames"]])
+
+
 if __name__ == "__main__":
+    import sys
     with tempfile.TemporaryDirectory() as d:
         tmp = Path(d)
+        if "--intro" in sys.argv:  # 只导开场动画
+            export_intro(tmp)
+            sys.exit()
+        export_intro(tmp)
         export_chars(tmp)
         export_crawler(tmp)
         export_scene(tmp)

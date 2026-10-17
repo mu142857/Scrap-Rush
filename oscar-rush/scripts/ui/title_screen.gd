@@ -208,19 +208,11 @@ func _label(text: String, y: float, size: int, color: Color, outline: int, paren
 	return l
 
 
+## 开场动画（intro.gd）已经铺垫过了，菜单一出来就是完整的，不再一条条显示
 func _animate_in() -> void:
-	await get_tree().create_timer(0.5).timeout
-	# 标题：老灯管通电，闪三下才亮稳
-	Game.sfx("title_on", -6.0)
-	for a in [1.0, 0.0, 1.0, 0.15, 1.0]:
-		_title.modulate.a = a
-		await get_tree().create_timer(0.05).timeout
-	await _fade_in(_sub, 0.3)
-	for l in _option_labels:
-		Game.sfx("ui_move", -12.0)
-		await _fade_in(l, 0.16)
+	for l in [_title, _sub, _hint] + _option_labels:
+		l.modulate.a = 1.0
 	_refresh()
-	await _fade_in(_hint, 0.3)
 	_ready_for_input = true
 
 

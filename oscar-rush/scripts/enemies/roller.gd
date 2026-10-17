@@ -6,7 +6,7 @@ extends EliteBase
 ##    一路冲到撞墙（桥两头的闸门）为止 → 撞墙大震，晕 2 秒，晕的时候挨打 ×1.5。跳过去躲。
 ## 2. 喷汽：主角在它头顶（跳过去、飞在上面）时，先冒"!"，然后烟囱往上喷一柱蒸汽，顶人也伤人。
 ##    免得玩家一直飘在它头上打。
-## 3. 煤渣炮（2026-10-17 加）：主角离得远时，鸣笛（"!"），烟囱朝主角的位置连轰两发烧红的煤块，
+## 3. 碎石炮（2026-10-17 加，原名煤渣炮）：主角离得远时，鸣笛（"!"），烟囱朝主角的位置连轰两发路面碎石，
 ##    落地以后接着往前滚。站远了慢慢磨也不安全。和冲撞轮流用。
 ## 平时慢慢朝主角开。从天花板掉下来时落地一震。
 ## 冲撞的前摇（2026-10-17 试玩嫌不明显）：先往后倒一小段，车身闪红、越抖越厉害，烟囱一股股喷汽，
@@ -16,8 +16,8 @@ extends EliteBase
 enum State { DRIVE, WINDUP, CHARGE, STUN, BLAST_WARN, BLAST, MORTAR_WARN, MORTAR }
 
 const DRIVE_SPEED := 20.0
-## 2026-10-17 第二次试玩嫌太难，整体降了一档：冲得慢、前摇长、冷却长、晕得久、煤渣炮少一发、伤害低了
-## 第三次试玩：好躲可以，但太脆、招放不全。血翻倍；冷却更长且不跟着情绪值变短；冲撞和煤渣炮严格轮流
+## 2026-10-17 第二次试玩嫌太难，整体降了一档：冲得慢、前摇长、冷却长、晕得久、碎石炮少一发、伤害低了
+## 第三次试玩：好躲可以，但太脆、招放不全。血翻倍；冷却更长且不跟着情绪值变短；冲撞和碎石炮严格轮流
 const CHARGE_SPEED := 145.0
 const WINDUP_TIME := 1.2
 const BACKUP_SPEED := 14.0
@@ -115,7 +115,7 @@ func _tick(delta: float) -> void:
 					dir = 1 if dx > 0.0 else -1
 				if _cooldown <= 0.0 and absf(dx) < 40.0 and dy < -24.0:
 					_enter(State.BLAST_WARN)
-				# 轮到煤渣炮就放（贴脸也放，炮弹是抛过来的）；不轮到时，主角离得远或者不同高也用它
+				# 轮到碎石炮就放（贴脸也放，炮弹是抛过来的）；不轮到时，主角离得远或者不同高也用它
 				elif _cooldown <= 0.0 and (_next_is_mortar or (absf(dx) > MORTAR_MIN_DIST and absf(dy) >= SEE_HEIGHT)):
 					_next_is_mortar = false
 					_enter(State.MORTAR_WARN)
@@ -264,7 +264,8 @@ func _draw_lane() -> void:
 		_lane.draw_rect(Rect2(x - (4 if dir < 0 else 0), -2, 4, 1), col)
 
 
-## 煤渣炮：从烟囱朝主角现在的位置抛一发烧红的煤块（落地接着滚）
+## 碎石炮：从烟囱朝主角现在的位置抛一发路面碎石（落地接着滚）。
+## 用的是 COAL 的飞法，但画成碎石（gravel），和锅炉工的煤块区分开
 func _fire_mortar(p: Player) -> void:
 	var from := global_position + _chimney_local() + Vector2(0, -2)
 	var target := p.global_position if p else from + Vector2(dir * 120, 0)
@@ -274,12 +275,15 @@ func _fire_mortar(p: Player) -> void:
 	target.y = global_position.y
 	var v := Vector2((target.x - from.x) / t, (target.y - 4.0 - from.y) / t - 0.5 * BossBullet.COAL_GRAVITY * t)
 	var b := BossBullet.spawn(get_parent(), BossBullet.Kind.COAL, from, v, true)
+	b.gravel = true
 	b.floor_y = global_position.y
 	b.arena = Rect2(global_position.x - 300, global_position.y - 230, 600, 260)
 	Game.sfx("boom", -10.0, 1.5, 0.1)
 	Game.sfx("embers", -8.0, 1.2)
 	Game.add_shake(2.0)
-	Game.sparks(get_parent(), from, Color(1.0, 0.6, 0.25), 6, 70.0, Vector2.UP)
+	# 烟囱口喷一股白汽和几粒石屑，不是火星
+	Game.sparks(get_parent(), from, Color(0.9, 0.9, 0.92), 6, 70.0, Vector2.UP)
+	Game.sparks(get_parent(), from, Color8(150, 140, 125), 3, 50.0, Vector2.UP)
 
 
 ## 烟囱口相对原点（脚底中间）的位置，跟着朝向镜像

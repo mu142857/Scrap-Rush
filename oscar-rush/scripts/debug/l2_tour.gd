@@ -23,40 +23,24 @@ const SHOTS := {
 }
 var _frame := 0
 var _i := 0
-## 走完整条路线。遭遇战开打 150 帧以后自动打完（autoclear），换卷也一样，所以只管按方向键
+## 走完整条路线（自动驾驶）：电话簿仓库里往左走，其他地方往右走，被挡住就跳一下；
+## 遭遇战开打 150 帧以后自动打完（autoclear）。每 SHOT_EVERY 帧打一行状态，离开关卡（进商店）就退出
+const SHOT_EVERY := 300
+const MAX_FRAMES := 20000
 var _steps: Array = [
-	[40, "shot", "01_A1_start"],
-	[42, "press", "solo_right"],
-	[700, "shot", "02_A1_fight"],
-	[1200, "shot", "03_A1_end"],
-	[1202, "release", "solo_right"],
-	[1204, "teleport", Vector2(790, 96)],
-	[1206, "press", "solo_right"],
-	[1300, "release", "solo_right"],
-	[1302, "press", "solo_left"],
-	[1400, "shot", "04_A3"],
-	[2300, "shot", "05_A3_end"],
-	[2302, "release", "solo_left"],
-	[2304, "press", "solo_right"],
-	[2400, "shot", "06_A2"],
-	[3400, "shot", "07_A2_end"],
-	[3700, "shot", "08_bridge"],
-	[4400, "shot", "09_rolling"],
-	[5400, "shot", "10_rolling"],
-	[6400, "shot", "11_rolling"],
-	[7400, "shot", "12_rolling"],
-	[8400, "shot", "13_after"],
-	[9400, "shot", "14_after"],
-	[10400, "shot", "15_after"],
-	[10402, "teleport", Vector2(3630, 500)],
-	[10600, "shot", "16_exit"],
-	[10800, "shot", "17_shop"],
-	[10900, "quit", null],
 ]
+
+
+var _jump_t := 0
+var _stuck := 0
 
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	if shot == "":
+		get_parent().tree_exiting.connect(func():
+			print("[l2tour] f%d level left, scene=%s" % [_frame, get_tree().current_scene])
+			get_tree().quit())
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	Game.invincible = true
 	get_parent().set("_debug", true)
@@ -79,9 +63,40 @@ func _physics_process(_delta: float) -> void:
 				print("[l2tour] f%d fight start %d..%d" % [_frame, n.left, n.right])
 			elif _frame - _fight_start[n] > 150:
 				_run([0, "clear", null])
+	_autopilot()
 	while _i < _steps.size() and _frame >= _steps[_i][0]:
 		_run(_steps[_i])
 		_i += 1
+
+
+func _autopilot() -> void:
+	var players := get_tree().get_nodes_in_group("player")
+	if players.is_empty():
+		return
+	var p: CharacterBody2D = players[0]
+	if p.process_mode == Node.PROCESS_MODE_DISABLED:
+		return
+	var in_r3 := Rect2(40, 140, 420, 130).has_point(p.global_position)
+	Input.action_release("solo_left" if not in_r3 else "solo_right")
+	Input.action_press("solo_right" if not in_r3 else "solo_left")
+	if p.is_on_floor() and absf(p.velocity.x) < 5.0:
+		_stuck += 1
+	else:
+		_stuck = 0
+	if _stuck > 20 and _jump_t == 0:
+		_jump_t = 24
+	if _jump_t > 0:
+		Input.action_press("solo_jump")
+		_jump_t -= 1
+		if _jump_t == 0:
+			Input.action_release("solo_jump")
+	if _frame % SHOT_EVERY == 0:
+		var cam := get_viewport().get_camera_2d()
+		print("[l2tour] f%d player=%s floor=%s cam=%s zoom=%.2f state=%s hp=%.0f" % [_frame, p.global_position,
+			p.is_on_floor(), cam.get_screen_center_position().round(), cam.zoom.x, get_parent().get("_state"), Run.crystal_hp])
+	if _frame > MAX_FRAMES:
+		print("[l2tour] gave up")
+		get_tree().quit()
 
 
 func _single() -> void:

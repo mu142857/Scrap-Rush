@@ -514,8 +514,8 @@ func _leave() -> void:
 	await get_tree().create_timer(0.6, true, false, true).timeout
 	Engine.time_scale = 1.0
 	get_tree().paused = false
-	ShopRoom.next_scene = NEXT_SCENE
-	get_tree().change_scene_to_file("res://scenes/shop.tscn")
+	# 先打总机（boss2），打完它才进商店、去第三关（boss2_room.gd 的 next_shop = NEXT_SCENE）
+	get_tree().change_scene_to_file("res://scenes/boss2.tscn")
 
 
 func _retry() -> void:

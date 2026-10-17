@@ -17,6 +17,8 @@ extends Area2D
 ##   RIVET → 色散像素：红、绿、蓝三层错开的小菱形，后面拖三色的点
 ##   EMBER → 彩条块：竖着的黄、青、绿、品红四色条，外圈一闪一闪
 ##   NOTE  → 品红和青错开的音符
+## gravel = true：压路机"碎石炮"的 COAL，飞法、滚法、伤害都和煤块一样，只是画成路面碎石
+## （暖灰、有棱角的石块，后面拖一缕白汽），和锅炉工铲出来的煤块区分开（2026-10-17 作者嫌两个一样）
 
 enum Kind { EMBER, RIVET, COAL, NOTE, WAVE, SNOW, SCAN }
 
@@ -38,6 +40,8 @@ var floor_y := 164.0
 var arena := Rect2(0, 0, 320, 180)
 ## 第三关"电视信号"画法（见开头）
 var crt := false
+## 压路机碎石的画法（见开头）
+var gravel := false
 
 var _life := 0.0
 var _trail: Array[Vector2] = []
@@ -141,6 +145,8 @@ func _pop() -> void:
 	var col := Color(1.0, 0.6, 0.25) if kind != Kind.RIVET else Color(0.9, 0.85, 0.8)
 	if crt:
 		col = [Color(1.0, 0.3, 0.6), Color(0.3, 0.95, 1.0), Color(0.6, 1.0, 0.4)][randi() % 3]
+	elif gravel:
+		col = Color(0.66, 0.6, 0.52)
 	Game.sparks(get_parent(), global_position, col, 4, 50.0)
 	queue_free()
 
@@ -150,6 +156,9 @@ func _draw() -> void:
 	const OUTLINE := Color(0.08, 0.04, 0.03, 0.85)
 	if crt and kind in [Kind.RIVET, Kind.EMBER, Kind.NOTE]:
 		_draw_crt()
+		return
+	if gravel and kind == Kind.COAL:
+		_draw_gravel()
 		return
 	match kind:
 		Kind.EMBER:
@@ -261,3 +270,26 @@ func _draw_crt() -> void:
 				draw_rect(Rect2(Vector2(-2, 1) + off, Vector2(3, 2)), c)
 				draw_rect(Rect2(Vector2(1, -5) + off, Vector2(1, 6)), c)
 				draw_rect(Rect2(Vector2(2, -5) + off, Vector2(1, 2)), c)
+
+
+## 路面碎石：7×6 的不规则石块，左上一块亮面、一道深色裂缝；后面拖淡白的汽（不是火星）
+func _draw_gravel() -> void:
+	const OUTLINE := Color(0.08, 0.07, 0.07, 0.85)
+	const STONE := Color8(124, 114, 102)
+	const LIGHT := Color8(176, 166, 150)
+	const DARK := Color8(78, 71, 64)
+	for i in _trail.size():
+		var p := (_trail[i] - position).round()
+		draw_rect(Rect2(p - Vector2.ONE, Vector2(2, 2)), Color(0.9, 0.9, 0.92, 0.35 - i * 0.1))
+	# 滚的时候一翻一翻：每 0.12 秒左右翻一次面
+	var flip := int(_life / 0.12 + _seed) % 2 == 1 if _rolling else false
+	var sx := -1.0 if flip else 1.0
+	draw_rect(Rect2(-3, -2, 7, 5), OUTLINE)
+	draw_rect(Rect2(-2, -3, 5, 7), OUTLINE)
+	draw_rect(Rect2(-2, -2, 5, 5), STONE)
+	draw_rect(Rect2(-3, -1, 1, 3), STONE)
+	draw_rect(Rect2(3, -1, 1, 2), STONE)
+	draw_rect(Rect2(Vector2(-2, -2) if sx > 0 else Vector2(1, -2), Vector2(2, 1)), LIGHT)
+	draw_rect(Rect2(Vector2(-2, -1) if sx > 0 else Vector2(2, -1), Vector2.ONE), LIGHT)
+	draw_rect(Rect2(Vector2(1, 0) if sx > 0 else Vector2(-1, 0), Vector2(1, 2)), DARK)
+	draw_rect(Rect2(-1, 2, 4, 1), DARK)
