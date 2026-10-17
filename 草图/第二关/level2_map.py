@@ -11,7 +11,9 @@
   oscar-rush/art/levels/level2_back.png      1.0   房间里的墙（插线板墙、放映室、观众厅墙和银幕）
   oscar-rush/art/levels/level2_props.png     1.0   接线台、电话、大片盘、放映机（人从前面走过）
   oscar-rush/art/levels/level2_solid.png     1.0   能站的东西：楼层、墙、胶片天桥、台阶座位、舞台
-  oscar-rush/art/levels/level2_near.png      1.0   前景：垂下来的线缆、座椅靠背（挡在人前面）
+  oscar-rush/art/levels/level2_film.png      1.0   胶片天桥（游戏里不吃压暗）
+  oscar-rush/art/levels/level2_near.png      1.0   前景：垂下来的线缆、座椅靠背
+  oscar-rush/scripts/levels/level2_data.gd         上面这份 JSON 的 GDScript 版本（关卡直接 preload）
   oscar-rush/art/levels/level2_collision.json      碰撞矩形、出生点、出口、遭遇战、电话、换卷点
   草图/第二关/地图/level2_overview.png              不做视差换算、全部叠起来的总览（1 倍）
   草图/第二关/地图/level2_route.png                 总览 + 红色路线和标记
@@ -86,7 +88,7 @@ ENCOUNTERS = [
     {"name": "E1 顶层", "x0": 280, "x1": 760, "floor_y": A1_Y, "dir": "→"},
     {"name": "E2 中层", "x0": 200, "x1": 820, "floor_y": A3_Y, "dir": "←"},
     {"name": "E3 底层", "x0": 180, "x1": 900, "floor_y": A2_Y, "dir": "→"},
-    {"name": "E4 乐池", "x0": 3460, "x1": 3684, "floor_y": ORCH_Y, "dir": "→"},
+    {"name": "E4 乐池", "x0": 3470, "x1": 3684, "floor_y": ORCH_Y, "dir": "→"},
 ]
 PHONES = [(520, 62), (540, 166), (560, 266), (3520, 470)]          # 墙上的电话：铃响预告来波
 REEL_CHANGES = [1640, 2280]                                         # 天桥上的换卷点（镜头停下，打精英怪）
@@ -664,11 +666,7 @@ def draw_solid(design):
     block(c, 16, A2_Y + GIRDER, A_X1 - 1, MH - 1)
     cable_vault(c, [(60, 300), (360, 640), (700, 950)], A2_Y + 44, MH - 30)
     fill(c, A_X1 - 1, A2_Y, A_X1 - 1, MH - 1, GREY[4])        # 悬崖边
-    # 胶片天桥
-    film = LB.draw_film(0, B_X0 - A_X1, seed=0)
-    src = film.a[LB.FILM_TOP:LB.FILM_BOT]
-    m = src[..., 3] > 0
-    c.a[FILM_TOP:FILM_BOT, A_X1:B_X0][m] = src[m]
+    # 胶片天桥单独一层（draw_film），游戏里不吃场景压暗、自己发光
     # 吊杆夹住上齿孔边
     for x in range(A_X1 + 260, B_X0 - 60, 300):
         hang_rod(c, x, 0, FILM_TOP - 6, knobs=(FILM_TOP - 26,))
@@ -718,6 +716,15 @@ def draw_solid(design):
     fill(c, ex - 10, ey - 26, ex + 10, ey - 1, WOOD[2])
     fill(c, ex - 8, ey - 24, ex + 8, ey - 1, (250, 220, 150))
     fill(c, ex - 10, ey - 26, ex + 10, ey - 26, WOOD[5])
+    return L
+
+
+def draw_film(design):
+    L = Layer(1.0, design)
+    film = LB.draw_film(0, B_X0 - A_X1, seed=0)
+    src = film.a[LB.FILM_TOP:LB.FILM_BOT]
+    m = src[..., 3] > 0
+    L.c.a[FILM_TOP:FILM_BOT, A_X1:B_X0][m] = src[m]
     return L
 
 
@@ -809,10 +816,52 @@ def view(layer_imgs, cam_x, cam_y, scale=3):
     return Image.fromarray(out).resize((sw * scale, sh * scale), Image.NEAREST)
 
 
+def write_gd_data():
+    """关卡用的数据（GDScript 常量）。JSON 不是资源，网页导出默认不打包，所以另写一份 .gd。"""
+    L = ["extends RefCounted",
+         "## 第二关的地图数据，草图/第二关/level2_map.py 生成的，别手改（改脚本重新跑）。",
+         "## 坐标都是地图像素：3700×600，前半交换台 x 0~%d，胶片天桥 %d~%d，后半放映厅 %d~%d。" % (A_X1, A_X1, B_X0, B_X0, MW),
+         "",
+         "const BOUNDS := Rect2(0, 0, %d, %d)" % (MW, MH),
+         "const SPAWN := Vector2(%d, %d)" % SPAWN,
+         "## 出口：舞台上的小门，门前一块",
+         "const EXIT := Rect2(%d, %d, 24, 34)" % (EXIT[0] - 12, EXIT[1] - 30),
+         "const A_X1 := %d" % A_X1,
+         "const B_X0 := %d" % B_X0,
+         "const FLOORS := {\"A1\": %d, \"A3\": %d, \"A2\": %d, \"orch\": %d, \"stage\": %d}" % (A1_Y, A3_Y, A2_Y, ORCH_Y, STAGE[1]),
+         "const BRIDGE_Y := %d" % BRIDGE_Y,
+         "const FILM_TOP := %d" % FILM_TOP,
+         "const FILM_BOT := %d" % FILM_BOT,
+         "## 换卷点：镜头中心走到这里停下，打一场精英怪",
+         "const REEL_CHANGES: Array[float] = [%s]" % ", ".join("%.1f" % x for x in REEL_CHANGES),
+         "## 墙上的电话（遭遇战来波前响铃），和 ENCOUNTERS 一一对应",
+         "const PHONES: Array[Vector2] = [%s]" % ", ".join("Vector2(%d, %d)" % p for p in PHONES),
+         "## 碰撞矩形（名字见 level2_collision.json）",
+         "const SOLIDS: Array[Rect2] = ["]
+    for r in SOLIDS:
+        L.append("\tRect2(%d, %d, %d, %d),  # %s" % (r["x"], r["y"], r["w"], r["h"], r["name"]))
+    L.append("]")
+    L.append("## 遭遇战的场子：left/right 是闸门 x，ceil 是天花板（怪从这里掉），floor 是地面")
+    L.append("const ARENAS := [")
+    ceil_of = {A1_Y: 24, A3_Y: A1_Y + GIRDER, A2_Y: A3_Y + GIRDER, ORCH_Y: 330}
+    for e in ENCOUNTERS:
+        fl, fr = e["floor_y"], e["floor_y"]
+        x0, x1 = e["x0"], e["x1"]
+        if e["name"].startswith("E4"):
+            # 左闸门落在第 8 排台阶上；右闸门在右墙里，地面写乐池的 520，
+            # 因为 Encounter 只认两扇闸门里低的那个地面以上算"进场"，乐池比舞台低
+            x0, fl, fr = ROWS[7][0] + 20, ROWS[7][1], ORCH_Y
+        L.append('\t{"name": "%s", "left": %d, "right": %d, "ceil": %d, "floor_l": %d, "floor_r": %d},'
+                 % (e["name"], x0, x1, ceil_of[e["floor_y"]], fl, fr))
+    L.append("]")
+    (GAME / "scripts/levels/level2_data.gd").write_text("\n".join(L) + "\n")
+
+
 def main():
     builders = [("far", draw_far, 0.55, (0.72, 0.72, 0.8)), ("mid", draw_mid, 0.75, (0.8, 0.8, 0.86)),
                 ("back", draw_back, 1.0, (1, 1, 1)), ("props", draw_props, 1.0, (1, 1, 1)),
-                ("solid", draw_solid, 1.0, (1, 1, 1)), ("near", draw_near, 1.0, (1, 1, 1))]
+                ("solid", draw_solid, 1.0, (1, 1, 1)), ("film", draw_film, 1.0, (1, 1, 1)),
+                ("near", draw_near, 1.0, (1, 1, 1))]
     game_layers, design_layers = [], []
     for name, fn, s, mod in builders:
         g = fn(False)
@@ -838,6 +887,7 @@ def main():
                    "scroll_speed": 70, "reel_changes": REEL_CHANGES},
     }
     (ART / "level2_collision.json").write_text(json.dumps(data, ensure_ascii=False, indent=1))
+    write_gd_data()
     print("ok")
 
 

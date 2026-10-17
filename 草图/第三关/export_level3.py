@@ -107,10 +107,11 @@ lines += ["]", "## 单向平台（家具、屋顶、伞……）：[x0, x1, y]",
 lines += [f"\t[{p['x0']}, {p['x1']}, {p['y']}]," for p in L["platforms"]]
 lines += ["]", "## 上下的洞：按住跳就顺着电线往上爬", "const SHAFTS: Array[Rect2] = ["]
 lines += [f"\tRect2({x}, {y}, {w}, {h})," for x, y, w, h in SHAFTS]
-lines += ["]", "## 每块屏幕：名字、显示方式、屏幕框 [x0, y0, x1, y1]、地面、[层, 段]", "const SCREENS := ["]
+lines += ["]", "## 每块屏幕：名字、显示方式、屏幕框 [x0, y0, x1, y1]、地面、[层, 段]、是不是这种场景的精英战场子", "const SCREENS := ["]
 for s in L["screens"]:
     lines.append(f"\t{{\"name\": \"{s['name']}\", \"tint\": \"{s['tint']}\", \"rect\": {s['screen']}, "
-                 f"\"floor\": {s['floor']}, \"row\": {s['row']}, \"seg\": {s['seg']}}},")
+                 f"\"floor\": {s['floor']}, \"row\": {s['row']}, \"seg\": {s['seg']}, "
+                 f"\"encounter\": {str(s.get('encounter', False)).lower()}}},")
 lines += ["]", "## 洞的位置，摆怪的时候避开：[x0, x1, 上面的地面, 下面的地面]", "const HOLES := ["]
 lines += [f"\t[{h['x0']}, {h['x1']}, {h['top']}, {h['bottom']}]," for h in L["holes"]]
 lines += ["]", ""]

@@ -1,4 +1,4 @@
-"""第三关「显像管仓库」整张地图：2240×1000，1 倍像素（第一关是 1006×426）。
+"""第三关「显像管仓库」整张地图：约 3960×1200，1 倍像素（第一关是 1006×426）。
 
 一整面堆起来的电视墙，四层，每块屏幕是一个能走进去的场景，屏幕大小不一。
 每层被实心的外壳断成几段，段和段之间靠上下的洞（垂着电线梯子）连起来，所以有好几条路：
@@ -9,11 +9,12 @@
 
 场景画法在 l3_scenes.py 和 crt_wall_v2.py。
 输出：
-  l3_far.png / l3_mid.png / l3_screens.png / l3_near.png   2240×1000 分层
+  l3_far.png / l3_mid.png / l3_screens.png / l3_near.png   整张地图大小的分层
   l3_layout.json   每块屏幕、地面高度、哪一段、通道、洞、单向平台、起点、终点（给 Godot 接碰撞用）
   预览L3_原图.png、预览L3_游戏.png、预览L3_路线.png（1 倍）
 跑法："~/Desktop/程序programs/AI Oscar/.venv/bin/python" crt_level3.py
 """
+import copy
 import json
 import random
 from collections import deque
@@ -26,24 +27,26 @@ import crt_wall_v2 as k
 from crt_wall_v2 import KHAKI, WOOD, GREY, PLUM, RECESS, GLARE, WALL, FLOOR_C, PCB, TV, Canvas, facet
 
 OUT = Path(__file__).parent
-W, H, FLOOR = 2240, 1000, 980
-k.setup(W, H, FLOOR)
 random.seed(21)
 k.rng = np.random.default_rng(21)
 import l3_scenes as sc  # noqa: E402
 
 # ================================================================ 排布
-MAXH = [230, 220, 220, 250]                      # 每层电视最高多高
-BOTTOMS = [FLOOR]
-for h in MAXH[:-1]:
-    BOTTOMS.append(BOTTOMS[-1] - h)              # 980 / 750 / 530 / 310
-ROW_X0 = 110
-ROW_X1 = [2200, 2200, 2200, 2200]
-BREAKS = [[1100], [700, 1600], [1300], [820]]    # 每层在这些 x 附近断开（实心外壳，不打通）
+# 2026-10-17 第三版（作者：怪别删，把屏幕做大，留出走位的地方）：
+# 屏幕分三种，按 PATTERN 轮着来（每层打乱一点）：
+#   L 大屏 360~460 宽、245~270 高：玻璃最大约 444×245，镜头 1 倍刚好整块装下。精英战的场子从这里挑。
+#   M 中屏 220~320 宽；S 小屏 110~170 宽，当过道（镜头不锁）。
+# 每种场景（23 种）都分到至少一块大屏当它的精英战场子；上下的洞避开所有大屏，场子关门以后跑不掉。
+FLOOR = 1180
+MAXH = 270
+BOTTOMS = [FLOOR - MAXH * i for i in range(4)]   # 1180 / 910 / 640 / 370
+ROW_X0, ROW_X1 = 110, 4600
+PATTERN = ["L", "L", "M", "L", "S", "L", "L", "M"]
+BREAKS = [[1900], [1200, 2800], [2250], [1400]]  # 每层在这些 x 附近断开（实心外壳，不打通）
 HOLES = [                                        # (下层, 上层, 目标 x)
-    (0, 1, 300), (0, 1, 900), (0, 1, 1350), (0, 1, 2000),
-    (1, 2, 220), (1, 2, 1000), (1, 2, 1900),
-    (2, 3, 420), (2, 3, 1150), (2, 3, 1550),
+    (0, 1, 520), (0, 1, 1575), (0, 1, 2360), (0, 1, 3500),
+    (1, 2, 385), (1, 2, 1750), (1, 2, 3325),
+    (2, 3, 735), (2, 3, 2010), (2, 3, 2710),
 ]
 
 ROOMS = {"kitchen": k.room_kitchen, "living": k.room_living, "bedroom": k.room_bedroom,
@@ -65,28 +68,18 @@ SCENES = {
 }
 FLAT = {"test_card", "weather", "static"}
 USED = {name: 0 for name in SCENES}
-for name in ("test_card", "static", "weather"):
-    USED[name] = 1                               # 这几种少出一点
 
 
-def pick_size(row):
-    r = random.random()
-    if r < 0.28:
-        w = random.randint(92, 128)
-    elif r < 0.72:
-        w = random.randint(140, 200)
-    elif r < 0.94:
-        w = random.randint(206, 270)
-    else:
-        w = random.randint(290, 330)
-    # 高度尽量贴近这一层的上限，空隙少，杂物就少
-    hmin = 96 if w < 130 else int(MAXH[row] * 0.74)
-    h = int(np.clip(max(hmin, w * random.uniform(0.66, 0.9)), hmin, MAXH[row]))
-    return w, h
+def pick_size(kind):
+    if kind == "L":
+        return random.randint(360, 460), random.randint(245, MAXH)
+    if kind == "M":
+        return random.randint(220, 320), random.randint(200, 250)
+    return random.randint(110, 170), random.randint(110, 150)
 
 
-def pick_scene(sw, left_name):
-    ok = [n for n, (fn, mw, _) in SCENES.items() if sw >= mw and n != left_name and n != "entry"]
+def pick_scene(sw, avoid):
+    ok = [n for n, (fn, mw, _) in SCENES.items() if sw >= mw and n not in avoid]
     best = min(USED[n] for n in ok)
     name = random.choice([n for n in ok if USED[n] == best])
     USED[name] += 1
@@ -99,52 +92,145 @@ def pick_tint(name, left_tint):
     return random.choice(cand)
 
 
-rows = []
-for ri in range(4):
-    x, row, left_name, left_tint, left_P = ROW_X0, [], None, None, None
-    last = ri == 3
-    while True:
-        if last and x > 1600:
-            w, h = 440, 250                      # 终点：家乡
-        else:
-            w, h = pick_size(ri)
-            if x + w > ROW_X1[ri] - 70:
-                w = ROW_X1[ri] - x
-                if w < 92:
-                    break
-        P = random.choice([p for p in (KHAKI, WOOD, GREY, PLUM) if p is not left_P])
-        tv = TV(x, BOTTOMS[ri] - h, w, h, P, random.choice(["speaker", "meter", "buttons"]), "color",
-                top="vents" if w > 180 else None)
-        sw = tv.sx1 - tv.sx0
-        if last and w == 440:
-            name = "hometown"
-        elif last and x + w > 1500 and "entry" not in [t.name for t in row] and sw >= 130:
-            name = "entry"                       # 玄关放在家乡前面一格
-        else:
-            name = pick_scene(sw, left_name)
-        tv.name = name
-        tv.tint = "color" if name in ("hometown", "entry") else pick_tint(name, left_tint)
-        tv.flat = name in FLAT
-        tv.row = ri
-        row.append(tv)
-        left_name, left_tint, left_P = name, tv.tint, P
-        x += w
-        if name == "hometown" or x >= ROW_X1[ri] - 1:
-            break
-    rows.append(row)
+def make_layout(seed):
+    """排一版布局：尺寸、场景、显示方式、段。不画图，很快。"""
+    random.seed(seed)
+    for n in USED:
+        USED[n] = 0
+    # 先排尺寸（场景后面再分）
+    rows = []
+    for ri in range(4):
+        x, row, left_P = ROW_X0, [], None
+        last = ri == 3
+        pat = PATTERN[ri % len(PATTERN):] + PATTERN[:ri % len(PATTERN)]
+        i = 0
+        while True:
+            if last and x > ROW_X1 - 460 - 300 - 40:
+                specs = [("entry", 300, 240), ("hometown", 460, 270)]   # 终点：玄关 + 家乡
+            else:
+                kind = pat[i % len(pat)]
+                w, h = pick_size(kind)
+                if x + w > ROW_X1 - 110:
+                    w = ROW_X1 - x
+                    kind = "L" if w >= 360 else ("M" if w >= 220 else "S")
+                    h = pick_size(kind)[1]
+                specs = [(kind, w, h)]
+            for kind, w, h in specs:
+                P = random.choice([p for p in (KHAKI, WOOD, GREY, PLUM) if p is not left_P])
+                tv = TV(x, BOTTOMS[ri] - h, w, h, P, random.choice(["speaker", "meter", "buttons"]), "color",
+                        top="vents" if w > 180 else None)
+                tv.size_kind = kind if kind in ("L", "M", "S") else "L"
+                tv.name = kind if kind in ("entry", "hometown") else None
+                tv.arena = kind == "L"
+                tv.encounter = False
+                tv.row = ri
+                row.append(tv)
+                left_P = P
+                x += w
+            i += 1
+            if row[-1].name == "hometown" or x >= ROW_X1 - 1:
+                break
+        rows.append(row)
 
-# 段：每层在 BREAKS 附近找最近的两台电视的接缝，那里不打通
-for ri, row in enumerate(rows):
-    walls = set()
-    for bx in BREAKS[ri]:
-        j = min(range(1, len(row)), key=lambda j: abs(row[j].x0 - bx))
-        walls.add(j)
-    seg = 0
-    for j, tv in enumerate(row):
-        if j in walls:
-            seg += 1
-        tv.seg = seg
-        tv.wall_left = j in walls
+    # 段：每层在 BREAKS 附近找最近的两台电视的接缝，那里不打通
+    for ri, row in enumerate(rows):
+        walls = set()
+        for bx in BREAKS[ri]:
+            j = min(range(1, len(row)), key=lambda j: abs(row[j].x0 - bx))
+            walls.add(j)
+        seg = 0
+        for j, tv in enumerate(row):
+            if j in walls:
+                seg += 1
+            tv.seg = seg
+            tv.wall_left = j in walls
+
+
+    return rows
+
+
+def assign_scenes(rows):
+    """每种场景分一块没开洞的大屏当精英战场子（场子沿路线散开），剩下的屏幕随便分。大屏不够就返回 False。"""
+    # 每种场景分一块大屏当精英战场子（场子在路线上尽量散开），剩下的屏幕随便分
+    arenas = [tv for row in rows for tv in row if tv.arena]
+    elite_scenes = list(SCENES)
+    if len(arenas) < len(elite_scenes):
+        return False
+    random.shuffle(elite_scenes)
+    picked = sorted(random.sample(range(len(arenas)), len(elite_scenes)))
+    for name, ai in zip(elite_scenes, picked):
+        arenas[ai].name = name
+        arenas[ai].encounter = True
+        USED[name] += 1
+    for row in rows:
+        for j, tv in enumerate(row):
+            if tv.name is None:
+                avoid = {row[j - 1].name if j else None, row[j + 1].name if j + 1 < len(row) else None, "entry", "hometown"}
+                tv.name = pick_scene(tv.sx1 - tv.sx0, avoid)
+    for row in rows:
+        left_tint = None
+        for tv in row:
+            tv.tint = "color" if tv.name in ("hometown", "entry") else pick_tint(tv.name, left_tint)
+            tv.flat = tv.name in FLAT
+            left_tint = tv.tint
+
+    return True
+
+
+def choose_hole(rows, lo, up, target):
+    """在上下两层之间找离 target 最近的位置开洞：先找两边都不是大屏的，找不到再随便找。"""
+    for strict in (True, False):
+        best = None
+        for u in rows[up]:
+            for l in rows[lo]:
+                if strict and (u.arena or l.arena):
+                    continue
+                a, b = max(u.sx0, l.sx0) + 14, min(u.sx1, l.sx1) - 36
+                if b - a < 0:
+                    continue
+                x = int(np.clip(target, a, b))
+                if best is None or abs(x - target) < best[0]:
+                    best = (abs(x - target), x, u, l)
+        if best is not None and (not strict or best[0] < 260):
+            return best[1:]
+    return None
+
+
+def connected(rows, holes):
+    nodes = {(tv.row, tv.seg) for row in rows for tv in row}
+    adj = {n: set() for n in nodes}
+    for x, u, l in holes:
+        adj[(u.row, u.seg)].add((l.row, l.seg)); adj[(l.row, l.seg)].add((u.row, u.seg))
+    seen, q = {(0, 0)}, deque([(0, 0)])
+    while q:
+        n = q.popleft()
+        for m_ in adj[n]:
+            if m_ not in seen:
+                seen.add(m_); q.append(m_)
+    return seen == nodes
+
+
+# 换种子直到：所有段都连得上，而且没开洞的大屏够 23 种场景当场子
+for seed in range(21, 600):
+    rows = make_layout(seed)
+    picks = [choose_hole(rows, lo, up, tx) for lo, up, tx in HOLES]
+    if any(p_ is None for p_ in picks) or not connected(rows, picks):
+        continue
+    for x_, u_, l_ in picks:                    # 开了洞的屏幕不当场子（关门以后能从洞里跑掉）
+        u_.arena = l_.arena = False
+    if assign_scenes(rows):
+        break
+else:
+    raise SystemExit("找不到合适的布局")
+n_scr = sum(len(r) for r in rows)
+print(f"layout seed {seed}: {n_scr} 块屏幕，大屏 {sum(tv.arena for r in rows for tv in r)}，"
+      f"场子 {sum(tv.encounter for r in rows for tv in r)}，地图 {max(r[-1].x1 for r in rows) + 40}×{FLOOR + 20}")
+if __import__("os").environ.get("L3_DRY"):
+    raise SystemExit
+k.rng = np.random.default_rng(seed)
+W = max(row[-1].x1 for row in rows) + 40
+H = FLOOR + 20
+k.setup(W, H, FLOOR)
 
 
 # ================================================================ 空隙杂物（照旧）
@@ -256,21 +342,48 @@ for row in rows:
     for tv in row:
         tv.draw_shell()
 
+PAD = 4
+
+
+def draw_local(tv, fn):
+    """在一块只有这台电视大小的小画布上画场景，画完只把屏幕里的像素贴回大图。
+    地图很大，场景函数里很多整张画布的运算，直接在大图上画要慢几十倍。"""
+    ox, oy = tv.x0 - PAD, tv.y0 - PAD
+    lw, lh = tv.x1 - tv.x0 + 1 + 2 * PAD, tv.y1 - tv.y0 + 1 + 2 * PAD
+    lt = copy.copy(tv)
+    for a in ("x0", "x1", "sx0", "sx1"):
+        setattr(lt, a, getattr(tv, a) - ox)
+    for a in ("y0", "y1", "sy0", "sy1", "fy"):
+        setattr(lt, a, getattr(tv, a) - oy)
+    saved = (k.scr, k.XX, k.YY, k.W, k.H)
+    n_light, n_plat = len(k.LIGHTS), len(sc.PLATFORMS)
+    k.scr, k.W, k.H = Canvas(lw, lh), lw, lh
+    k.YY, k.XX = np.mgrid[0:lh, 0:lw]
+    try:
+        k.set_vp(lt)
+        r = fn(lt)
+        m = lt.screen_mask()
+        local = k.scr.a
+    finally:
+        k.scr, k.XX, k.YY, k.W, k.H = saved
+    g = k.scr.a[oy:oy + lh, ox:ox + lw]
+    g[m] = local[m]
+    k.LIGHTS[n_light:] = [(x + ox, y + oy, *rest) for (x, y, *rest) in k.LIGHTS[n_light:]]
+    sc.PLATFORMS[n_plat:] = [(a + ox, b + ox, y + oy) for a, b, y in sc.PLATFORMS[n_plat:]]
+    return (r[0] + ox, r[1] + oy) if r else None
+
+
 END = None
 for row in rows:
     for tv in row:
-        before = k.scr.a.copy()
-        k.set_vp(tv)
         n0 = len(sc.PLATFORMS)
         if tv.name in ROOMS:
-            sc.room(ROOMS[tv.name], tv)
+            draw_local(tv, lambda t: sc.room(ROOMS[t.name], t))
         elif tv.name == "hometown":
-            END = sc.sc_hometown(tv)
+            END = draw_local(tv, sc.sc_hometown)
         else:
-            SCENES[tv.name][0](tv)
+            draw_local(tv, SCENES[tv.name][0])
         tv.platforms = sc.PLATFORMS[n0:]
-        outside = ~tv.screen_mask()
-        k.scr.a[outside] = before[outside]
 
 PASSAGES, HOLE_DATA = [], []
 for row in rows:
@@ -280,25 +393,10 @@ for row in rows:
             PASSAGES.append({"x0": l.sx1 - 2, "x1": r.sx0 + 2, "y0": l.fy - 24, "floor": l.fy, "row": l.row + 1})
 
 
-def place_hole(lo, up, target):
-    best = None
-    for u in rows[up]:
-        for l in rows[lo]:
-            a, b = max(u.sx0, l.sx0) + 14, min(u.sx1, l.sx1) - 36
-            if b - a < 0:
-                continue
-            x = int(np.clip(target, a, b))
-            d = abs(x - target)
-            if best is None or d < best[0]:
-                best = (d, x, u, l)
-    _, x, u, l = best
+for x, u, l in picks:
     k.drop_hole(u, l, x)
     HOLE_DATA.append({"x0": x, "x1": x + 22, "top": u.fy, "bottom": l.fy, "ladder_x": x + 11,
                       "upper": [u.row, u.seg], "lower": [l.row, l.seg]})
-
-
-for lo, up, tx in HOLES:
-    place_hole(lo, up, tx)
 
 # 起点：仓库地面左边，第一台电视左侧外壳砸开一个口，门口垫两个纸箱当台阶
 a = rows[0][0]
@@ -318,8 +416,8 @@ for tv in rows[3]:
         cx = (tv.x0 + tv.x1) // 2
         k.mid.line(cx, tv.y0, cx - 18, tv.y0 - 16, PLUM[5]); k.mid.line(cx + 1, tv.y0, cx + 20, tv.y0 - 14, PLUM[5])
         k.mid.rect(cx - 2, tv.y0 - 2, cx + 3, tv.y0 - 1, PLUM[4])
-for (ax, bx, sag) in [(-10, 300, 40), (260, 700, 30), (640, 1000, 20), (980, 1500, 40), (1600, 2250, 50)]:
-    k.cable([(ax, 4), (bx, 8)], sag, 2)
+for ax in range(-10, W, 420):
+    k.cable([(ax, 4), (ax + random.randint(320, 520), 8)], random.randint(20, 60), 2)
 
 k.mid = facet(k.mid, cell=11, min_area=60, grad=0.6, seed=5,
               keep=tuple(RECESS) + tuple(FLOOR_C) + (GLARE,) + tuple(PCB))
@@ -362,7 +460,7 @@ layout = {
     "size": [W, H], "warehouse_floor": FLOOR, "start": START, "end": END,
     "screens": [{"name": tv.name, "row": tv.row + 1, "seg": tv.seg, "tint": tv.tint,
                  "casing": [tv.x0, tv.y0, tv.x1, tv.y1], "screen": [tv.sx0, tv.sy0, tv.sx1, tv.sy1], "floor": tv.fy,
-                 "wall_left": tv.wall_left}
+                 "wall_left": tv.wall_left, "arena": tv.arena, "encounter": tv.encounter}
                 for row in rows for tv in row],
     "passages": PASSAGES, "holes": HOLE_DATA,
     "platforms": [{"x0": a_, "x1": b_, "y": y_} for a_, b_, y_ in sc.PLATFORMS],

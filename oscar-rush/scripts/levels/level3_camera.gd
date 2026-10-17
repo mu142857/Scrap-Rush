@@ -5,11 +5,15 @@ extends GameCamera
 ## 窗口是游戏画面的 3 倍，这几档在窗口上正好是 6、5、4、3 个像素一格，像素不会糊。
 ## 不在任何屏幕里（起点的仓库地面、爬洞的半路上）就照常跟人（GameCamera 的做法），缩放保持上一块屏幕的。
 ## 多人不在同一块屏幕里时也照常跟人，并退到 4/3 倍，免得有人出画面。
+## 小屏幕（玻璃窄于 SMALL_W 或矮于 SMALL_H，天气预报那种过道）不锁、不缩放，照常跟人（作者 2026-10-17）。
+## 大到 1 倍也装不下的屏幕：用 4/3 倍跟人，但镜头不出这块屏幕。
 
 const ZOOMS := [2.0, 5.0 / 3.0, 4.0 / 3.0, 1.0]
 ## 屏幕四周多看这么多（外壳、控制条）
 const MARGIN := Vector2(14, 12)
 const LOCK_SPEED := 7.0
+const SMALL_W := 200.0
+const SMALL_H := 120.0
 const ZOOM_SPEED := 5.0
 
 ## [{rect: Rect2（屏幕玻璃）, floor: float}]，关卡填
@@ -27,9 +31,11 @@ func snap() -> void:
 	super.snap()
 	var s := _current_screen()
 	if not s.is_empty():
-		_zoom_target = _fit_zoom(s["rect"])
-		zoom = Vector2(_zoom_target, _zoom_target)
-		global_position = (s["rect"] as Rect2).get_center()
+		var r: Rect2 = s["rect"]
+		if r.size.x >= SMALL_W and r.size.y >= SMALL_H and _fits(r, _fit_zoom(r)):
+			_zoom_target = _fit_zoom(r)
+			zoom = Vector2(_zoom_target, _zoom_target)
+			global_position = r.get_center()
 
 
 func _process(delta: float) -> void:
@@ -41,8 +47,19 @@ func _process(delta: float) -> void:
 		super._process(delta)
 		return
 	var rect: Rect2 = s["rect"]
+	if rect.size.x < SMALL_W or rect.size.y < SMALL_H:
+		_zoom_target = ZOOM
+		_apply_zoom(delta)
+		super._process(delta)
+		return
 	_zoom_target = _fit_zoom(rect)
 	_apply_zoom(delta)
+	if not _fits(rect, _zoom_target):
+		super._process(delta)
+		var half := get_viewport_rect().size * 0.5 / zoom
+		global_position.x = clampf(global_position.x, rect.position.x + half.x - MARGIN.x, maxf(rect.position.x + half.x - MARGIN.x, rect.end.x - half.x + MARGIN.x))
+		global_position.y = clampf(global_position.y, rect.position.y + half.y - MARGIN.y, maxf(rect.position.y + half.y - MARGIN.y, rect.end.y - half.y + MARGIN.y))
+		return
 	var target := rect.get_center()
 	global_position = global_position.lerp(target, 1.0 - exp(-LOCK_SPEED * delta))
 	if global_position.distance_to(target) < 0.25:
@@ -57,13 +74,17 @@ func _apply_zoom(delta: float) -> void:
 	zoom = Vector2(z, z)
 
 
-func _fit_zoom(rect: Rect2) -> float:
+func _fits(rect: Rect2, z: float) -> bool:
 	var view := get_viewport_rect().size
 	var need := rect.size + MARGIN * 2.0
+	return need.x <= view.x / z and need.y <= view.y / z
+
+
+func _fit_zoom(rect: Rect2) -> float:
 	for z in ZOOMS:
-		if need.x <= view.x / z and need.y <= view.y / z:
+		if _fits(rect, z):
 			return z
-	return ZOOMS[ZOOMS.size() - 1]
+	return ZOOMS[2]
 
 
 ## 所有玩家都在同一块屏幕里，就返回那块；否则返回空

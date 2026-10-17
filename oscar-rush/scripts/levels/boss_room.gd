@@ -319,8 +319,8 @@ func _leave() -> void:
 	_state = 4
 	hud.show_banner("BOILER BAY CLEARED")
 	await get_tree().create_timer(2.5).timeout
-	# 进商店；第二关还没有，商店出口先回开始界面
-	ShopRoom.next_scene = "res://scenes/title.tscn"
+	# 进商店，商店出口进第二关
+	ShopRoom.next_scene = "res://scenes/level2.tscn"
 	get_tree().change_scene_to_file("res://scenes/shop.tscn")
 	Game.flash(Color.BLACK, 1.0, 0.6)
 

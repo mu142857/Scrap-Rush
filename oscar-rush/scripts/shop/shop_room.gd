@@ -6,6 +6,8 @@ extends Node2D
 ##   洞洞板上 4 件旧装备（每级 1 个零件，最多 3 级），工作台右头修灯（1 个，水晶 +25），
 ##   黑机箱正面 4 个小窗：武器 2（3 个）、变异 2（2 个），机箱左边的拉杆刷新（第一次免费，之后 1 个）。
 ## 走到东西前面按互动键（捡灯那个键）就买。出口在右边。
+## 每件货下面常驻价签，买得起的四角一闪一闪；站到哪件前面，屏幕下方的信息框就显示它的名字、说明、价钱。
+## 进门时信息框先提示一句该干什么。
 ##
 ## 进商店：ShopRoom.next_scene = "下一关的场景"，然后 change_scene_to_file("res://scenes/shop.tscn")。
 
@@ -52,6 +54,11 @@ const NAMES := {
 ## 出口通往哪里
 static var next_scene := "res://scenes/title.tscn"
 
+## 信息框（屏幕坐标，480×270）：屏幕上方正中。放在下面会挡住站在地上的主角；上面这块是洞洞板的边框，
+## 挡不到货（货的图标在屏幕 y 70 以下），也让开了左上角的马灯血条和零件数
+const INFO_RECT := Rect2(110, 4, 260, 44)
+const INTRO_TIME := 6.0
+
 var _stands: Array[ShopStand] = []
 var _weapon_slots: Array[ShopStand] = []
 var _mutation_slots: Array[ShopStand] = []
@@ -60,6 +67,11 @@ var _leaving := false
 var _crew: Array[Sprite2D] = []
 var _time := 0.0
 var _fire_light: PointLight2D
+var _info_box: Control
+var _info_lines: Array[Label] = []
+var _info_focus: ShopStand = null
+var _info_intro := INTRO_TIME
+var _key := "V"
 
 
 func _ready() -> void:
@@ -121,6 +133,9 @@ func _ready() -> void:
 	var counter := PartsCounter.new()
 	counter.position = Vector2(10, 24)
 	ui.add_child(counter)
+	if not Run.players.is_empty():
+		_key = Controls.key_name(Run.players[0]["input"], "crystal")
+	_build_info_box(ui)
 	Run.crystal_changed.emit(Run.crystal_hp, Run.crystal_max)
 
 
@@ -195,6 +210,7 @@ func _add_stands() -> void:
 	ref.icon = "refresh"
 	ref.get_child(0).visible = false        # 拉杆画在房间图里了，不再放图标
 	ref.zone_half = 10.0
+	ref.tag_y = -22.0                       # 拉杆的价签放在拉杆上面，地上放不下
 	_restock()
 
 
@@ -309,8 +325,80 @@ func _on_buy(st: ShopStand, p: Player) -> void:
 	_update_all()
 
 
+## 屏幕下方的信息框：半透明黑底、暖色细边，三行字（名字 / 说明 / 价钱和按键）
+func _build_info_box(ui: CanvasLayer) -> void:
+	_info_box = Control.new()
+	_info_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_info_box.position = INFO_RECT.position
+	_info_box.size = INFO_RECT.size
+	_info_box.draw.connect(func():
+		_info_box.draw_rect(Rect2(Vector2.ZERO, INFO_RECT.size), Color(0.03, 0.025, 0.03, 0.82))
+		_info_box.draw_rect(Rect2(Vector2.ZERO, INFO_RECT.size), Color(ShopStand.WARM, 0.55), false, 1.0))
+	ui.add_child(_info_box)
+	for i in 3:
+		var l := Label.new()
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		l.size = Vector2(INFO_RECT.size.x, 12)
+		l.position = Vector2(0, 3 + i * 13)
+		_info_box.add_child(l)
+		_info_lines.append(l)
+	_show_intro()
+
+
+func _set_info(lines: Array, colors: Array) -> void:
+	for i in 3:
+		_info_lines[i].text = lines[i] if i < lines.size() else ""
+		_info_lines[i].label_settings = Hud.small_text(colors[i] if i < colors.size() else ShopStand.DIM)
+
+
+func _show_intro() -> void:
+	_set_info(["SPEND YOUR PARTS", "walk up to a glowing item", "%s: BUY" % _key],
+			[ShopStand.WARM, Color(0.85, 0.85, 0.85), ShopStand.WARM])
+
+
+## 站到哪件前面就显示哪件；都没站时，进门那几秒显示提示，之后收起来
+func _update_info_box(delta: float) -> void:
+	var focus: ShopStand = null
+	for st in _stands:
+		if st.focused:
+			focus = st
+			break
+	if focus:
+		_info_intro = 0.0
+		var info := focus.info
+		var price_line := ""
+		var price_col := ShopStand.WARM
+		var tag := focus.tag_text()
+		if tag in ["MAX", "SOLD"]:
+			price_line = "MAXED OUT" if tag == "MAX" else "SOLD OUT"
+			price_col = ShopStand.DIM
+		elif tag == "SOON":
+			price_line = "NOT FOR SALE YET"
+			price_col = ShopStand.DIM
+		elif focus.can_buy():
+			var price: int = info.get("price", 0)
+			price_line = ("%d PART%s   %s: BUY" % [price, "S" if price > 1 else "", _key]) if price > 0 else ("FREE   %s: PULL" % _key)
+		else:
+			var price: int = info.get("price", 0)
+			price_line = "NEED %d PART%s  (YOU HAVE %d)" % [price, "S" if price > 1 else "", Run.parts] if price > 0 else ""
+			price_col = ShopStand.POOR
+		_set_info([info.get("title", ""), info.get("detail", ""), price_line],
+				[ShopStand.WARM, Color(0.85, 0.85, 0.85), price_col])
+		_info_box.visible = true
+		_info_box.position = INFO_RECT.position + Vector2(roundf(sin(focus.shake * 60.0) * 2.0 * signf(focus.shake)), 0)
+	elif _info_intro > 0.0:
+		_info_intro -= delta
+		_show_intro()
+		_info_box.visible = true
+		_info_box.position = INFO_RECT.position
+	else:
+		_info_box.visible = false
+	_info_focus = focus
+
+
 func _process(delta: float) -> void:
 	_time += delta
+	_update_info_box(delta)
 	# 篝火的光一抖一抖
 	_fire_light.energy = 0.7 + 0.06 * sin(_time * 7.0) + 0.04 * sin(_time * 17.3)
 	for sp in _crew:

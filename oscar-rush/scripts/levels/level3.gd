@@ -172,14 +172,15 @@ func _has_hole(s: Dictionary) -> bool:
 	return false
 
 
-## 摆怪（2026-10-17 作者试玩后改）：
-## - 精英怪只在关门的遭遇战里打：大屏幕、地上没洞，两边闸门锁住，打完才开；每种场景最多一场，一共 8 场左右。
-##   前一波是这个场景的两只小怪，后一波精英怪单独出来（不再带小怪），留出走位的地方。
-## - 平时的小怪少放：宽不到 SMALL_SCREEN 的屏幕不放（当喘口气的走廊），中等的 1 只，宽的 2 只；
-##   射击怪只放进宽屏幕；离左右入口至少 ENTRY_CLEAR，人一进来不会贴脸。
+## 摆怪（2026-10-17 第三版，作者：怪别删，把屏幕做大）：
+## - 每种场景（23 种）在地图上有一块大屏是它的精英战场子（Level3Data 里 encounter = true）：
+##   关门的遭遇战，三波：两只小怪 → 两只小怪 → 精英怪单独出来。场子都是大屏、地上没洞，关上门跑不掉。
+## - 别的屏幕按玻璃宽度摆这个场景的小怪：不到 MID_SCREEN 1 只，到 WIDE_SCREEN 2 只，再宽 3 只；
+##   射击怪只放进宽度够 SHOOTER_SCREEN 的屏幕；离左右入口至少 ENTRY_CLEAR，人一进来不会贴脸。
 ## - 只有主角所在那块屏幕里的怪会动，别的屏幕里的怪定住（像暂停的电视画面），见 _wake_mobs。
-const SMALL_SCREEN := 160.0
-const WIDE_SCREEN := 240.0
+const MID_SCREEN := 200.0
+const WIDE_SCREEN := 330.0
+const SHOOTER_SCREEN := 260.0
 const ENTRY_CLEAR := 36.0
 
 
@@ -187,7 +188,6 @@ func _place_enemies() -> void:
 	L3Mob.arena = D.BOUNDS
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 3
-	var fought := {}
 	for i in D.SCREENS.size():
 		var s: Dictionary = D.SCREENS[i]
 		if i == 0 or s["name"] in NO_ENEMY:
@@ -199,27 +199,24 @@ func _place_enemies() -> void:
 		var smalls := L3Mob.smalls(s["name"])
 		if smalls.is_empty():
 			continue
-		var elite := L3Mob.elite(s["name"])
 		var bag := _shuffled(smalls, rng)
-		if w >= 180.0 and not _has_hole(s) and elite != "" and not fought.has(s["name"]):
-			fought[s["name"]] = true
+		var elite := L3Mob.elite(s["name"])
+		if s.get("encounter", false) and elite != "":
 			var enc := Encounter.new()
 			enc.left = rect[0] + 10
 			enc.right = rect[2] - 10
 			enc.ceil_y = rect[1]
 			enc.floor_left = fy
 			enc.floor_right = fy
-			enc.waves = [[_not_shooter(bag, 0), _not_shooter(bag, 1)], [elite]]
+			enc.waves = [[bag[0], bag[1 % bag.size()]], [bag[2 % bag.size()], bag[3 % bag.size()]], [elite]]
 			enc.spawn_hook = _spawn_in_encounter.bind(tint, rect[1], rect[0] + 10, rect[2] - 10)
 			add_child(enc)
 			continue
-		if w < SMALL_SCREEN:
-			continue
-		var n := 2 if w >= WIDE_SCREEN else 1
+		var n := 1 if w < MID_SCREEN else (2 if w < WIDE_SCREEN else 3)
 		var left: float = rect[0] + ENTRY_CLEAR
 		var right: float = rect[2] - ENTRY_CLEAR
 		for k in n:
-			var kind: String = bag[k % bag.size()] if w >= WIDE_SCREEN else _not_shooter(bag, k)
+			var kind: String = bag[k % bag.size()] if w >= SHOOTER_SCREEN else _not_shooter(bag, k)
 			var x: float = left + (right - left) * (k + 1) / (n + 1) + rng.randf_range(-8, 8)
 			var e := _make_mob(kind, tint)
 			e.position = Vector2(x, fy - (30.0 if e is Moth else 0.0))
