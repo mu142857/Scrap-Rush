@@ -24,6 +24,7 @@ const ROWS := [
 	["FULLSCREEN", "fullscreen", "toggle"],
 	["PIXEL PERFECT", "pixel_perfect", "toggle"],
 	["SCREEN SHAKE", "shake_index", "shake"],
+	["LANGUAGE", "language", "language"],
 	["CONTROLS", "", "page"],
 	["BACK", "", "back"],
 ]
@@ -32,6 +33,7 @@ const ROW_HINTS := {
 	"pixel_perfect": "Scale by whole numbers only. Crisper pixels, black borders.",
 	"fullscreen": "Also F11.",
 	"shake_index": "How hard the screen shakes on hits.",
+	"language": "Text language. Switches right away.",
 }
 
 const CONTROLS_TEXT := """SOLO (keyboard)
@@ -67,7 +69,7 @@ func _ready() -> void:
 	add_child(back)
 	_label("SETTINGS", 0, 30.0, 480, 22, WARM, 3, HORIZONTAL_ALIGNMENT_CENTER)
 	for i in ROWS.size():
-		var y := TOP + i * STEP + (6.0 if i >= 6 else 0.0)
+		var y := TOP + i * STEP + (6.0 if i >= ROWS.size() - 2 else 0.0)
 		_labels.append(_label(ROWS[i][0], LABEL_X, y, 150, 11, DIM, 2))
 		_values.append(_label("", VALUE_X, y, VALUE_W, 11, DIM, 2, HORIZONTAL_ALIGNMENT_CENTER))
 	_bars = Control.new()
@@ -124,21 +126,23 @@ func _refresh() -> void:
 		var on := i == _selected
 		var key: String = ROWS[i][1]
 		var kind: String = ROWS[i][2]
-		_labels[i].text = ("> " if on else "  ") + ROWS[i][0]
+		_labels[i].text = ("> " if on else "  ") + tr(ROWS[i][0])
 		_labels[i].label_settings.font_color = LIT if on else DIM
 		var v := ""
 		match kind:
 			"toggle":
-				v = "ON" if Settings.get(key) else "OFF"
+				v = tr("ON") if Settings.get(key) else tr("OFF")
 			"shake":
-				v = SHAKE_NAMES[Settings.shake_index]
+				v = tr(SHAKE_NAMES[Settings.shake_index])
+			"language":
+				v = Lang.NAMES[Lang.current()]
 		if v != "" and on:
 			v = "<  %s  >" % v
 		_values[i].text = v
 		_values[i].label_settings.font_color = (WARM if on else Color(0.75, 0.75, 0.8))
-	var keys := "W/S select    A/D change    Esc back"
+	var keys := tr("W/S select    A/D change    Esc back")
 	var h: String = ROW_HINTS.get(ROWS[_selected][1], "")
-	_hint.text = keys if h == "" else h + "\n" + keys
+	_hint.text = keys if h == "" else tr(h) + "\n" + keys
 	_hint.position.y = 246.0 if h == "" else 234.0
 	_bars.queue_redraw()
 
@@ -209,7 +213,7 @@ func _input(event: InputEvent) -> void:
 			if i >= 0:
 				_selected = i
 				var kind: String = ROWS[i][2]
-				if kind == "volume" or kind == "shake":
+				if kind == "volume" or kind == "shake" or kind == "language":
 					_change(-1 if get_global_mouse_position().x < VALUE_X + VALUE_W * 0.5 else 1)
 				else:
 					_activate()
@@ -230,7 +234,7 @@ func _row_at() -> int:
 	if p.x < LABEL_X - 10.0 or p.x > VALUE_X + VALUE_W + 10.0:
 		return -1
 	for i in ROWS.size():
-		var y := TOP + i * STEP + (6.0 if i >= 6 else 0.0)
+		var y := TOP + i * STEP + (6.0 if i >= ROWS.size() - 2 else 0.0)
 		if p.y >= y - 1.0 and p.y < y + STEP - 1.0:
 			return i
 	return -1
@@ -259,6 +263,11 @@ func _change(dir: int) -> void:
 			Game.sfx("ui_move", -8.0)
 			if Settings.shake_scale() > 0.0:
 				Game.add_shake(4.0)
+		"language":
+			# 只有两种，左右都是换到另一种
+			var i := Lang.LANGS.find(Lang.current())
+			Settings.set_value("language", Lang.LANGS[posmod(i + dir, Lang.LANGS.size())])
+			Game.sfx("ui_confirm", -8.0)
 
 
 func _activate() -> void:
@@ -268,7 +277,7 @@ func _activate() -> void:
 		"shake":
 			Settings.set_value("shake_index", (Settings.shake_index + 1) % Settings.SHAKE_LEVELS.size())
 			Game.sfx("ui_move", -8.0)
-		"volume":
+		"volume", "language":
 			_change(1)
 		"page":
 			_on_page = true

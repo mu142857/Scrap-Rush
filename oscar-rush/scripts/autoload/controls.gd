@@ -67,7 +67,7 @@ func all_schemes() -> Array[String]:
 func key_name(scheme: String, what: String) -> String:
 	if KEY_NAMES.has(scheme):
 		return KEY_NAMES[scheme][what]
-	return {"move": "Stick", "jump": "A", "attack": "X", "crystal": "Y", "down": "Down"}[what]
+	return {"move": tr("Stick"), "jump": "A", "attack": "X", "crystal": "Y", "down": tr("Down")}[what]
 
 
 func _ensure(action: String) -> void:

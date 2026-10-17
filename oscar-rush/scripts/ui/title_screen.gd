@@ -213,7 +213,7 @@ func _refresh() -> void:
 	for i in _option_labels.size():
 		var l := _option_labels[i]
 		var on := i == _selected
-		l.text = ("> %s <" % _options[i]) if on else _options[i]
+		l.text = ("> %s <" % tr(_options[i])) if on else tr(_options[i])
 		l.label_settings.font_color = LIT if on else DIM
 		l.pivot_offset = l.size * 0.5
 		if on:
@@ -222,9 +222,9 @@ func _refresh() -> void:
 				.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 		else:
 			l.scale = Vector2.ONE
-	var keys := "W/S select    Space / C / A confirm    F11 fullscreen"
+	var keys := tr("W/S select    Space / C / A confirm    F11 fullscreen")
 	var h := _option_hints[_selected]
-	_hint.text = keys if h == "" else h + "\n" + keys
+	_hint.text = keys if h == "" else tr(h) + "\n" + keys
 	_hint.position.y = 246.0 if h == "" else 234.0
 	_hint.size.y = 30.0
 
@@ -459,7 +459,7 @@ func _device_name(scheme: String) -> String:
 			return "KB-L"
 		"kb_right":
 			return "KB-R"
-	return "PAD%d" % (scheme.trim_prefix("pad").to_int() + 1)
+	return tr("PAD%d") % (scheme.trim_prefix("pad").to_int() + 1)
 
 
 func _refresh_lobby() -> void:
@@ -475,7 +475,7 @@ func _refresh_lobby() -> void:
 	elif n == 1:
 		_lobby_info.text = "Need one more player    (lantern key: leave)"
 	else:
-		_lobby_info.text = "%d players ready  -  any player press ATTACK to start\n(lantern key: leave)" % n
+		_lobby_info.text = tr("%d players ready  -  any player press ATTACK to start\n(lantern key: leave)") % n
 
 
 func _start_coop() -> void:

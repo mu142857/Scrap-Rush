@@ -347,7 +347,7 @@ func _place_hints() -> void:
 	if D.SHAFTS.size() > 0:
 		var sh: Rect2 = D.SHAFTS[0]
 		signs.append({"zone": Rect2(sh.position.x - 40, sh.end.y - 60, sh.size.x + 80, 60),
-			"at": Vector2(sh.get_center().x, sh.end.y - 34), "text": "Hold %s on the cable to climb" % jump_key, "arrow": "up"})
+			"at": Vector2(sh.get_center().x, sh.end.y - 34), "text": tr("Hold %s on the cable to climb") % jump_key, "arrow": "up"})
 	for h in signs:
 		var sign := HintSign.new()
 		sign.zone = h["zone"]

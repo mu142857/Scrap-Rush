@@ -489,6 +489,7 @@ func _fire() -> void:
 	var orb := Orb.new()
 	orb.setup(self, muzzle, dir, charge, _target if charge_full else null, strip_color)
 	get_parent().add_child(orb)
+	Mutations.on_attack(self, orb)
 	if charge_full:
 		Game.sfx("shoot", -4.0, 1.0, 0.05)
 		velocity.x -= dir.x * 40.0
@@ -524,6 +525,7 @@ func _attack_rivet(delta: float) -> void:
 	var r := Rivet.new()
 	r.setup(muzzle, dir, strip_color)
 	get_parent().add_child(r)
+	Mutations.on_attack(self, r)
 	_rivet_n += 1
 	_muzzle = 1.0
 	_release_flash = maxf(_release_flash, 0.35)
@@ -564,6 +566,7 @@ func _blast() -> void:
 	b.color = strip_color
 	b.position = global_position + Vector2(0, -10)
 	get_parent().add_child(b)
+	Mutations.on_attack(self, b)
 	_hammer_cd = hammer_cooldown()
 	_release_flash = 0.6
 	_ring = 0.35

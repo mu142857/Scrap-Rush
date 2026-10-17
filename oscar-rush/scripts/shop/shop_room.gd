@@ -46,9 +46,9 @@ const NAMES := {
 	"tongs": ["SHOCK TONGS", "arc jumps 3 (5 when full)"],
 	"horn": ["GRAMOPHONE HORN", "pierces, knocks back hard"],
 	"rivet": ["RIVET GUN", "hold to fire nonstop"],
-	"rage": ["RAGE", "more emotion, more damage"],
-	"slave": ["SLAVE FLASH", "the lantern shoots along"],
-	"echo": ["TAPE ECHO", "attacks repeat at 50%"],
+	"rage": ["RAGE", "damage x1 when calm, x2 in panic"],
+	"slave": ["SLAVE FLASH", "the lantern on the ground shoots too"],
+	"echo": ["TAPE ECHO", "each attack repeats at 50%"],
 	"dynamo": ["DYNAMO", "every 10 kills: lantern +5"],
 }
 
@@ -264,15 +264,15 @@ func _info(st: ShopStand) -> Dictionary:
 			var lv := Upgrades.level(st.id)
 			var n: Array = NAMES[st.id]
 			if lv >= Upgrades.MAX_LEVEL:
-				return {"title": "%s  MAX" % n[0], "detail": _gear_detail(st.id, lv)}
+				return {"title": tr("%s  MAX") % tr(n[0]), "detail": _gear_detail(st.id, lv), "maxed": true}
 			var price: int = Upgrades.PRICE["gear"]
-			return {"title": "%s  Lv%d > %d" % [n[0], lv, lv + 1], "detail": _gear_detail(st.id, lv + 1),
+			return {"title": tr("%s  Lv%d > %d") % [tr(n[0]), lv, lv + 1], "detail": _gear_detail(st.id, lv + 1),
 					"price": price, "can_buy": parts >= price}
 		"repair":
 			var price: int = Upgrades.PRICE["repair"]
 			var full := Run.crystal_hp >= Run.crystal_max
 			return {"title": NAMES["repair"][0],
-					"detail": "lantern is fine" if full else "lantern +25   (%d/%d)" % [ceili(Run.crystal_hp), int(Run.crystal_max)],
+					"detail": "lantern is fine" if full else tr("lantern +25   (%d/%d)") % [ceili(Run.crystal_hp), int(Run.crystal_max)],
 					"price": 0 if full else price, "can_buy": not full and parts >= price}
 		"refresh":
 			var price: int = 0 if not _refresh_used else Upgrades.PRICE["refresh"]
@@ -288,16 +288,16 @@ func _info(st: ShopStand) -> Dictionary:
 			var price: int = Upgrades.PRICE[st.id]
 			var swap := ""
 			if st.id == "weapon":
-				swap = "  (drops %s)" % NAMES[Upgrades.weapon][0]
+				swap = tr("  (drops %s)") % tr(NAMES[Upgrades.weapon][0])
 			elif st.id == "mutation" and Upgrades.mutation != "":
-				swap = "  (drops %s)" % NAMES[Upgrades.mutation][0]
-			return {"title": n[0] + swap, "detail": n[1], "price": price, "can_buy": parts >= price}
+				swap = tr("  (drops %s)") % tr(NAMES[Upgrades.mutation][0])
+			return {"title": tr(n[0]) + swap, "detail": n[1], "price": price, "can_buy": parts >= price}
 	return {}
 
 
 func _gear_detail(id: String, lv: int) -> String:
 	if id == "plating":
-		return NAMES[id][1] % int(Upgrades.PLATING_INTERVAL[clampi(lv, 1, 3)])
+		return tr(NAMES[id][1]) % int(Upgrades.PLATING_INTERVAL[clampi(lv, 1, 3)])
 	return NAMES[id][1]
 
 
@@ -364,7 +364,7 @@ func _set_info(lines: Array, colors: Array) -> void:
 func _show_intro() -> void:
 	_card_icon = "part"
 	_card_kind = "intro"
-	_set_info(["SPEND YOUR PARTS", "walk up to a glowing item", "%s: BUY" % _key],
+	_set_info(["SPEND YOUR PARTS", "walk up to a glowing item", tr("%s: BUY") % _key],
 			[UiStyle.WARM, UiStyle.TEXT, UiStyle.WARM])
 
 
@@ -393,10 +393,12 @@ func _update_info_box(delta: float) -> void:
 			price_col = UiStyle.DIM
 		elif focus.can_buy():
 			var price: int = info.get("price", 0)
-			price_line = ("%d PART%s      %s: BUY" % [price, "S" if price > 1 else "", _key]) if price > 0 else ("FREE      %s: PULL" % _key)
+			price_line = ((tr("%d PARTS      %s: BUY") if price > 1 else tr("%d PART      %s: BUY")) % [price, _key]) if price > 0 \
+					else (tr("FREE      %s: PULL") % _key)
 		else:
 			var price: int = info.get("price", 0)
-			price_line = "NEED %d PART%s  (YOU HAVE %d)" % [price, "S" if price > 1 else "", Run.parts] if price > 0 else ""
+			price_line = (tr("NEED %d PARTS  (YOU HAVE %d)") if price > 1 else tr("NEED %d PART  (YOU HAVE %d)")) % [price, Run.parts] \
+					if price > 0 else ""
 			price_col = UiStyle.POOR
 		_set_info([info.get("title", ""), info.get("detail", ""), price_line],
 				[UiStyle.WARM, UiStyle.TEXT, price_col])
@@ -411,8 +413,8 @@ func _update_info_box(delta: float) -> void:
 		_info_box.position = INFO_RECT.position
 	else:
 		_info_box.visible = false
-	var sc := 1.0 + 0.08 * sin(_card_pop * PI)
-	_info_box.scale = Vector2(sc, sc)
+	# 买到：卡片往上弹 2 像素（整数像素，不缩放）
+	_info_box.position.y -= roundf(sin(_card_pop * PI) * 2.0)
 	_info_focus = focus
 	_info_box.queue_redraw()
 
@@ -440,18 +442,18 @@ func _draw_card() -> void:
 				if c[0] == _card_icon:
 					for k in 3:
 						var x := 60.0 + k * 74.0
-						var lab: String = ["POWER", "RATE", "REACH"][k]
+						var lab: String = tr(["POWER", "RATE", "REACH"][k])
 						var lw := Hud.font().get_string_size(lab, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
 						box.draw_string(Hud.font(), Vector2(x, y + 5), lab, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, UiStyle.DIM)
 						UiStyle.bars(box, Vector2(x + lw + 4.0, y), c[4 + k], 5, 5.0, 3.0, 1.0)
 		"charge", "fuel", "plating", "damping":
 			var lv := Upgrades.level(_card_kind)
-			box.draw_string(Hud.font(), Vector2(60, y + 5), "LEVEL", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, UiStyle.DIM)
+			box.draw_string(Hud.font(), Vector2(60, y + 5), tr("LEVEL"), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, UiStyle.DIM)
 			UiStyle.bars(box, Vector2(98, y), lv, Upgrades.MAX_LEVEL, 16.0, 3.0, 2.0, UiStyle.WARM, _time,
 					lv if lv < Upgrades.MAX_LEVEL else -1)
 		"repair":
 			var ratio := Run.crystal_hp / maxf(Run.crystal_max, 1.0)
-			box.draw_string(Hud.font(), Vector2(60, y + 5), "LANTERN", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, UiStyle.DIM)
+			box.draw_string(Hud.font(), Vector2(60, y + 5), tr("LANTERN"), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, UiStyle.DIM)
 			box.draw_rect(Rect2(110, y, 120, 3), UiStyle.BAR_OFF)
 			var add := clampf(Upgrades.REPAIR_AMOUNT / maxf(Run.crystal_max, 1.0), 0.0, 1.0 - ratio)
 			box.draw_rect(Rect2(110 + 120 * ratio, y, 120 * add, 3), UiStyle.BAR_OFF.lerp(UiStyle.WARM, 0.35 + 0.35 * sin(_time * 8.0)))

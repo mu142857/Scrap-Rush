@@ -142,7 +142,7 @@ func _ready() -> void:
 		var sign := HintSign.new()
 		sign.zone = h["zone"]
 		sign.position = h["at"]
-		sign.text = (h["text"] as String).format({"jump": jump_key})
+		sign.text = tr(h["text"]).format({"jump": jump_key})
 		sign.arrow = h["arrow"]
 		add_child(sign)
 

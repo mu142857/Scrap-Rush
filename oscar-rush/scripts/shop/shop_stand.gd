@@ -98,7 +98,7 @@ func tag_text() -> String:
 	var title: String = info.get("title", "")
 	if title == "SOLD":
 		return "SOLD"
-	if title.ends_with("MAX"):
+	if info.get("maxed", false) or title.ends_with("MAX"):
 		return "MAX"
 	if info.get("dim", false):
 		return "SOON"
@@ -159,10 +159,9 @@ func _physics_process(delta: float) -> void:
 	_marks.position = sh
 	_back.position = sh
 	# 选中：图标放大一点、上下浮；买到：往上弹一下；买不起或还没做的：调暗（和选武器界面没选中的卡一样）
-	var bob := roundf(sin(_t * 3.0) * 1.0) if focused else 0.0
+	# 选中：图标抬起 1 像素再上下浮；买到：往上弹 3 像素（只挪整数像素，不缩放）
+	var bob := (-1.0 + roundf(sin(_t * 3.0))) if focused else 0.0
 	_sprite.position = sh + Vector2(0, bob - roundf(sin(_pop * PI) * 3.0))
-	var sc := 1.0 + 0.15 * _focus_s + 0.2 * sin(_pop * PI)
-	_sprite.scale = Vector2(sc, sc)
 	var usable := can_buy() or focused
 	_sprite.modulate = Color.WHITE if usable else UiStyle.DIM_MOD
 	if info.get("dim", false):
@@ -204,7 +203,7 @@ func _draw_marks() -> void:
 	# 价签：一块小黑底，价钱前面一个小齿轮
 	if _tag.text == "":
 		return
-	var w := Hud.font().get_string_size(_tag.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
+	var w := Hud.font().get_string_size(tr(_tag.text), HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
 	var gear := 6.0 if _tag.text.is_valid_int() else 0.0
 	var tw := roundf(w + gear + 4.0)
 	var tr := Rect2(-roundf(tw * 0.5), tag_y + 1.0, tw, 10)

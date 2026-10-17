@@ -93,8 +93,9 @@ func _on_body_entered(body: Node) -> void:
 			Game.add_shake(2.5 if _hit.size() == 1 else 1.5)
 			Game.hitstop(0.07 if _hit.size() == 1 else 0.03)
 			Game.sparks(get_parent(), global_position, Color.WHITE, 6, 120.0, velocity.normalized())
-			# 穿过去接着飞：追踪的目标打过了就不再拐弯
+			# 穿过去接着飞：追踪的目标打过了就不再拐弯；往下斜的拉平，免得穿过第一只就钻进地里、打不到后面那排
 			target = null
+			velocity = Vector2(signf(velocity.x) * FULL_SPEED, minf(velocity.y, 0.0) * 0.3) if absf(velocity.x) > 1.0 else velocity
 			return
 		_done = true
 	else:

@@ -295,6 +295,9 @@ func _begin_intro() -> void:
 
 ## 屏幕中间的名字：一个字一个字打出来，停一会儿淡掉
 func _show_card(title: String, sub: String) -> void:
+	# 一个字一个字打，所以先翻好（中文模式打出来的是中文）
+	title = tr(title)
+	sub = tr(sub)
 	_card.text = ""
 	_card_sub.text = ""
 	_card.modulate.a = 1.0

@@ -80,6 +80,8 @@ func _ready() -> void:
 
 	_shown_hp = Run.crystal_hp
 	Run.crystal_changed.connect(_on_crystal_changed)
+	# 暂停菜单里换了语言，底下这行当场换
+	Settings.changed.connect(_update_hint)
 	_update_hint()
 
 
@@ -116,13 +118,13 @@ func show_banner(text: String) -> void:
 func _update_hint() -> void:
 	var s := Run.players[0]["input"] as String
 	var atk := Controls.key_name(s, "attack")
-	var attack_text := "Hold %s: charge, release: shoot" % atk
+	var attack_text := tr("Hold %s: charge, release: shoot") % atk
 	match Upgrades.weapon:
 		"rivet":
-			attack_text = "Hold %s: fire" % atk
+			attack_text = tr("Hold %s: fire") % atk
 		"hammer":
-			attack_text = "%s: steam blast" % atk
-	_hint.text = "%s Move   %s Jump (hold in air: fly)   %s   %s Drop/pick lantern   R Restart" % [
+			attack_text = tr("%s: steam blast") % atk
+	_hint.text = tr("%s Move   %s Jump (hold in air: fly)   %s   %s Drop/pick lantern   R Restart") % [
 		Controls.key_name(s, "move"), Controls.key_name(s, "jump"), attack_text, Controls.key_name(s, "crystal")]
 
 

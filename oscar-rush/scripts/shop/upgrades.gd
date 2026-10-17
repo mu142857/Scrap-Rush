@@ -18,7 +18,7 @@ const DAMPING_PER_LEVEL := 0.2
 ## 已经做进游戏的武器和变异。没做的照样摆出来，但标 COMING SOON、买不了，免得卖出去没效果。
 ## 做好一把就把名字加进来。
 static var implemented_weapons: Array[String] = ["flash", "rivet", "hammer"]
-static var implemented_mutations: Array[String] = []
+static var implemented_mutations: Array[String] = ["rage", "slave", "echo", "dynamo"]
 
 static var levels := {"charge": 0, "fuel": 0, "plating": 0, "damping": 0}
 ## 身上的武器（开局在 weapon_select 里选，默认闪光灯）和变异（"" 没有）
@@ -33,6 +33,7 @@ static func reset() -> void:
 	weapon = "flash"
 	mutation = ""
 	_plating_ready = 0.0
+	Mutations.dynamo_kills = 0
 
 
 static func level(id: String) -> int:

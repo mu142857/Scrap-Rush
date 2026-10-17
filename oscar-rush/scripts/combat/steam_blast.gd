@@ -3,7 +3,7 @@ extends Node2D
 ## 蒸汽锤的一锤：以主角为中心炸开一圈蒸汽。圈里的怪全部挨打（伤害高、击退大），
 ## Boss 打出来的子弹（铆钉、火星、声波、雪花……）在圈里的直接被吹散。
 ## 冷却长（见 Player 的 HAMMER_* 常量），所以很强但不能一直按。
-## 伤害近高远低：贴身 200，到圈边线性降到 80（按怪的瞄准点离圈心多远算）。
+## 伤害近高远低：贴身 200，到圈边线性降到 80（按怪身上离圈心最近的那一点算）。
 
 const RADIUS := 48.0
 const DAMAGE_NEAR := 200.0
@@ -12,6 +12,8 @@ const GROW_TIME := 0.22
 const LIFE := 0.5
 
 var color := Color.WHITE
+## 伤害倍率：变异（怒火 ×1~2、磁带回声 ×0.5）在出招后改它
+var damage_mult := 1.0
 ## 中心点在脚底往上 10 像素（身体中间）
 var _t := 0.0
 var _hit := false
@@ -73,11 +75,18 @@ func _strike() -> void:
 			continue
 		done[body] = true
 		var at: Vector2 = body.call("aim_point") if body.has_method("aim_point") else (body as Node2D).global_position
-		var k := clampf(at.distance_to(global_position) / RADIUS, 0.0, 1.0)
+		# 距离按怪身上离圈心最近的那一点算（大块头贴身也算贴身）；没有身体框的就按瞄准点
+		var near := at
+		var br = body.get("body_rect")
+		if br is Rect2:
+			var r: Rect2 = (br as Rect2)
+			r.position += (body as Node2D).global_position
+			near = Vector2(clampf(global_position.x, r.position.x, r.end.x), clampf(global_position.y, r.position.y, r.end.y))
+		var k := clampf(near.distance_to(global_position) / RADIUS, 0.0, 1.0)
 		var dir := (at - global_position).normalized()
 		if dir == Vector2.ZERO:
 			dir = Vector2.RIGHT
-		body.call("hurt", lerpf(DAMAGE_NEAR, DAMAGE_EDGE, k), dir, true)
+		body.call("hurt", lerpf(DAMAGE_NEAR, DAMAGE_EDGE, k) * damage_mult, dir, true)
 		Game.sparks(get_parent(), (body as Node2D).global_position + Vector2(0, -8), Color(1, 0.95, 0.85), 8, 110.0, dir)
 		_hit = true
 	if _hit:

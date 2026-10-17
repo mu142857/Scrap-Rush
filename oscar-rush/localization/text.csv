@@ -1,0 +1,287 @@
+keys,zh
+START,开始
+CO-OP,合作
+SETTINGS,设置
+QUIT,退出
+One player. Carry the lantern home.,一个人。把马灯带回家。
+"2-4 players, one screen. Keyboard halves or gamepads.",2~4 人同屏。一人半边键盘，或者用手柄。
+"Volume, fullscreen, pixel scaling, screen shake, controls.",音量、全屏、像素缩放、震屏、语言、按键。
+LUDUM DARE 60  /  OLD TECH,LUDUM DARE 60  /  旧科技
+W/S select    Space / C / A confirm    F11 fullscreen,W/S 选择    空格 / C / A 确认    F11 全屏
+Press JUMP to join,按「跳」加入
+"Left keys  A D  W jump  C attack  V lantern
+Right keys  J L  I jump  M attack  N lantern
+Gamepad  stick  A jump  X attack  Y lantern","左半键盘  A D  W 跳  C 攻击  V 马灯
+右半键盘  J L  I 跳  M 攻击  N 马灯
+手柄  摇杆  A 跳  X 攻击  Y 马灯"
+Esc back,Esc 返回
+Need one more player    (lantern key: leave),还差一个人    （马灯键：退出）
+"%d players ready  -  any player press ATTACK to start
+(lantern key: leave)","%d 人到齐  -  任何一人按「攻击」出发
+（马灯键：退出）"
+KB-L,左键盘
+KB-R,右键盘
+PAD%d,手柄%d
+MASTER VOLUME,总音量
+MUSIC,音乐
+SOUND FX,音效
+FULLSCREEN,全屏
+PIXEL PERFECT,像素完美
+SCREEN SHAKE,震屏
+LANGUAGE,语言
+CONTROLS,按键说明
+BACK,返回
+OFF,关
+LIGHT,轻
+STRONG,强
+ON,开
+"Scale by whole numbers only. Crisper pixels, black borders.",只按整数倍放大。像素更清楚，四周留黑边。
+Also F11.,也可以按 F11。
+How hard the screen shakes on hits.,挨打时屏幕晃得多厉害。
+Text language. Switches right away.,游戏文字的语言，马上生效。
+W/S select    A/D change    Esc back,W/S 选择    A/D 调整    Esc 返回
+"SOLO (keyboard)
+Move  A / D  or  Left / Right       Jump  W / Up / Space
+Attack  C  (hold to charge)         Lantern  V  (pick up / put down)
+Drop through a platform  S / Down
+
+GAMEPAD
+Move  stick / D-pad    Jump  A    Attack  X / RT    Lantern  Y / B
+
+CO-OP on one keyboard
+Left half   A D move   W jump   C attack   V lantern   S down
+Right half  J L move   I jump   M attack   N lantern   K down","单人（键盘）
+移动  A / D 或 ← / →        跳  W / ↑ / 空格
+攻击  C（按住蓄力）           马灯  V（拿起 / 放下）
+从平台上跳下去  S / ↓
+
+手柄
+移动  摇杆 / 十字键    跳  A    攻击  X / RT    马灯  Y / B
+
+一台键盘两人合作
+左半边   A D 移动   W 跳   C 攻击   V 马灯   S 下
+右半边   J L 移动   I 跳   M 攻击   N 马灯   K 下"
+In game:  Esc / Start  pause      F11  fullscreen,游戏中：Esc / Start  暂停      F11  全屏
+Esc / B / confirm: back,Esc / B / 确认：返回
+Stick,摇杆
+Down,↓
+PAUSED,暂停
+RESUME,继续
+RESTART LEVEL,重开本关
+QUIT TO TITLE,回到标题
+SURE? PRESS AGAIN,确定？再按一次
+Back to the start of this level. Lantern and parts reset to how you came in.,回到本关开头。马灯和零件回到进关时的样子。
+This run's progress will be lost.,这一趟的进度会丢掉。
+W/S select    Space / C / A confirm    Esc resume,W/S 选择    空格 / C / A 确认    Esc 继续
+CHOOSE YOUR TOOL,挑一件趁手的家伙
+FLASH LAMP,闪光灯
+RIVET GUN,铆钉枪
+STEAM HAMMER,蒸汽锤
+"Hold to charge.
+Full shots pierce
+a whole row.","按住蓄力。
+蓄满的一发
+能打穿一整排。"
+"Hold to fire
+nonstop. Small hits,
+short range.","按住一直连发。
+伤害小，
+射程短。"
+"Tap: blast all
+around you. Wipes
+bullets. Slow.","点一下：朝四周
+喷一圈蒸汽，
+能吹散子弹。慢。"
+POWER,威力
+RATE,射速
+REACH,射程
+A/D  choose      Space / C  start      Esc  back      You can swap tools in the shop,A/D 选择      空格 / C 出发      Esc 返回      商店里可以换家伙
+"Hold %s: charge, release: shoot",按住 %s 蓄力，松开射
+Hold %s: fire,按住 %s 开火
+%s: steam blast,%s 喷蒸汽
+%s Move   %s Jump (hold in air: fly)   %s   %s Drop/pick lantern   R Restart,%s 移动   %s 跳（空中按住飞）   %s   %s 放/拿马灯   R 重来
+CHECKPOINT,存档点
+%s  Move      %s  Jump,%s  移动      %s  跳
+Hold %s to fire nonstop,按住 %s 一直连发
+Tap %s: steam blast all around you  (it needs to cool down),点一下 %s：朝四周喷蒸汽（要等它冷却）
+"Hold %s to charge,  release to shoot.  Watch the ring fill",按住 %s 蓄力，松开发射。看着那一圈亮满
+Hits crack the lantern. It's your light - and your life,挨打会震裂马灯。它是你的光，也是你的命
+"%s  Put the lantern down: you take the hits, but moths go for it",%s  放下马灯：伤害你来扛，可飞蛾会去扑它
+The lantern is almost out. The shop can mend it,马灯快灭了。商店能修
+Clearing a fight and lamp oil from wrecks mend the lantern,打完一场、捡起残骸里的灯油，都能修补马灯
+Back at the last cleared fight,回到上一场打完的地方
+%s Pick up,%s 拿起
+AMBUSH!,有埋伏！
+CLEAR   LANTERN +%d,清场   马灯 +%d
+CALM,平静
+UNEASY,烦躁
+ANGRY,愤怒
+PANIC,失控
+machines calm down,机器安静下来了
+machines speed up,机器变快了
+machines hit harder,机器下手更重了
+machines go haywire,机器发疯了
+a little calmer,稍微平静了些
+%s: %s,%s：%s
+OVERLOAD! LANTERN BURNS,过载！马灯在烧
+IN THE DARK x1.5,黑暗中 x1.5
+Go right,往右走
+Go left,往左走
+Drop down here,从这儿跳下去
+Hold {jump} in the air to fly,在空中按住 {jump} 就能飞
+Boss ahead,前面是 Boss
+"Clear the room, then step into the tube",打完这屋，再钻进管道
+Into the tube,钻进管道
+The film is burning. Keep moving!,胶片烧起来了，别停！
+Duck under,从底下钻过去
+Walk into the screens,走进屏幕里
+Home,家
+Hold %s on the cable to climb,在电缆上按住 %s 往上爬
+Onward,往前走
+Exit,出口
+THE FILM IS ROLLING,胶片转起来了
+THE TAPE IS RUINED,录像带坏了
+TAPE DESTROYED,录像带毁了
+PICTURE HOUSE CLEARED,放映厅 通关
+SCREENS CLEARED,屏幕世界 通关
+BOSS,BOSS
+CLEARED,通关
+THE STOKER,司炉
+It burns what you remember.,它烧的，是你记得的东西。
+Somebody else's memories. Burned.,别人的回忆。烧掉了。
+BOILER BAY CLEARED,锅炉间 通关
+THE OPERATOR,总机
+It keeps every voice it ever heard.,它留着听过的每一个声音。
+Somebody else's last call.,别人的最后一通电话。
+SWITCHBOARD CLEARED,总机室 通关
+"""...hello? is anyone—""",“……喂？有人在吗——”
+"""...tell them I tried to come home—""",“……告诉他们，我试过回家——”
+"""...can you hear me? the line is—""",“……听得见吗？线路要——”
+THE SET,老电视
+The last TV that still plays tapes.,最后一台还能放录像带的电视。
+It stopped changing channels.,它不再换台了。
+The house on the hill. The porch light is on.,山坡上那栋房子。门廊的灯亮着。
+Somebody left it on for us.,有人给我们留了灯。
+We know the way home now.,现在，我们认得回家的路了。
+...a house... a light in the window...,……一栋房子……窗户里有灯……
+...the signal keeps slipping...,……信号老是飘走……
+Close. We're close.,近了。就快到了。
+Snow. Almost all snow.,雪花。几乎全是雪花。
+For one frame: a lit window.,只有一帧：一扇亮着灯的窗。
+That's enough. We know the way now.,够了。我们认得路了。
+THE END,剧终
+Scrap Rush  -  thanks for playing,Scrap Rush  -  谢谢你玩到这里
+ELITE,精英
+CUCKOO CLOCK,布谷鸟钟
+TIME'S UP,时间到
+GRAMOPHONE,留声机
+NOW PLAYING,正在播放
+PLAYER PIANO,自动钢琴
+ENCORE,再来一曲
+CINEMA PROJECTOR,放映机
+NOW SHOWING,正在上映
+CASH REGISTER,收银机
+NO REFUNDS,概不退款
+STEAM ROLLER,蒸汽压路机
+FULL STEAM,全速前进
+SEWING MACHINE,缝纫机
+STITCHED UP,一针见血
+OPERATOR SWITCHBOARD,总机台
+PLEASE HOLD,请稍候
+VACUUM,吸尘器
+CLEAN SWEEP,一扫而空
+TOOL CHEST,工具箱
+SOME ASSEMBLY REQUIRED,需自行组装
+CHALKBOARD,黑板
+PAY ATTENTION,上课注意听
+LAST TRAIN,末班车
+MIND THE GAP,小心站台空隙
+STREETLIGHT,路灯
+NO LOITERING,禁止逗留
+WATER TOWER,水塔
+HIGH PRESSURE,高压危险
+RADIOGRAM,收音电唱机
+OLD WARDROBE,老衣柜
+LIGHTS OUT,熄灯了
+ROCKING HORSE,摇摇马
+GIDDY UP,驾！
+GRANDFATHER,落地钟
+TIME IS UP,时辰到了
+CLAWFOOT TUB,老浴缸
+BATH TIME,洗澡时间
+DUST SHEET,防尘布
+FORGET ME NOT,勿忘我
+OLD FRIDGE,老冰箱
+KEEP COOL,冷静点
+TV HERMIT,电视寄居蟹
+HIGH TIDE,涨潮了
+DEEP ANGLER,深海灯笼鱼
+FOLLOW THE LIGHT,跟着光走
+SNOW BLOWER,吹雪机
+LET IT SNOW,下雪吧
+DEEP DIVER,深潜者
+FROM THE DEEP,来自深处
+IRON HORSE,铁马
+LAST TRAIN WEST,西去的末班车
+OLD STUMP,老树桩
+ROOTS RUN DEEP,根深蒂固
+RETRO ROCKET,复古火箭
+T-MINUS ZERO,倒数归零
+BIG WHEEL,摩天轮
+ONE MORE RIDE,再坐一圈
+STORM FRONT,风暴锋
+100% CHANCE OF PAIN,挨揍概率 100%
+COLOR BARS,彩条
+PLEASE STAND BY,请勿走开
+WHITE NOISE,白噪声
+NO SIGNAL,无信号
+QUICK CHARGE,快充
+faster charge / fire rate / hammer cooldown,蓄力更快 / 射速更快 / 锤子冷却更短
+BIG TANK,大油箱
+rocket fuel +0.35s,火箭靴油量 +0.35 秒
+PLATING,镀层
+blocks a hit every %ds,每 %d 秒挡下一次伤害
+DAMPER,阻尼
+emotion rises 20% slower,情绪涨得慢 20%
+REPAIR LANTERN,修马灯
+lantern +25,马灯 +25
+REFRESH,刷新
+new weapons & mutations,换一批武器和变异
+"hold to charge, full shot pierces",按住蓄力，蓄满能穿透
+steam blast all around you,朝四周喷一圈蒸汽
+SHOCK TONGS,电击钳
+arc jumps 3 (5 when full),电弧连跳 3 个（蓄满 5 个）
+GRAMOPHONE HORN,留声机喇叭
+"pierces, knocks back hard",能穿透，击退很猛
+hold to fire nonstop,按住一直连发
+RAGE,怒火
+"damage x1 when calm, x2 in panic",平静时伤害 x1，失控时 x2
+SLAVE FLASH,从闪
+the lantern on the ground shoots too,放在地上的马灯也跟着打
+TAPE ECHO,磁带回声
+each attack repeats at 50%,每一招都自动再来一次，伤害 50%
+DYNAMO,发电机
+every 10 kills: lantern +5,每杀 10 只：马灯 +5
+%s  MAX,%s  满级
+%s  Lv%d > %d,%s  Lv%d > %d
+lantern is fine,马灯好好的
+lantern +25   (%d/%d),马灯 +25   （%d/%d）
+SOLD,已售
+COMING SOON,还没做好
+  (drops %s),  （换掉%s）
+SPEND YOUR PARTS,花掉你的零件
+walk up to a glowing item,走到发光的货前面
+%s: BUY,%s 买
+MAXED OUT,已经满级
+SOLD OUT,卖完了
+NOT FOR SALE YET,还没上架
+%d PARTS      %s: BUY,%d 个零件      %s 买
+%d PART      %s: BUY,%d 个零件      %s 买
+FREE      %s: PULL,免费      %s 换一批
+NEED %d PARTS  (YOU HAVE %d),要 %d 个零件（你只有 %d 个）
+NEED %d PART  (YOU HAVE %d),要 %d 个零件（你只有 %d 个）
+LEVEL,等级
+LANTERN,马灯
+MAX,满级
+SOON,未上架
+FREE,免费

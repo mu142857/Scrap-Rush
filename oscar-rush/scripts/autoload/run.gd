@@ -3,6 +3,8 @@ extends Node
 
 signal crystal_changed(hp: float, max_hp: float)
 signal crystal_broken
+## 真正的回血（清场、灯油）：只有 heal_crystal 发。重来拉回存档血量、商店修灯不发
+signal crystal_healed(amount: float)
 signal parts_changed(parts: int)
 ## 从存档点重来、人已经挪到存档点以后发出（提示用）
 signal resumed
@@ -152,8 +154,11 @@ func damage_crystal(amount: float) -> void:
 func heal_crystal(amount: float) -> void:
 	if crystal_hp <= 0.0 or amount <= 0.0:
 		return
+	var before := crystal_hp
 	crystal_hp = minf(crystal_hp + amount, crystal_max)
 	crystal_changed.emit(crystal_hp, crystal_max)
+	if crystal_hp > before:
+		crystal_healed.emit(crystal_hp - before)
 
 
 func add_emotion(amount: float) -> void:

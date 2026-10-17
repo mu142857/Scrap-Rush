@@ -1,5 +1,5 @@
 extends Node
-## 玩家设置：音量、全屏、像素完美、震屏强度。存在 user://settings.cfg，下次打开还在
+## 玩家设置：音量、全屏、像素完美、震屏强度、语言（Lang，scripts/autoload/lang.gd）。存在 user://settings.cfg，下次打开还在
 ## （网页版的 user:// 存在浏览器的 IndexedDB 里，同样能留住）。
 ## 界面在 scripts/ui/settings_menu.gd，开始界面和暂停菜单都用它。
 ##
@@ -26,6 +26,8 @@ var sfx := 8
 var fullscreen := true
 var pixel_perfect := false
 var shake_index := 1
+## ""= 跟随系统语言，"en" / "zh" = 玩家在设置里选过
+var language := ""
 
 
 func _ready() -> void:
@@ -38,6 +40,7 @@ func _ready() -> void:
 	if OS.has_feature("web"):
 		fullscreen = false
 	var had_file := _load()
+	Lang.apply(language)
 	_apply_audio()
 	_apply_pixel_perfect()
 	# 没存过设置就照 project.godot 的默认（全屏）；网页版不在启动时切全屏
@@ -58,6 +61,8 @@ func set_value(key: String, value: Variant) -> void:
 			_apply_fullscreen()
 		"pixel_perfect":
 			_apply_pixel_perfect()
+		"language":
+			Lang.apply(language)
 	save()
 	changed.emit()
 
@@ -71,7 +76,7 @@ func sync_fullscreen() -> void:
 
 func save() -> void:
 	var c := ConfigFile.new()
-	for key in ["master", "music", "sfx", "fullscreen", "pixel_perfect", "shake_index"]:
+	for key in ["master", "music", "sfx", "fullscreen", "pixel_perfect", "shake_index", "language"]:
 		c.set_value("settings", key, get(key))
 	c.save(PATH)
 
@@ -86,6 +91,7 @@ func _load() -> bool:
 	fullscreen = c.get_value("settings", "fullscreen", fullscreen)
 	pixel_perfect = c.get_value("settings", "pixel_perfect", pixel_perfect)
 	shake_index = clampi(c.get_value("settings", "shake_index", shake_index), 0, SHAKE_LEVELS.size() - 1)
+	language = str(c.get_value("settings", "language", language))
 	return true
 
 

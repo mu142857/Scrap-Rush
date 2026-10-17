@@ -365,10 +365,11 @@ class IntroCard:
 		big.outline_size = 4
 		big.outline_color = Color8(30, 8, 6)
 		_name.label_settings = big
-		_name.text = elite.elite_name
+		# 逐字打出来、量宽度都用翻好的名字
+		_name.text = tr(elite.elite_name)
 		# 先排好整行再一个个露出来，字不会随着打字往两边挪
 		_name.visible_characters_behavior = TextServer.VC_CHARS_AFTER_SHAPING
-		_name_w = Hud.font().get_string_size(elite.elite_name, HORIZONTAL_ALIGNMENT_LEFT, -1, NAME_SIZE).x
+		_name_w = Hud.font().get_string_size(_name.text, HORIZONTAL_ALIGNMENT_LEFT, -1, NAME_SIZE).x
 		_name.position = Vector2(roundf(CENTER_X - _name_w / 2.0), NAME_Y)
 		_root.add_child(_name)
 		visible = false

@@ -223,9 +223,41 @@ func _tick_queue(delta: float) -> void:
 				continue
 			e.position = Vector2(x, ceil_y + 14.0)
 			get_parent().add_child(e)
+			_drop_below_ceiling(e, x)
 			_alive.append(e)
 			if elite:
 				Run.add_emotion(10.0)
+
+
+## 出生高度：原来一律放在天花板下 14 像素，高个子的怪（总机台 46、留声机 45、放映机 52……）
+## 一出生头就嵌进天花板，被物理挤到天花板上面去：血条出来了，房间里看不到怪（2026-10-17）。
+## 现在加进场景以后（_ready 里才知道碰撞框、贴图多大）按怪的个头往下挪：
+## 头顶（碰撞框和贴图里更高的那个）离天花板 SPAWN_HEADROOM；天花板往上探一下实际的位置；脚不低于地面。
+const SPAWN_HEADROOM := 3.0
+
+
+func _drop_below_ceiling(e: Node2D, x: float) -> void:
+	var top := -14.0
+	var fs = e.get("frame_size")
+	if fs is Vector2i or fs is Vector2:
+		top = minf(top, -float(fs.y))
+	for c in e.get_children():
+		var cs := c as CollisionShape2D
+		if cs and cs.shape is RectangleShape2D:
+			top = minf(top, cs.position.y - (cs.shape as RectangleShape2D).size.y / 2.0)
+	var floor_y := minf(floor_left, floor_right)
+	# 从地面往上找第一块挡头的东西（场子的天花板可能比 ceil_y 低）
+	var ceiling := ceil_y
+	var q := PhysicsRayQueryParameters2D.create(Vector2(x, floor_y - 2.0), Vector2(x, ceil_y - 1.0), 1)
+	var hit := get_world_2d().direct_space_state.intersect_ray(q)
+	if not hit.is_empty():
+		ceiling = maxf(ceiling, hit["position"].y)
+	var feet := minf(ceiling + SPAWN_HEADROOM - top, floor_y)
+	e.global_position = Vector2(x, maxf(feet, ceil_y + 14.0))
+	e.reset_physics_interpolation()
+	# 有的怪在 _ready 里记下出生点（死了从那儿复活），跟着改
+	if "_home" in e:
+		e.set("_home", e.global_position)
 
 
 func _make(kind: String) -> Node2D:
@@ -245,7 +277,7 @@ func _finish() -> void:
 	Game.sfx("ready", -6.0)
 	# 清场回血（策划案第七节"关卡内回血"）：和 CHECKPOINT 一起出
 	Run.heal_crystal(CLEAR_HEAL)
-	_show_label("CLEAR   LANTERN +%d" % int(CLEAR_HEAL))
+	_show_label(tr("CLEAR   LANTERN +%d") % int(CLEAR_HEAL))
 	var part := Part.new()
 	part.position = Vector2((left + right) / 2.0, ceil_y + 20.0)
 	get_parent().add_child.call_deferred(part)

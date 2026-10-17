@@ -61,6 +61,8 @@ func _ready() -> void:
 	_last_hp = Run.crystal_hp
 	Run.crystal_changed.connect(_on_crystal_changed)
 	Run.checkpoint_saved.connect(_on_checkpoint)
+	# "打完一场 / 灯油会回血"的提示只听真正的回血，不看血量变多（重来、商店修灯也会让血量变多）
+	Run.crystal_healed.connect(func(_amount: float): _want("heal"))
 	Run.resumed.connect(_on_resumed)
 	var scene := get_tree().current_scene
 	if scene and scene.scene_file_path == FIRST_LEVEL:
@@ -75,19 +77,19 @@ func _text(tip: String) -> String:
 	var s := _scheme()
 	match tip:
 		"move":
-			return "%s  Move      %s  Jump" % [Controls.key_name(s, "move"), Controls.key_name(s, "jump")]
+			return tr("%s  Move      %s  Jump") % [Controls.key_name(s, "move"), Controls.key_name(s, "jump")]
 		"shoot":
 			var k := Controls.key_name(s, "attack")
 			match Upgrades.weapon:
 				"rivet":
-					return "Hold %s to fire nonstop" % k
+					return tr("Hold %s to fire nonstop") % k
 				"hammer":
-					return "Tap %s: steam blast all around you  (it needs to cool down)" % k
-			return "Hold %s to charge,  release to shoot.  Watch the ring fill" % k
+					return tr("Tap %s: steam blast all around you  (it needs to cool down)") % k
+			return tr("Hold %s to charge,  release to shoot.  Watch the ring fill") % k
 		"lantern":
 			return "Hits crack the lantern. It's your light - and your life"
 		"drop":
-			return "%s  Put the lantern down: you take the hits, but moths go for it" % Controls.key_name(s, "crystal")
+			return tr("%s  Put the lantern down: you take the hits, but moths go for it") % Controls.key_name(s, "crystal")
 		"low":
 			return "The lantern is almost out. The shop can mend it"
 		"heal":
@@ -179,8 +181,6 @@ func _watch() -> void:
 
 
 func _on_crystal_changed(hp: float, max_hp: float) -> void:
-	if _last_hp >= 0.0 and hp > _last_hp + 0.01 and not Run.get("_resuming"):
-		_want("heal")
 	if _last_hp >= 0.0 and hp < _last_hp - 0.01:
 		_want("lantern")
 		if hp / maxf(max_hp, 1.0) < 0.3:

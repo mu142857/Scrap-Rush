@@ -244,6 +244,7 @@ func _lock_players() -> void:
 
 
 func _type(label: Label, text: String, step: float) -> void:
+	text = tr(text)
 	label.modulate.a = 1.0
 	label.text = ""
 	for i in text.length():

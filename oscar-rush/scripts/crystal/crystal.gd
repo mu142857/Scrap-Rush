@@ -160,7 +160,7 @@ func _update_prompt() -> void:
 	for n in get_tree().get_nodes_in_group("player"):
 		var p := n as Player
 		if p and p.crystal == null and p.global_position.distance_to(global_position) < PICK_RANGE + 14.0:
-			_prompt.text = "%s Pick up" % Controls.key_name(p.input_prefix, "crystal")
+			_prompt.text = tr("%s Pick up") % Controls.key_name(p.input_prefix, "crystal")
 			_prompt.visible = true
 			return
 

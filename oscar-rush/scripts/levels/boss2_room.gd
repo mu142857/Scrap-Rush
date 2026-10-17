@@ -71,7 +71,8 @@ func _build_extras() -> void:
 
 ## 打完先一句句冒出别人没打完的最后一通电话，再接通用流程（定格那句、掉零件、开门）
 func _after_defeat() -> void:
-	for line in LAST_CALLS:
+	for en_line in LAST_CALLS:
+		var line := tr(en_line)
 		_card_sub.modulate.a = 1.0
 		_card.text = ""
 		_card_sub.text = ""

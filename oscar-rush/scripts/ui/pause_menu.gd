@@ -111,9 +111,9 @@ func _text(option: String) -> String:
 func _refresh() -> void:
 	for i in _options.size():
 		var on := i == _selected
-		var t := _text(_options[i])
+		var t := tr(_text(_options[i]))
 		if _confirming == _options[i]:
-			t = "SURE? PRESS AGAIN"
+			t = tr("SURE? PRESS AGAIN")
 		_labels[i].text = ("> %s <" % t) if on else t
 		_labels[i].label_settings.font_color = (WARM if _confirming == _options[i] else LIT) if on else DIM
 	var h := ""
@@ -122,8 +122,8 @@ func _refresh() -> void:
 			h = "Back to the start of this level. Lantern and parts reset to how you came in."
 		"TITLE":
 			h = "This run's progress will be lost."
-	var keys := "W/S select    Space / C / A confirm    Esc resume"
-	_hint.text = keys if h == "" else h + "\n" + keys
+	var keys := tr("W/S select    Space / C / A confirm    Esc resume")
+	_hint.text = keys if h == "" else tr(h) + "\n" + keys
 	_hint.position.y = 246.0 if h == "" else 234.0
 
 
@@ -235,6 +235,8 @@ func _confirm() -> void:
 			_root.visible = false
 			await _settings.closed
 			_settings = null
+			# 设置里可能换了语言
+			_refresh()
 			_root.visible = true
 		"TITLE":
 			Game.sfx("ui_back", -6.0)

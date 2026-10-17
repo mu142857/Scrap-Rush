@@ -12,7 +12,6 @@ extends CanvasLayer
 ##   升档：0.35 秒换台雪花 + "咔"一声 + 屏幕上方一行说这一档怪会怎样；降档：一下冷色 + 轻"叮"；
 ##   失控：心跳（画面一缩一放 + 低沉的咚）、偶尔跑台；过载：表下面闪 OVERLOAD + 警报。
 ## 马灯
-## - 照亮的范围画一圈虚线光圈（放在地上时更明显，那就是安全区）。
 ## - 怪走进光圈：白闪一下、冒一点暖色火花（被照到了）。
 ## - 马灯掉血：灯上方飘红字 "-10"。
 ## - 回血（商店修灯、重来时补到三成、以后的回血变异……任何让马灯血量变多的事）：
@@ -110,6 +109,7 @@ var _time := 0.0
 var _dark := false
 ## 重生后这段时间里马灯血量的变化不放特效
 var _quiet_until := 0.0
+var _rage_t := 0.0
 
 
 func _ready() -> void:
@@ -293,6 +293,15 @@ func _process(delta: float) -> void:
 		if aura:
 			aura.healing = _heal_t > 0.0
 	_bar_fx.queue_redraw()
+	# 怒火：越生气，人身上冒的红火星越多
+	if Upgrades.mutation == "rage" and level and not get_tree().paused:
+		_rage_t -= delta
+		var m := Mutations.rage_mult()
+		if _rage_t <= 0.0 and m >= 1.2:
+			_rage_t = lerpf(0.5, 0.15, (m - 1.2) / 0.8)
+			for pl in get_tree().get_nodes_in_group("player"):
+				var n := pl as Node2D
+				Game.sparks(n.get_parent(), n.global_position + Vector2(randf_range(-4, 4), -10), Mutations.RAGE_COLOR, 2, 35.0, Vector2.UP)
 
 
 func _on_tier(old: int, new: int) -> void:
@@ -302,11 +311,11 @@ func _on_tier(old: int, new: int) -> void:
 		Game.sfx("tvclick", -4.0, 1.0)
 		Game.sfx("static", -14.0, 1.2)
 		Game.add_shake(2.0)
-		_show_banner("%s: %s" % [NAMES[new], TIER_LINES[new]], col)
+		_show_banner(tr("%s: %s") % [tr(NAMES[new]), tr(TIER_LINES[new])], col)
 	else:
 		_calm = 1.0
 		Game.sfx("ding", -12.0, 0.8)
-		_show_banner("%s: %s" % [NAMES[new], TIER_LINES[0] if new == 0 else "a little calmer"], col)
+		_show_banner(tr("%s: %s") % [tr(NAMES[new]), tr(TIER_LINES[0] if new == 0 else "a little calmer")], col)
 
 
 func _show_banner(text: String, col: Color) -> void:
@@ -323,7 +332,9 @@ func _pop_number(v: float) -> void:
 	l.text = ("+%d" if v > 0.0 else "%d") % roundi(v)
 	_top.add_child(l)
 	var tw := l.create_tween().set_parallel(true)
-	tw.tween_property(l, "position:y", l.position.y + (8.0 if v > 0.0 else -8.0), 0.8)
+	var y0 := l.position.y
+	var dy := 8.0 if v > 0.0 else -8.0
+	tw.tween_method(func(k: float): l.position.y = roundf(y0 + dy * k), 0.0, 1.0, 0.8)
 	tw.tween_property(l, "modulate:a", 0.0, 0.8).set_delay(0.3)
 	tw.chain().tween_callback(l.queue_free)
 
@@ -359,22 +370,26 @@ func _draw_gauge() -> void:
 	for i in 4:
 		var a0 := PI + PI * i / 4.0
 		var a1 := PI + PI * (i + 1) / 4.0
-		g.draw_arc(c, r, a0 + 0.04, a1 - 0.04, 8, ZONE_COLORS[i].darkened(0.0 if i == tier else 0.45), 3.0)
+		UiStyle.pixel_arc_band(g, c, r - 1.5, r + 1.5, a0 + 0.06, a1 - 0.06, ZONE_COLORS[i].darkened(0.0 if i == tier else 0.45))
 	# 刻度
 	for k in 5:
 		var a := PI + PI * k / 4.0
-		g.draw_line(c + Vector2.from_angle(a) * (r - 3), c + Vector2.from_angle(a) * (r - 1), Color(0.6, 0.56, 0.5), 1.0)
+		UiStyle.pixel_line(g, c + Vector2.from_angle(a) * (r - 4), c + Vector2.from_angle(a) * (r - 3), Color(0.6, 0.56, 0.5))
 	# 指针：越高抖得越厉害；挨打时猛跳一下
 	var shake_amp: float = ([0.01, 0.03, 0.06, 0.11] as Array[float])[tier] + _kick * 0.12
 	var jitter: float = sin(_time * 37.0) * shake_amp + sin(_time * 53.0 + 1.7) * shake_amp * 0.6
 	var ang: float = PI + PI * clampf(_shown / 100.0, 0.0, 1.0) + jitter
 	var tip := c + Vector2.from_angle(ang) * (r - 2)
-	g.draw_line(c, tip, Color(0.96, 0.92, 0.86), 1.0)
+	UiStyle.pixel_line(g, c, tip, Color(0.96, 0.92, 0.86))
 	g.draw_rect(Rect2(c - Vector2(1, 1), Vector2(3, 3)), Color(0.7, 0.62, 0.5))
 
 
 ## 回血时左上角马灯血条上扫过一道亮光
 func _draw_bar_fx() -> void:
+	# 发电机：马灯血条下面 10 小格，杀一只亮一格，满 10 只回血
+	if Upgrades.mutation == "dynamo" and _in_level():
+		UiStyle.bars(_bar_fx, Vector2(HUD_BAR.position.x, HUD_BAR.end.y + 3), Mutations.dynamo_kills, Mutations.DYNAMO_KILLS,
+				4.0, 2.0, 2.0, Mutations.DYNAMO_COLOR)
 	if _heal_sweep <= 0.0:
 		return
 	var x := HUD_BAR.position.x + HUD_BAR.size.x * (1.0 - _heal_sweep)
@@ -382,7 +397,8 @@ func _draw_bar_fx() -> void:
 	_bar_fx.draw_rect(HUD_BAR.grow(1.0), Color(HEAL_COLOR, 0.5 * _heal_sweep), false, 1.0)
 
 
-## 挂在马灯上：照亮范围的虚线光圈、怪走进光圈时的反应、回血时往上飘的光点、头顶飘字
+## 挂在马灯上：怪走进灯光时的反应、回血时往外扩的像素光环和往上飘的光点、头顶飘字
+## （原来还画一圈照亮范围的虚线，作者 10-17 说"不像素画又不明确"，去掉了）
 class LanternAura:
 	extends Node2D
 
@@ -409,8 +425,8 @@ class LanternAura:
 		_heal.initial_velocity_min = 18.0
 		_heal.initial_velocity_max = 34.0
 		_heal.gravity = Vector2(0, -10)
-		_heal.scale_amount_min = 1.0
-		_heal.scale_amount_max = 2.5
+		_heal.scale_amount_min = 2.0
+		_heal.scale_amount_max = 2.0
 		var ramp := Gradient.new()
 		ramp.set_color(0, Color(1.0, 0.95, 0.75, 1.0))
 		ramp.set_color(1, Color(1.0, 0.8, 0.4, 0.0))
@@ -452,7 +468,7 @@ class LanternAura:
 		l.z_index = 30
 		add_child(l)
 		var tw := l.create_tween().set_parallel(true)
-		tw.tween_property(l, "position:y", -36.0, 0.9)
+		tw.tween_method(func(k: float): l.position.y = roundf(lerpf(-24.0, -36.0, k)), 0.0, 1.0, 0.9)
 		tw.tween_property(l, "modulate:a", 0.0, 0.9).set_delay(0.35)
 		tw.chain().tween_callback(l.queue_free)
 
@@ -460,21 +476,14 @@ class LanternAura:
 		var crystal := get_parent() as Crystal
 		if crystal == null:
 			return
-		# 照亮范围：一圈慢慢转的虚线。放在地上时更明显（那就是安全区）
-		var on_ground := crystal.carrier == null
-		var a := (0.32 if on_ground else 0.14) * (0.8 + 0.2 * sin(_t * 3.0))
-		var col := Color(Crystal.LIGHT_COLOR, a)
-		var r := Crystal.LIGHT_RADIUS
-		var seg := 28
-		draw_set_transform(crystal.global_position.round() - crystal.global_position + Vector2(0, -5))
-		for i in seg:
-			if i % 2 == 1:
-				continue
-			var a0 := TAU * i / seg + _t * 0.25
-			var a1 := a0 + TAU / seg * 0.7
-			draw_arc(Vector2.ZERO, r, a0, a1, 3, col, 1.0)
+		draw_set_transform(crystal.global_position.round() - crystal.global_position)
+		if Upgrades.mutation == "slave" and crystal.carrier == null and int(_t * 3.0) % 2 == 0:
+			draw_rect(Rect2(-1, -13, 3, 1), Mutations.SLAVE_COLOR)
+			draw_rect(Rect2(0, -14, 1, 1), Color.WHITE)
 		# 回血中：灯外面一圈圈往外扩的暖金色光环（两圈错开），配合往上飘的光点
 		if healing:
 			for k in 2:
 				var ph := fmod(_ring_t * 1.6 + k * 0.5, 1.0)
-				draw_arc(Vector2.ZERO, 4.0 + ph * 16.0, 0.0, TAU, 24, Color(EmotionFx.HEAL_COLOR, (1.0 - ph) * 0.85), 1.0)
+				# 像素圆环，透明度分三档（不做平滑渐变）
+				var alpha := 0.85 if ph < 0.4 else (0.55 if ph < 0.75 else 0.3)
+				UiStyle.pixel_ring(self, Vector2(0, -5), int(4.0 + ph * 16.0), Color(EmotionFx.HEAL_COLOR, alpha))

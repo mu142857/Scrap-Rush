@@ -66,3 +66,67 @@ static func label(text: String, color: Color, pos: Vector2, w: float, align := H
 	l.size = Vector2(w, 12)
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return l
+
+
+## 像素圆环：中点画圆法，一个个 1×1 的格子，硬边
+static func pixel_ring(ci: CanvasItem, center: Vector2, r: int, col: Color) -> void:
+	var c := center.round()
+	var x := r
+	var y := 0
+	var err := 1 - r
+	var done := {}
+	while x >= y:
+		for p: Vector2 in [Vector2(x, y), Vector2(y, x), Vector2(-y, x), Vector2(-x, y),
+				Vector2(-x, -y), Vector2(-y, -x), Vector2(y, -x), Vector2(x, -y)]:
+			if not done.has(p):
+				done[p] = true
+				ci.draw_rect(Rect2(c + p, Vector2.ONE), col)
+		y += 1
+		if err < 0:
+			err += 2 * y + 1
+		else:
+			x -= 1
+			err += 2 * (y - x) + 1
+
+
+## 像素弧带：离圆心 r_in~r_out、角度在 a0~a1 之间的格子都填上（指针表的色区）
+static func pixel_arc_band(ci: CanvasItem, center: Vector2, r_in: float, r_out: float, a0: float, a1: float, col: Color) -> void:
+	var c := center.round()
+	var n := int(ceilf(r_out))
+	for yy in range(-n, n + 1):
+		for xx in range(-n, n + 1):
+			var d := Vector2(xx + 0.5, yy + 0.5)
+			var len := d.length()
+			if len < r_in or len > r_out:
+				continue
+			var a := fposmod(d.angle(), TAU)
+			var lo := fposmod(a0, TAU)
+			var hi := lo + (a1 - a0)
+			if a < lo:
+				a += TAU
+			if a <= hi:
+				ci.draw_rect(Rect2(c + Vector2(xx, yy), Vector2.ONE), col)
+
+
+## 像素直线：两端取整，逐格画（Bresenham）
+static func pixel_line(ci: CanvasItem, from: Vector2, to: Vector2, col: Color) -> void:
+	var x0 := int(roundf(from.x))
+	var y0 := int(roundf(from.y))
+	var x1 := int(roundf(to.x))
+	var y1 := int(roundf(to.y))
+	var dx := absi(x1 - x0)
+	var dy := -absi(y1 - y0)
+	var sx := 1 if x0 < x1 else -1
+	var sy := 1 if y0 < y1 else -1
+	var err := dx + dy
+	while true:
+		ci.draw_rect(Rect2(x0, y0, 1, 1), col)
+		if x0 == x1 and y0 == y1:
+			break
+		var e2 := 2 * err
+		if e2 >= dy:
+			err += dy
+			x0 += sx
+		if e2 <= dx:
+			err += dx
+			y0 += sy

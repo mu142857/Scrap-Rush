@@ -119,6 +119,7 @@ func _die() -> void:
 	Game.add_shake(2.0)
 	Run.add_emotion(-1.0)
 	LampOil.maybe_drop(self)
+	Mutations.on_kill(self)
 	if respawn_time > 0.0:
 		await get_tree().create_timer(respawn_time, false).timeout
 		_respawn()
