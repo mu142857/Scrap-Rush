@@ -66,12 +66,12 @@ const ENCOUNTERS := [
 ## 路线提示：有玩家走进 zone 就在 at 处亮出一块提示牌。
 ## 路线：上层往右 → 右端跳下 → 中层往左 → 左端跳下 → 底层往右打 Boss
 const HINTS := [
-	{"zone": Rect2(45, 60, 200, 60), "at": Vector2(150, 84), "text": "Go right", "arrow": "right"},
-	{"zone": Rect2(820, 60, 186, 60), "at": Vector2(997, 84), "text": "Drop down here", "arrow": "down"},
-	{"zone": Rect2(820, 140, 186, 70), "at": Vector2(900, 176), "text": "Go left", "arrow": "left"},
-	{"zone": Rect2(0, 140, 200, 70), "at": Vector2(24, 176), "text": "Drop down here", "arrow": "down"},
+	{"zone": Rect2(45, 60, 200, 64), "at": Vector2(150, 84), "text": "Go right", "arrow": "right"},
+	{"zone": Rect2(820, 60, 186, 64), "at": Vector2(997, 84), "text": "Drop down here", "arrow": "down"},
+	{"zone": Rect2(820, 140, 186, 74), "at": Vector2(900, 176), "text": "Go left", "arrow": "left"},
+	{"zone": Rect2(0, 140, 200, 74), "at": Vector2(24, 176), "text": "Drop down here", "arrow": "down"},
 	{"zone": Rect2(0, 330, 180, 90), "at": Vector2(120, 372), "text": "Go right", "arrow": "right"},
-	{"zone": Rect2(340, 300, 82, 115), "at": Vector2(400, 322), "text": "Hold {jump} in the air to fly", "arrow": "up"},
+	{"zone": Rect2(340, 300, 82, 120), "at": Vector2(400, 322), "text": "Hold {jump} in the air to fly", "arrow": "up"},
 ]
 
 var hud: Hud

@@ -53,6 +53,7 @@ func _ready() -> void:
 	_light.color = LIGHT_COLOR
 	_light.position = Vector2(0, -5)
 	_light.texture_scale = LIGHT_RADIUS / 32.0
+	_light.range_item_cull_mask = 1 | 2
 	add_child(_light)
 
 	_prompt = Label.new()
@@ -107,6 +108,12 @@ func take_hit(from: Vector2, damage: float) -> void:
 
 
 func _on_damaged(damage: float) -> void:
+	# 商店的镀层：隔一段时间挡一下，"叮"一声冒白火花，不扣血
+	if Upgrades.plating_block():
+		_swing_v += 4.0
+		Game.sfx("hit", -6.0, 1.6, 0.05)
+		Game.sparks(get_parent(), global_position + Vector2(0, -5), Color(0.9, 0.92, 1.0), 6, 70.0)
+		return
 	Run.damage_crystal(damage)
 	_hurt_flash = 1.0
 	_swing_v += 6.0

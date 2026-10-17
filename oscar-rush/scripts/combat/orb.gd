@@ -53,6 +53,7 @@ func _ready() -> void:
 	light.color = color
 	light.energy = 1.2 if full else 0.7
 	light.texture_scale = 0.9 if full else 0.6
+	light.range_item_cull_mask = 1 | 2
 	add_child(light)
 
 

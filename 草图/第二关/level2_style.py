@@ -44,9 +44,9 @@ FRAME_PITCH = 46       # 画框 44 宽 + 2 像素片框线，35mm 胶片的比�
 
 # ---------------------------------------------------------------- 调色（暖琥珀 + 紫褐暗部）
 VOID = (24, 19, 27)
-WALL = (58, 46, 54)
-PANEL = (78, 64, 66)
-PANEL_RIM = (47, 38, 45)
+WALL = (44, 35, 42)
+PANEL = (64, 52, 56)
+PANEL_RIM = (36, 29, 35)
 JACK = (34, 27, 33)
 LAMP_ON = (236, 178, 86)
 LAMP_OFF = (104, 72, 56)
@@ -61,7 +61,7 @@ FRAME_LINE = (46, 31, 26)
 SEPIA = [(116, 80, 52), (156, 112, 70), (200, 154, 98), (232, 196, 136)]
 HOLE = (226, 182, 112)
 SEAT = (46, 34, 40)
-PHONE = (40, 36, 40)
+PHONE = (96, 84, 86)
 
 LENS = (126, 136)            # 放映机镜头，主光源
 LIGHTS = [
@@ -71,8 +71,12 @@ LIGHTS = [
 ]
 
 
-def lit(c, mask, base, normal=(0, 0, 1), z=0.0, gain=0.5, seed=0, center=0.25, noise=None, rim=None):
+CENTER = [0.25]
+
+
+def lit(c, mask, base, normal=(0, 0, 1), z=0.0, gain=0.5, seed=0, center=None, noise=None, rim=None):
     """把一个面按场景光照切成色块，画到 c 上。"""
+    center = CENTER[0] if center is None else center
     if not mask.any():
         return
     out = lit_plane(mask, base, normal, z, LIGHTS, gain=gain, center=center, cell=CELL,
@@ -93,6 +97,7 @@ def stepped(col, k):
 
 # ================================================================ far：交换台墙 + 远处银幕
 def draw_far():
+    CENTER[0] = 0.55       # 墙离光远，整体压暗，只有光束和银幕附近亮
     c = Canvas(W, H)
     c.rect(0, 0, W - 1, H - 1, VOID)
     nz = smooth_noise(H, W, 8, 60, seed=3)
@@ -158,6 +163,7 @@ def draw_far():
             noise=smooth_noise(H, W, 3, 80, seed=side))
     # 银幕下方的舞台边
     lit(c, mask_of(lambda t: t.rect(362, 150, W - 1, 158, BRASS)), BRASS, normal=(0, -1, 1), z=6, seed=55)
+    CENTER[0] = 0.25
     return c
 
 
@@ -384,7 +390,7 @@ def draw_burn():
     rng = np.random.default_rng(5)
     edge = smooth_noise(H, W, 20, 9, seed=8)[:, 0]
     for y in range(H):
-        e = 34 + edge[y] * 10
+        e = 22 + edge[y] * 8
         for x in range(0, int(e) + 8):
             d = e - x
             if d > 18:
@@ -410,8 +416,10 @@ def draw_burn():
 
 def draw_player():
     c = Canvas(W, H)
+    body = np.array(Image.open(GAME / "art/chars/red_body.png").convert("RGBA"))
     strip = np.array(Image.open(GAME / "art/chars/red_strip.png").convert("RGBA"))
-    fr = strip[:, 0:16]
+    body[strip[..., 3] > 0] = strip[strip[..., 3] > 0]
+    fr = body[:, 0:16]
     ys, xs = np.nonzero(fr[..., 3])
     fr = fr[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
     h, w = fr.shape[:2]
@@ -428,9 +436,10 @@ def draw_player():
         ys, xs = np.nonzero(e[..., 3])
         e = e[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
         eh, ew = e.shape[:2]
-        if ew > 40:
-            e = e[:, :ew // max(1, ew // eh)]
-            eh, ew = e.shape[:2]
+        e = e[:, :16]
+        ys, xs = np.nonzero(e[..., 3])
+        e = e[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+        eh, ew = e.shape[:2]
         ex, ey = 300, FLOOR - eh
         sub = c.a[ey:ey + eh, ex:ex + ew]
         m = e[..., 3] > 0

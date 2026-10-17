@@ -44,7 +44,7 @@ func _ready() -> void:
 	_seed = randf() * 10.0
 	var shape := CollisionShape2D.new()
 	var c := CircleShape2D.new()
-	c.radius = {Kind.EMBER: 2.0, Kind.RIVET: 1.5, Kind.COAL: 3.0}[kind]
+	c.radius = {Kind.EMBER: 2.5, Kind.RIVET: 2.0, Kind.COAL: 3.0}[kind]
 	shape.shape = c
 	add_child(shape)
 	var unshaded := CanvasItemMaterial.new()
@@ -102,24 +102,33 @@ func _pop() -> void:
 	queue_free()
 
 
+## 子弹都画大一圈、带一圈深色描边：弹幕游戏里子弹必须一眼看清
 func _draw() -> void:
+	const OUTLINE := Color(0.08, 0.04, 0.03, 0.85)
 	match kind:
 		Kind.EMBER:
 			var flick := 0.5 + 0.5 * sin(_life * 30.0 + _seed)
 			for i in _trail.size():
 				var p := (_trail[i] - position).round()
-				draw_rect(Rect2(p, Vector2.ONE), Color(1.0, 0.45, 0.15, 0.5 - i * 0.15))
-			draw_rect(Rect2(-1, -1, 3, 3), Color(1.0, 0.45, 0.12))
-			draw_rect(Rect2(0, 0, 1, 1), Color(1.0, 0.85, 0.5).lerp(Color.WHITE, flick * 0.5))
+				draw_rect(Rect2(p - Vector2.ONE, Vector2(2, 2)), Color(1.0, 0.45, 0.15, 0.45 - i * 0.13))
+			# 5×5 的圆角方块：外圈深色，里面橙，芯是亮黄白
+			draw_rect(Rect2(-2, -3, 5, 7), OUTLINE)
+			draw_rect(Rect2(-3, -2, 7, 5), OUTLINE)
+			draw_rect(Rect2(-1, -2, 3, 5), Color(1.0, 0.42, 0.1))
+			draw_rect(Rect2(-2, -1, 5, 3), Color(1.0, 0.42, 0.1))
+			draw_rect(Rect2(-1, -1, 3, 3), Color(1.0, 0.72, 0.3))
+			draw_rect(Rect2(0, 0, 1, 1), Color(1.0, 0.95, 0.75).lerp(Color.WHITE, flick))
 		Kind.RIVET:
 			for i in _trail.size():
 				var p := (_trail[i] - position).round()
-				draw_rect(Rect2(p, Vector2.ONE), Color(1.0, 0.5, 0.25, 0.55 - i * 0.1))
-			draw_rect(Rect2(-1, -1, 2, 2), Color(0.85, 0.82, 0.78))
-			draw_rect(Rect2(0, 0, 1, 1), Color(1.0, 0.55, 0.25))
+				draw_rect(Rect2(p, Vector2(2, 2)), Color(1.0, 0.5, 0.25, 0.6 - i * 0.11))
+			draw_rect(Rect2(-2, -2, 5, 5), OUTLINE)
+			draw_rect(Rect2(-1, -1, 3, 3), Color(0.95, 0.92, 0.86))
+			draw_rect(Rect2(0, 0, 1, 1), Color(1.0, 0.45, 0.2))
 		Kind.COAL:
-			draw_rect(Rect2(-2, -2, 5, 4), Color(0.16, 0.13, 0.12))
-			draw_rect(Rect2(-1, -2, 3, 1), Color(0.35, 0.2, 0.14))
+			draw_rect(Rect2(-3, -3, 7, 6), OUTLINE)
+			draw_rect(Rect2(-2, -2, 5, 4), Color(0.2, 0.15, 0.13))
+			draw_rect(Rect2(-1, -2, 3, 1), Color(0.4, 0.24, 0.16))
 			var hot := 0.6 + 0.4 * sin(_life * 18.0 + _seed)
 			draw_rect(Rect2(-1, -1, 2, 2), Color(1.0, 0.45, 0.12) * hot + Color(0, 0, 0, 1.0 - hot))
-			draw_rect(Rect2(1, 0, 1, 1), Color(1.0, 0.75, 0.35))
+			draw_rect(Rect2(1, 0, 1, 1), Color(1.0, 0.8, 0.4))

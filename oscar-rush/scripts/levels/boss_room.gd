@@ -14,13 +14,15 @@ const GATE := preload("res://art/boss/gate.png")
 const M := 16
 const ARENA := Rect2(0, 0, 320, 180)
 const FLOOR_Y := 164.0
+## 脚踩进地面亮边 2 像素才不像飘着（照普通关卡的做法），碰撞和站的高度用这个
+const STAND_Y := FLOOR_Y + 2.0
 const WALL := 8.0
 const CEIL := 12.0
 const PLATFORMS := [Vector3(20, 76, 128), Vector3(100, 156, 104), Vector3(30, 86, 78)]
 const VENTS := [50.0, 128.0, 196.0]
 const LAMPS := [Vector2(80, 16), Vector2(240, 16)]
 const BOSS_X := 258.0
-const SPAWN := Vector2(26, 164)
+const SPAWN := Vector2(26, 166)
 const TRIGGER_X := 64.0
 const GATE_OPEN_Y := 84.0
 const GATE_SHUT_Y := 124.0
@@ -53,9 +55,9 @@ func _ready() -> void:
 	_build_room()
 
 	boss = Stoker.new()
-	boss.position = Vector2(BOSS_X, FLOOR_Y)
+	boss.position = Vector2(BOSS_X, STAND_Y)
 	boss.arena = ARENA
-	boss.floor_y = FLOOR_Y
+	boss.floor_y = STAND_Y
 	boss.bullet_parent = self
 	add_child(boss)
 	for x in VENTS:
@@ -120,14 +122,15 @@ func _build_room() -> void:
 	_dark.color = DARKNESS
 	add_child(_dark)
 
-	_solid(Rect2(-40, FLOOR_Y, ARENA.size.x + 80, 40))
+	_solid(Rect2(-40, STAND_Y, ARENA.size.x + 80, 40))
 	_solid(Rect2(-40, -40, ARENA.size.x + 80, 40 + CEIL))
 	_solid(Rect2(-40, -40, 40 + WALL, 220))
 	_solid(Rect2(ARENA.size.x - WALL, -40, 40 + WALL, GATE_SHUT_Y + 40))
 	# 右边闸门那一截墙单独一块，打完以后拆掉放人出去
 	_exit_wall = _solid(Rect2(ARENA.size.x - WALL, GATE_SHUT_Y, 40 + WALL, FLOOR_Y - GATE_SHUT_Y))
 	for p in PLATFORMS:
-		var cs := _solid(Rect2(p.x, p.z, p.y - p.x, 4))
+		# 平台也让脚踩进顶边 1 像素
+		var cs := _solid(Rect2(p.x, p.z + 1, p.y - p.x, 4))
 		cs.one_way_collision = true
 
 	_gate_l = _gate(Vector2(-1, GATE_OPEN_Y))
@@ -147,6 +150,8 @@ func _build_room() -> void:
 		l.color = Color(1.0, 0.25, 0.15)
 		l.energy = 0.0
 		l.texture_scale = 2.2
+		# 警报灯照得到 Boss（第 2 层），但不能太亮
+		l.range_item_cull_mask = 1 | 2
 		lamp.add_child(l)
 		_lamps.append(l)
 
@@ -247,7 +252,7 @@ func _begin_intro() -> void:
 	cam.tween_property(_cam, "position", ARENA.get_center(), 1.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	_lamp_speed = 3.0
 	for l in _lamps:
-		l.energy = 0.9
+		l.energy = 0.55
 	Game.sfx("alarm", -10.0)
 	await get_tree().create_timer(0.7).timeout
 	boss.wake()
@@ -286,7 +291,7 @@ func _on_phase(p: int) -> void:
 	if p == 3:
 		create_tween().tween_property(_dark, "color", DARKNESS_HOT, 1.5)
 		for l in _lamps:
-			l.energy = 1.3
+			l.energy = 0.8
 
 
 func _on_defeated() -> void:

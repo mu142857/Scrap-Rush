@@ -122,6 +122,7 @@ func _ready() -> void:
 
 	_needle_node = Node2D.new()
 	_needle_node.position = GAUGE
+	_needle_node.material = unshaded
 	_needle_node.draw.connect(_draw_needle)
 	_parts.add_child(_needle_node)
 
@@ -135,6 +136,7 @@ func _ready() -> void:
 	_led_light.color = LED_COLOR
 	_led_light.energy = 0.0
 	_led_light.texture_scale = 0.6
+	_led_light.range_item_cull_mask = 1
 	_led.add_child(_led_light)
 
 	_fire_light = PointLight2D.new()
@@ -142,8 +144,19 @@ func _ready() -> void:
 	_fire_light.color = FIRE_COLOR
 	_fire_light.energy = 0.6
 	_fire_light.texture_scale = 2.4
+	# 炉火只照地面和墙，不照锅炉自己（2D 的光是相加的，叠多了铁壳会被照成白的）
+	_fire_light.range_item_cull_mask = 1
 	_fire_light.position = DOOR_RECT.get_center() + Vector2(-6, 6)
 	_parts.add_child(_fire_light)
+	# 只照 Boss 自己的一盏正面暖光（舞台追光），铁壳看得清又不会过曝
+	var key := PointLight2D.new()
+	key.texture = Game.light_texture()
+	key.color = Color(1.0, 0.78, 0.62)
+	key.energy = 0.75
+	key.texture_scale = 2.6
+	key.position = Vector2(-46, -70)
+	key.range_item_cull_mask = 2
+	add_child(key)
 
 	_smoke = CPUParticles2D.new()
 	_smoke.amount = 18
@@ -185,6 +198,7 @@ func _sprite(path: String, parent: Node, frames: int) -> Sprite2D:
 	s.centered = false
 	s.offset = -CANVAS_ORIGIN
 	s.material = _flash_mat
+	s.light_mask = 2
 	parent.add_child(s)
 	return s
 
@@ -617,6 +631,20 @@ func _draw_glow() -> void:
 
 
 func _draw_needle() -> void:
+	# 表盘自己发一点光（不吃场景压暗），黑暗里也读得出指针
+	var r := 7
+	for y in range(-r, r + 1):
+		for x in range(-r, r + 1):
+			var d := Vector2(x, y).length()
+			if d <= r + 0.3:
+				var col := Color(0.78, 0.74, 0.66) if d < r - 0.7 else Color(0.45, 0.42, 0.38)
+				_needle_node.draw_rect(Rect2(x, y, 1, 1), col)
+	for ang in range(-135, 136, 45):
+		var t := Vector2.from_angle(deg_to_rad(ang - 90.0)) * (r - 1)
+		_needle_node.draw_rect(Rect2(t.round(), Vector2.ONE), Color(0.3, 0.28, 0.26))
+	for ang in [95, 110, 125]:
+		var t := Vector2.from_angle(deg_to_rad(ang - 90.0)) * (r - 1)
+		_needle_node.draw_rect(Rect2(t.round(), Vector2.ONE), Color(0.85, 0.25, 0.12))
 	# 指针：0 在左下，1 在右下（270 度的表），一根 6 格的线
 	var a := deg_to_rad(lerpf(-135.0, 135.0, _needle) - 90.0)
 	var col := Color(0.15, 0.1, 0.1) if _needle < 0.8 else Color(0.75, 0.12, 0.08)

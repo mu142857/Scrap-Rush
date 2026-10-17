@@ -41,7 +41,7 @@ func _ready() -> void:
 	_label.size = Vector2(160, 12)
 	_label.position = Vector2(-80, -24)
 	add_child(_label)
-	_text_half = Hud.font().get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x * 0.5 + 3.0
+	_text_half = Hud.font().get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x * 0.5 + 10.0
 	_label.position.x = clampf(-80.0, _text_half - position.x - 80.0, 1006.0 - _text_half - position.x - 80.0)
 	modulate.a = 0.0
 

@@ -1,7 +1,7 @@
 class_name GameCamera
 extends Camera2D
 ## 跟所有玩家的镜头。像素画不缩放，只平移。
-## - 主角放在画面中间略偏上，往移动方向多看 60 像素
+## - 主角放在画面中间略偏下（脚在画面 62% 高处，头顶留出空间），往移动方向多看 60 像素
 ## - 跳起来时镜头不上下晃（照 Phage：只跟落地时的高度）
 ## - 往下掉得快时镜头提前往下看 60 像素，先看到落点
 ## - 多人时跟所有人的中心，提灯的人权重加倍
@@ -12,7 +12,7 @@ const ZOOM := 2.0
 const ZOOM_CROWD := 1.5
 const LOOK_AHEAD := 36.0
 const LOOK_AHEAD_SPEED := 3.0
-const FOCUS_OFFSET := Vector2(0, 8)
+const FOCUS_OFFSET := Vector2(0, -16)
 const FOLLOW_X_SPEED := 9.0
 const FOLLOW_Y_SPEED := 5.0
 const FALL_CATCHUP := 16.0

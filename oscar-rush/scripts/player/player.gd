@@ -123,6 +123,7 @@ func _ready() -> void:
 	collision_layer = 2
 	collision_mask = 1
 	floor_snap_length = 3.0
+	Upgrades.apply(self)        # 商店买的快充、大油箱
 	strip_color = STRIP_COLORS.get(skin, Color.WHITE)
 
 	var shape := CollisionShape2D.new()
@@ -142,6 +143,7 @@ func _ready() -> void:
 	_light = PointLight2D.new()
 	_light.texture = Game.light_texture()
 	_light.color = strip_color
+	_light.range_item_cull_mask = 1 | 2
 	_light.position = Vector2(0, -10)
 	add_child(_light)
 
@@ -184,6 +186,7 @@ func _ready() -> void:
 	_jet_light.color = Color.from_hsv(strip_color.h, maxf(strip_color.s, 0.6), 1.0)
 	_jet_light.energy = 0.0
 	_jet_light.texture_scale = 1.4
+	_jet_light.range_item_cull_mask = 1 | 2
 	_jet_light.position = Vector2(0, 4)
 	add_child(_jet_light)
 

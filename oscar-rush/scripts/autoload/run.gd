@@ -26,6 +26,7 @@ func _ready() -> void:
 
 
 func reset_run() -> void:
+	Upgrades.reset()
 	crystal_max = CRYSTAL_MAX_BY_PLAYERS[clampi(players.size(), 1, 4) - 1]
 	crystal_hp = crystal_max
 	level_start_hp = crystal_hp

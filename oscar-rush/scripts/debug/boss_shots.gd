@@ -56,6 +56,8 @@ func _process(_delta: float) -> void:
 	for p in get_tree().get_nodes_in_group("player"):
 		p.set("_invuln", 0.5)
 	var boss: Stoker = get_parent().get("boss")
+	if _frame % 60 == 0:
+		print("[boss] f=%d flash=%.2f hp=%.0f phase=%d active=%s mod=%s" % [_frame, boss.get("_flash"), boss.hp, boss.phase, boss.active, boss.get("_body").modulate])
 	while _i < _steps.size() and _frame >= _steps[_i][0]:
 		var s: Array = _steps[_i]
 		_i += 1
