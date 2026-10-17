@@ -1,0 +1,54 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[application]
+
+config/name="Scrap Rush"
+run/main_scene="res://scenes/test_level.tscn"
+config/features=PackedStringArray("4.7", "GL Compatibility")
+config/icon="res://icon.svg"
+
+[autoload]
+
+Controls="*res://scripts/autoload/controls.gd"
+Run="*res://scripts/autoload/run.gd"
+Game="*res://scripts/autoload/game.gd"
+
+[display]
+
+window/size/viewport_width=480
+window/size/viewport_height=270
+window/size/mode=3
+window/size/window_width_override=1440
+window/size/window_height_override=810
+window/stretch/mode="canvas_items"
+window/stretch/aspect="keep"
+
+[layer_names]
+
+2d_physics/layer_1="world"
+2d_physics/layer_2="player"
+2d_physics/layer_3="enemy"
+2d_physics/layer_4="crystal"
+2d_physics/layer_5="projectile"
+
+[physics]
+
+common/physics_ticks_per_second=120
+common/max_physics_steps_per_frame=16
+3d/physics_engine="Jolt Physics"
+
+[rendering]
+
+textures/canvas_textures/default_texture_filter=0
+rendering_device/driver.windows="d3d12"
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+environment/defaults/default_clear_color=Color(0.05, 0.05, 0.06, 1)
