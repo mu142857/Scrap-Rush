@@ -3,27 +3,35 @@ extends RefCounted
 ## 坐标都是地图像素：3700×600，前半交换台 x 0~1000，胶片天桥 1000~2840，后半放映厅 2840~3700。
 
 const BOUNDS := Rect2(0, 0, 3700, 600)
-const SPAWN := Vector2(40, 96)
+const SPAWN := Vector2(70, 540)
 ## 出口：舞台上的小门，门前一块
 const EXIT := Rect2(3652, 470, 24, 34)
 const A_X1 := 1000
 const B_X0 := 2840
-const FLOORS := {"A1": 96, "A3": 200, "A2": 300, "orch": 520, "stage": 500}
 const BRIDGE_Y := 300
 const FILM_TOP := 223
 const FILM_BOT := 313
 ## 换卷点：镜头中心走到这里停下，打一场精英怪
 const REEL_CHANGES: Array[float] = [1640.0, 2280.0]
 ## 墙上的电话（遭遇战来波前响铃），和 ENCOUNTERS 一一对应
-const PHONES: Array[Vector2] = [Vector2(520, 62), Vector2(540, 166), Vector2(560, 266), Vector2(3520, 470)]
+const PHONES: Array[Vector2] = [Vector2(250, 500), Vector2(720, 392), Vector2(250, 212), Vector2(3520, 470)]
 ## 碰撞矩形（名字见 level2_collision.json）
 const SOLIDS: Array[Rect2] = [
-	Rect2(0, 0, 1000, 24),  # A 天花板
-	Rect2(0, 0, 16, 600),  # A 左墙
-	Rect2(16, 96, 804, 10),  # A1 顶层
-	Rect2(120, 200, 864, 10),  # A3 中层
-	Rect2(984, 24, 16, 186),  # A 右墙（中层以上）
-	Rect2(16, 300, 984, 300),  # A2 底层
+	Rect2(28, 428, 404, 12),  # R1 接线员大厅 天花板
+	Rect2(28, 540, 404, 60),  # R1 接线员大厅 地面
+	Rect2(28, 440, 12, 100),  # R1 接线员大厅 左墙
+	Rect2(420, 440, 12, 100),  # R1 接线员大厅 右墙
+	Rect2(520, 328, 392, 12),  # R2 继电器机房 天花板
+	Rect2(520, 430, 392, 12),  # R2 继电器机房 地面
+	Rect2(520, 340, 12, 90),  # R2 继电器机房 左墙
+	Rect2(900, 340, 12, 90),  # R2 继电器机房 右墙
+	Rect2(40, 138, 412, 12),  # R3 电话簿仓库 天花板
+	Rect2(40, 250, 412, 12),  # R3 电话簿仓库 地面
+	Rect2(40, 150, 12, 100),  # R3 电话簿仓库 左墙
+	Rect2(440, 150, 12, 100),  # R3 电话簿仓库 右墙
+	Rect2(548, 188, 452, 12),  # R4 片库 天花板
+	Rect2(548, 300, 452, 12),  # R4 片库 地面
+	Rect2(548, 200, 12, 100),  # R4 片库 左墙
 	Rect2(1000, 300, 1840, 13),  # 胶片天桥
 	Rect2(2840, 200, 276, 14),  # 放映室天花板
 	Rect2(3100, 214, 16, 48),  # 放映室前墙（下面钻过去）
@@ -44,8 +52,22 @@ const SOLIDS: Array[Rect2] = [
 ]
 ## 遭遇战的场子：left/right 是闸门 x，ceil 是天花板（怪从这里掉），floor 是地面
 const ARENAS := [
-	{"name": "E1 顶层", "left": 280, "right": 760, "ceil": 24, "floor_l": 96, "floor_r": 96},
-	{"name": "E2 中层", "left": 200, "right": 820, "ceil": 106, "floor_l": 200, "floor_r": 200},
-	{"name": "E3 底层", "left": 180, "right": 900, "ceil": 210, "floor_l": 300, "floor_r": 300},
+	{"name": "E1 接线员大厅", "left": 110, "right": 396, "ceil": 440, "floor_l": 540, "floor_r": 540},
+	{"name": "E2 继电器机房", "left": 566, "right": 880, "ceil": 340, "floor_l": 430, "floor_r": 430},
+	{"name": "E3 电话簿仓库", "left": 72, "right": 410, "ceil": 150, "floor_l": 250, "floor_r": 250},
 	{"name": "E4 乐池", "left": 3470, "right": 3684, "ceil": 330, "floor_l": 476, "floor_r": 520},
+]
+## 气动管：mouth 是管口（人走进去就被吸走），path 是管子的折线，out/vel 是喷出来的位置和速度，
+## needs 是先打完 ARENAS 里第几场管口才开
+const TUBES := [
+	{"mouth": Rect2(404, 516, 16, 24), "path": [Vector2(426, 528), Vector2(468, 528), Vector2(468, 410), Vector2(526, 410)], "out": Vector2(548, 429), "vel": Vector2(130, -90), "needs": 0},
+	{"mouth": Rect2(884, 406, 16, 24), "path": [Vector2(906, 418), Vector2(940, 418), Vector2(940, 470), Vector2(500, 470), Vector2(500, 236), Vector2(446, 236)], "out": Vector2(424, 249), "vel": Vector2(-130, -90), "needs": 1},
+	{"mouth": Rect2(52, 226, 16, 24), "path": [Vector2(46, 238), Vector2(20, 238), Vector2(20, 62), Vector2(640, 62), Vector2(640, 194)], "out": Vector2(640, 214), "vel": Vector2(60, 40), "needs": 2},
+]
+## 机房（室内范围），提示牌和调试用
+const ROOMS := [
+	{"name": "R1 接线员大厅", "rect": Rect2(40, 440, 380, 100)},
+	{"name": "R2 继电器机房", "rect": Rect2(532, 340, 368, 90)},
+	{"name": "R3 电话簿仓库", "rect": Rect2(52, 150, 388, 100)},
+	{"name": "R4 片库", "rect": Rect2(560, 200, 440, 100)},
 ]

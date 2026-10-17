@@ -127,6 +127,9 @@ static func fire(parent: Node, kind_name: String, from: Vector2, target: Vector2
 		vel = Vector2(clampf((target.x - from.x) / t, -140.0, 140.0), (target.y - from.y) / t - 0.5 * BossBullet.EMBER_GRAVITY * t)
 	var b := BossBullet.spawn(parent, k, from, vel)
 	b.arena = arena
+	# 第三关的子弹画成电视信号的样子，和第一关区分开
+	b.crt = true
+	b.queue_redraw()
 	return b
 
 

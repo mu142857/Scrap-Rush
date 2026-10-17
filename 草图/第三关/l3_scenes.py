@@ -723,7 +723,7 @@ def sc_workshop(tv):
     """工作间：洞洞板上挂着工具、长工作台和台钳、红色工具箱、一辆自行车、一盏吊着的灯泡。"""
     x0, y0, x1, fy = tv.sx0, tv.sy0, tv.sx1, tv.fy
     rw = x1 - x0
-    lamp = (x0 + int(rw * 0.42), y0 + 26)
+    lamp = (x0 + int(rw * 0.76), y0 + 34)             # 吊在洞洞板右边的空墙前面，不和工具挤在一起
     k.room_base(tv, [(176, 168, 150), (160, 150, 134), (142, 132, 120), (122, 112, 104), (104, 96, 92)],
                 [(130, 124, 118), (116, 110, 106), (102, 96, 94), (90, 84, 84)], lamp)
     px0, px1 = x0 + 10, x0 + int(rw * 0.62)
@@ -753,8 +753,10 @@ def sc_workshop(tv):
     S().polyline([(bx, fy - 7), (bx + 8, fy - 16), (bx + 18, fy - 16), (bx + 22, fy - 7), (bx + 11, fy - 7), (bx + 8, fy - 16)], (206, 72, 64))
     S().line(bx + 18, fy - 16, bx + 17, fy - 20, (60, 60, 70)); S().line(bx + 15, fy - 20, bx + 20, fy - 20, (60, 60, 70))
     S().rect(bx + 6, fy - 18, bx + 10, fy - 17, (60, 50, 50))
-    S().line(lamp[0], y0, lamp[0], lamp[1] - 3, (70, 60, 60))
-    disc(lamp[0], lamp[1], 3, (252, 240, 190))
+    S().line(lamp[0], y0, lamp[0], lamp[1] - 5, (70, 60, 60))
+    S().poly([(lamp[0] - 6, lamp[1]), (lamp[0] + 7, lamp[1]), (lamp[0] + 2, lamp[1] - 5), (lamp[0] - 1, lamp[1] - 5)], (110, 116, 124))
+    S().line(lamp[0] - 6, lamp[1], lamp[0] + 6, lamp[1], (70, 74, 84))           # 铁灯罩
+    S().rect(lamp[0] - 2, lamp[1] + 1, lamp[0] + 2, lamp[1] + 3, (255, 244, 200))  # 灯泡
     finish(tv, lamp)
 
 

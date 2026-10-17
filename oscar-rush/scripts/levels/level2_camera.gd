@@ -10,6 +10,8 @@ const WIDE := 1.0
 const SCROLL_Y_SPEED := 4.0
 
 var scrolling := false
+## 坐气动管时镜头跟着胶囊走（人藏起来了）
+var chase: Node2D = null
 var scroll_x := 0.0
 var scroll_y := 0.0
 
@@ -40,6 +42,11 @@ func _process(delta: float) -> void:
 	if absf(z - _zoom_target) < 0.002:
 		z = _zoom_target
 	zoom = Vector2(z, z)
+	if is_instance_valid(chase):
+		var h := get_viewport_rect().size * 0.5 / zoom
+		var p := global_position.lerp(chase.global_position + FOCUS_OFFSET * 0.5, 1.0 - exp(-12.0 * delta))
+		global_position = _clamp_to_bounds(p, h)
+		return
 	if not scrolling:
 		super._process(delta)
 		return

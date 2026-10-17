@@ -4,13 +4,21 @@ extends Area2D
 ##   EMBER 余烬：从烟囱喷到天上，受重力落下来；往下落时碰到平台、地面才碎（平台下面能躲），
 ##               往上飞时穿过平台，不会一出烟囱就撞天花板
 ##   RIVET 铆钉：直线飞，烧红的芯、灰白的壳，后面拖一条短尾巴
+##   SNOW  雪花：老电视"雪花台"一帘帘直着往下落的噪点，碰到平台、地面就散（平台能挡）
+##   SCAN  扫描线：老电视"测试卡台"从屏幕中心射出去的一小段亮横线，直线飞、穿过平台
+##   WAVE  声波：总机的铃声放出来的一圈圈波纹，直线飞、穿过平台（声音挡不住），一小段弧线
 ##   NOTE  音符：自动钢琴"琶音"弹出来的发光音符，和余烬一样抛物线落下，往下落时被平台、地面挡住
 ##   COAL  煤块：被高高抛出，落到人脚下那一列的地面上，接着一跳一跳往前滚。
 ##               只有贴近地面（离地 COAL_HURT_HEIGHT 以内）才伤人：专治站在地上的人，
 ##               站平台上的人由往上喷的余烬来管（2026-10-17 作者定的分工）
 ## 打中玩家走 Player.hurt（有无敌时间），打中放在地上的马灯走 Crystal.take_hit。
+## crt = true：第三关小怪和精英怪的子弹，飞法不变，画成"电视信号"的样子，和第一关的铆钉、余烬、音符区分开
+## （2026-10-17 作者嫌第三关子弹和第一关一样）。最终 Boss 的雪花、扫描线不走这个：
+##   RIVET → 色散像素：红、绿、蓝三层错开的小菱形，后面拖三色的点
+##   EMBER → 彩条块：竖着的黄、青、绿、品红四色条，外圈一闪一闪
+##   NOTE  → 品红和青错开的音符
 
-enum Kind { EMBER, RIVET, COAL, NOTE }
+enum Kind { EMBER, RIVET, COAL, NOTE, WAVE, SNOW, SCAN }
 
 const DAMAGE := 8.0
 ## 2026-10-17 试玩嫌子弹太快：余烬重力从 230 降到 170（落得更慢更飘），煤块落地后滚动限速
@@ -28,6 +36,8 @@ var velocity := Vector2.ZERO
 var floor_y := 164.0
 ## 出了这个范围就消失（竞技场）
 var arena := Rect2(0, 0, 320, 180)
+## 第三关"电视信号"画法（见开头）
+var crt := false
 
 var _life := 0.0
 var _trail: Array[Vector2] = []
@@ -51,11 +61,16 @@ func _ready() -> void:
 	collision_layer = 0
 	# 铆钉碰到世界（地面、平台、墙）就碎；余烬和煤块往下落时才看世界（见 _physics_process）
 	collision_mask = (1 | 2 | 8) if kind == Kind.RIVET else (2 | 8)
+	if kind == Kind.WAVE or kind == Kind.SCAN:
+		collision_mask = 2 | 8
+	elif kind == Kind.SNOW:
+		collision_mask = 1 | 2 | 8
 	z_index = 8
 	_seed = randf() * 10.0
 	var shape := CollisionShape2D.new()
 	var c := CircleShape2D.new()
-	c.radius = {Kind.EMBER: 2.5, Kind.RIVET: 2.0, Kind.COAL: 3.0, Kind.NOTE: 2.5}[kind]
+	c.radius = {Kind.EMBER: 2.5, Kind.RIVET: 2.0, Kind.COAL: 3.0, Kind.NOTE: 2.5, Kind.WAVE: 2.0,
+		Kind.SNOW: 2.0, Kind.SCAN: 2.0}[kind]
 	shape.shape = c
 	add_child(shape)
 	var unshaded := CanvasItemMaterial.new()
@@ -124,6 +139,8 @@ func _on_body(body: Node) -> void:
 func _pop() -> void:
 	_done = true
 	var col := Color(1.0, 0.6, 0.25) if kind != Kind.RIVET else Color(0.9, 0.85, 0.8)
+	if crt:
+		col = [Color(1.0, 0.3, 0.6), Color(0.3, 0.95, 1.0), Color(0.6, 1.0, 0.4)][randi() % 3]
 	Game.sparks(get_parent(), global_position, col, 4, 50.0)
 	queue_free()
 
@@ -131,6 +148,9 @@ func _pop() -> void:
 ## 子弹都画大一圈、带一圈深色描边：弹幕游戏里子弹必须一眼看清
 func _draw() -> void:
 	const OUTLINE := Color(0.08, 0.04, 0.03, 0.85)
+	if crt and kind in [Kind.RIVET, Kind.EMBER, Kind.NOTE]:
+		_draw_crt()
+		return
 	match kind:
 		Kind.EMBER:
 			var flick := 0.5 + 0.5 * sin(_life * 30.0 + _seed)
@@ -151,6 +171,33 @@ func _draw() -> void:
 			draw_rect(Rect2(-2, -2, 5, 5), OUTLINE)
 			draw_rect(Rect2(-1, -1, 3, 3), Color(0.95, 0.92, 0.86))
 			draw_rect(Rect2(0, 0, 1, 1), Color(1.0, 0.45, 0.2))
+		Kind.SNOW:
+			# 一团黑白噪点：每帧随机换几个亮点，像雪花屏
+			draw_rect(Rect2(-2, -2, 5, 5), OUTLINE)
+			for k in 6:
+				var p := Vector2(randi_range(-2, 2), randi_range(-2, 2))
+				var v := randf_range(0.55, 1.0)
+				draw_rect(Rect2(p, Vector2.ONE), Color(v, v, v))
+		Kind.SCAN:
+			# 一小段亮横线（扫描线），中间白、两头偏青
+			var n := velocity.normalized()
+			var side := Vector2(-n.y, n.x)
+			for k in range(-3, 4):
+				var p := (side * k).round()
+				draw_rect(Rect2(p - Vector2.ONE, Vector2(3, 3)), OUTLINE)
+			for k in range(-3, 4):
+				var p := (side * k).round()
+				draw_rect(Rect2(p, Vector2.ONE), Color.WHITE if absf(k) < 2 else Color(0.55, 0.95, 1.0))
+		Kind.WAVE:
+			# 一小段垂直于飞行方向的弧线，外圈暗、里面亮
+			var n := velocity.normalized()
+			var side := Vector2(-n.y, n.x)
+			for k in range(-2, 3):
+				var p := (side * k - n * (absf(k) * 0.6)).round()
+				draw_rect(Rect2(p - Vector2.ONE, Vector2(3, 3)), OUTLINE)
+			for k in range(-2, 3):
+				var p := (side * k - n * (absf(k) * 0.6)).round()
+				draw_rect(Rect2(p, Vector2.ONE), Color(1.0, 0.88, 0.6) if absf(k) < 2 else Color(0.85, 0.6, 0.35))
 		Kind.NOTE:
 			# 一个八分音符：符头 3×2 在左下，符杆 1×6，顶上一面小旗
 			var c := Color(0.98, 0.92, 0.72)
@@ -169,3 +216,48 @@ func _draw() -> void:
 			var hot := 0.6 + 0.4 * sin(_life * 18.0 + _seed)
 			draw_rect(Rect2(-1, -1, 2, 2), Color(1.0, 0.45, 0.12) * hot + Color(0, 0, 0, 1.0 - hot))
 			draw_rect(Rect2(1, 0, 1, 1), Color(1.0, 0.8, 0.4))
+
+
+func _draw_crt() -> void:
+	const OUTLINE := Color(0.03, 0.03, 0.06, 0.85)
+	const R := Color(1.0, 0.25, 0.35)
+	const G := Color(0.35, 1.0, 0.45)
+	const B := Color(0.3, 0.55, 1.0)
+	match kind:
+		Kind.RIVET:
+			var trail_cols := [R, G, B]
+			for i in _trail.size():
+				var p := (_trail[i] - position).round()
+				var c: Color = trail_cols[i % 3]
+				c.a = 0.7 - i * 0.12
+				draw_rect(Rect2(p, Vector2.ONE), c)
+			# 菱形：外圈深色，红往左错一格、蓝往右错一格，中间白
+			for d in [Vector2(0, -2), Vector2(-1, -1), Vector2(0, -1), Vector2(1, -1), Vector2(-2, 0), Vector2(-1, 0),
+					Vector2(0, 0), Vector2(1, 0), Vector2(2, 0), Vector2(-1, 1), Vector2(0, 1), Vector2(1, 1), Vector2(0, 2)]:
+				draw_rect(Rect2(d - Vector2.ONE, Vector2(3, 3)), OUTLINE)
+			for d in [Vector2(0, -1), Vector2(-1, 0), Vector2(0, 0), Vector2(1, 0), Vector2(0, 1)]:
+				draw_rect(Rect2(d + Vector2(-1, 0), Vector2.ONE), R)
+				draw_rect(Rect2(d + Vector2(1, 0), Vector2.ONE), B)
+			draw_rect(Rect2(0, -1, 1, 3), G)
+			draw_rect(Rect2(0, 0, 1, 1), Color.WHITE)
+		Kind.EMBER:
+			for i in _trail.size():
+				var p := (_trail[i] - position).round()
+				draw_rect(Rect2(p, Vector2.ONE), Color(1.0, 0.3, 0.8, 0.5 - i * 0.15))
+			var blink := int(_life * 12.0 + _seed) % 2 == 0
+			draw_rect(Rect2(-3, -3, 6, 6), Color(0.9, 0.9, 0.95) if blink else OUTLINE)
+			var bars := [Color(1.0, 0.9, 0.2), Color(0.2, 0.95, 1.0), Color(0.3, 1.0, 0.35), Color(1.0, 0.25, 0.85)]
+			for i in 4:
+				draw_rect(Rect2(-2 + i, -2, 1, 4), bars[i])
+		Kind.NOTE:
+			for i in _trail.size():
+				var p := (_trail[i] - position).round()
+				draw_rect(Rect2(p, Vector2.ONE), Color(0.3, 0.95, 1.0, 0.45 - i * 0.14))
+			draw_rect(Rect2(-3, 0, 5, 4), OUTLINE)
+			draw_rect(Rect2(0, -6, 3, 7), OUTLINE)
+			for o in [[Vector2(-1, 0), Color(1.0, 0.3, 0.8)], [Vector2(1, 0), Color(0.3, 0.95, 1.0)], [Vector2.ZERO, Color.WHITE]]:
+				var off: Vector2 = o[0]
+				var c: Color = o[1]
+				draw_rect(Rect2(Vector2(-2, 1) + off, Vector2(3, 2)), c)
+				draw_rect(Rect2(Vector2(1, -5) + off, Vector2(1, 6)), c)
+				draw_rect(Rect2(Vector2(2, -5) + off, Vector2(1, 2)), c)

@@ -1,7 +1,9 @@
 extends Node2D
 ## 第二关「交换台 → 胶片天桥 → 放映厅」（策划案第四节"第二关定案"）。
 ## 地图、碰撞、遭遇战场子都在 Level2Data（草图/第二关/level2_map.py 生成）。
-## - 前半交换台三层折返：顶层往右（E1）→ 右端掉下去，中层往左（E2）→ 左端掉下去，底层往右（E3）。
+## - 前半交换局：四间悬在大厅里的机房，用玻璃气动管连起来（10-17 作者定，换掉和第一关一样的三层折返）。
+##   接线员大厅（E1）→ 继电器机房（E2）→ 电话簿仓库（E3）→ 片库，片库右边直接接天桥。
+##   每间房打完，墙上管口的灯从红变绿，走进管口就被吸进去，坐着小胶囊沿管子飞到下一间房喷出来。
 ##   每场旁边的墙上挂一部老电话，每一波来之前先响铃。
 ## - 胶片天桥自动卷轴：镜头缩到 1 倍，每秒往右卷 70 像素；左边是被烧穿的胶片，碰到扣水晶 10、往前弹，不会死。
 ##   怪不断从前面的画框里走出来。两个换卷点：右上角闪两下圆点，镜头停下，打一场精英怪，打完接着卷。
@@ -56,12 +58,16 @@ const BURN_DAMAGE := 10.0
 ## 换卷提示提前多少像素开始闪
 const CUE_LEAD := 150.0
 
+## 气动管胶囊的速度（像素/秒）
+const TUBE_SPEED := 460.0
+
 const HINTS := [
-	{"zone": Rect2(16, 30, 220, 66), "at": Vector2(130, 60), "text": "Go right", "arrow": "right"},
-	{"zone": Rect2(760, 30, 224, 66), "at": Vector2(852, 60), "text": "Drop down here", "arrow": "down"},
-	{"zone": Rect2(820, 120, 164, 80), "at": Vector2(900, 162), "text": "Go left", "arrow": "left"},
-	{"zone": Rect2(16, 120, 200, 80), "at": Vector2(100, 162), "text": "Drop down here", "arrow": "down"},
-	{"zone": Rect2(16, 220, 200, 80), "at": Vector2(130, 262), "text": "Go right", "arrow": "right"},
+	{"zone": Rect2(40, 470, 160, 70), "at": Vector2(120, 506), "text": "Go right", "arrow": "right"},
+	{"zone": Rect2(330, 470, 90, 70), "at": Vector2(400, 500), "text": "Clear the room, then step into the tube", "arrow": "right"},
+	{"zone": Rect2(800, 370, 100, 60), "at": Vector2(880, 392), "text": "Into the tube", "arrow": "right"},
+	{"zone": Rect2(330, 180, 110, 70), "at": Vector2(380, 214), "text": "Go left", "arrow": "left"},
+	{"zone": Rect2(52, 180, 100, 70), "at": Vector2(74, 214), "text": "Into the tube", "arrow": "left"},
+	{"zone": Rect2(600, 230, 200, 70), "at": Vector2(700, 262), "text": "Go right", "arrow": "right"},
 	{"zone": Rect2(900, 220, 100, 80), "at": Vector2(980, 262), "text": "The film is burning. Keep moving!", "arrow": "right"},
 	{"zone": Rect2(2980, 220, 140, 80), "at": Vector2(3090, 280), "text": "Duck under", "arrow": "right"},
 ]
@@ -81,6 +87,9 @@ var _cued := -1
 var _wander_t := 0.0
 var _wanderers: Array[Node2D] = []
 var _burn: BurnEdge
+var _encounters: Array[Encounter] = []
+var _tube_lamps: Array[TubeLamp] = []
+var _transit := false
 
 
 func _ready() -> void:
@@ -155,6 +164,13 @@ func _ready() -> void:
 		enc.waves = WAVES[i]
 		enc.phone = D.PHONES[i]
 		add_child(enc)
+		_encounters.append(enc)
+	for t in D.TUBES:
+		var lamp := TubeLamp.new()
+		var m: Rect2 = t["mouth"]
+		lamp.position = Vector2(m.get_center().x, m.position.y - 5)
+		add_child(lamp)
+		_tube_lamps.append(lamp)
 
 	var first: Player = null
 	for i in Run.players.size():
@@ -241,6 +257,7 @@ func _physics_process(delta: float) -> void:
 	_t += delta
 	match _state:
 		PRE:
+			_check_tubes(players)
 			if _lead_x(players) > BRIDGE_TRIGGER:
 				_begin_bridge()
 		START:
@@ -268,6 +285,74 @@ func _physics_process(delta: float) -> void:
 				p.velocity.x = minf(p.velocity.x, 0.0)
 	if _debug:
 		queue_redraw()
+
+
+## 气动管：这间房的遭遇战打完，管口灯变绿；有人走进管口，所有人一起被吸进去
+func _check_tubes(players: Array[Player]) -> void:
+	if _transit:
+		return
+	for i in D.TUBES.size():
+		var t: Dictionary = D.TUBES[i]
+		var open := _encounters[t["needs"]].cleared
+		_tube_lamps[i].open = open
+		if not open:
+			continue
+		for p in players:
+			if (t["mouth"] as Rect2).grow(2.0).has_point(p.global_position + Vector2(0, -4)):
+				_ride(t)
+				return
+
+
+func _ride(t: Dictionary) -> void:
+	_transit = true
+	var players := _players()
+	# 放在地上的马灯也一起吸进去，到了以后在第一个人手里
+	if is_instance_valid(_crystal) and _crystal.carrier == null:
+		_crystal.pick_up(players[0], true)
+	for p in players:
+		p.velocity = Vector2.ZERO
+		p.visible = false
+		p.process_mode = Node.PROCESS_MODE_DISABLED
+	if is_instance_valid(_crystal):
+		_crystal.visible = false
+		_crystal.process_mode = Node.PROCESS_MODE_DISABLED
+	Game.sfx("suction", -4.0, 1.2)
+	Game.sparks(self, (t["mouth"] as Rect2).get_center(), Color8(220, 220, 230), 8, 60.0)
+	var capsule := Capsule.new()
+	var path: Array = [(t["mouth"] as Rect2).get_center()]
+	path.append_array(t["path"])
+	path.append(t["out"])
+	capsule.position = path[0]
+	add_child(capsule)
+	_cam.chase = capsule
+	for k in range(1, path.size()):
+		var a: Vector2 = path[k - 1]
+		var b: Vector2 = path[k]
+		var tw := create_tween()
+		tw.tween_property(capsule, "position", b, a.distance_to(b) / TUBE_SPEED)
+		await tw.finished
+		if not is_instance_valid(capsule):
+			return
+		Game.sfx("clang", -18.0, 1.6, 0.1)
+	_cam.chase = null
+	capsule.queue_free()
+	var out: Vector2 = t["out"]
+	var vel: Vector2 = t["vel"]
+	for i in players.size():
+		var p := players[i]
+		if not is_instance_valid(p):
+			continue
+		p.global_position = out + Vector2(-signf(vel.x) * i * 10.0, 0)
+		p.velocity = vel
+		p.visible = true
+		p.process_mode = Node.PROCESS_MODE_INHERIT
+	if is_instance_valid(_crystal):
+		_crystal.visible = true
+		_crystal.process_mode = Node.PROCESS_MODE_INHERIT
+	Game.sfx("suction", -8.0, 0.8)
+	Game.sparks(self, out + Vector2(0, -6), Color8(220, 220, 230), 10, 80.0)
+	Game.add_shake(2.0)
+	_transit = false
 
 
 func _roll(delta: float) -> void:
@@ -454,6 +539,54 @@ func _draw() -> void:
 	if _state in [ROLL, REEL, HOLD]:
 		var v := _cam.view_rect()
 		draw_line(Vector2(v.position.x + BURN_W, v.position.y), Vector2(v.position.x + BURN_W, v.end.y), Color.RED)
+
+
+## 管口上面的小灯：红 = 这间房还没打完，绿 = 可以走进去了
+class TubeLamp extends Node2D:
+	var open := false:
+		set(v):
+			if v != open:
+				open = v
+				queue_redraw()
+				if v:
+					Game.sfx("ding", -12.0, 1.4)
+				if _light:
+					_light.color = Color(0.4, 1.0, 0.5) if v else Color(1.0, 0.3, 0.2)
+	var _light: PointLight2D
+
+	func _ready() -> void:
+		z_index = 3
+		var m := CanvasItemMaterial.new()
+		m.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+		material = m
+		_light = PointLight2D.new()
+		_light.texture = Game.light_texture()
+		_light.color = Color(1.0, 0.3, 0.2)
+		_light.energy = 0.5
+		_light.texture_scale = 20.0 / 32.0
+		add_child(_light)
+
+	func _draw() -> void:
+		var col := Color8(120, 240, 140) if open else Color8(240, 80, 60)
+		draw_rect(Rect2(-2, -2, 4, 3), Color8(70, 58, 30))
+		draw_rect(Rect2(-1, -1, 2, 2), col)
+
+
+## 气动管里的胶囊：一个小黄铜筒，前后亮一点
+class Capsule extends Node2D:
+	func _ready() -> void:
+		z_index = 3
+		var l := PointLight2D.new()
+		l.texture = Game.light_texture()
+		l.color = Color(1.0, 0.85, 0.6)
+		l.energy = 0.8
+		l.texture_scale = 40.0 / 32.0
+		add_child(l)
+
+	func _draw() -> void:
+		draw_rect(Rect2(-3, -3, 6, 6), Color8(134, 117, 63))
+		draw_rect(Rect2(-3, -3, 6, 1), Color8(170, 150, 92))
+		draw_rect(Rect2(-1, -1, 2, 2), Color8(250, 230, 180))
 
 
 ## 交换台的遭遇战：每一波来之前，场子旁边墙上的电话先响铃（多给 0.6 秒反应）

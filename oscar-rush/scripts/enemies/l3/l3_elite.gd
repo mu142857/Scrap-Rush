@@ -171,6 +171,7 @@ func _land() -> void:
 	for s in [-1, 1]:
 		var b := BossBullet.spawn(get_parent(), BossBullet.Kind.RIVET, global_position + Vector2(s * 10, -4), Vector2(s * SHOCK_SPEED, 0))
 		b.arena = L3Mob.arena
+		b.crt = true
 	velocity.x = 0.0
 	_recover(0.9)
 

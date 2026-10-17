@@ -1,6 +1,7 @@
 extends Node
-## 输入方案。每个玩家拿一个"前缀"，前缀下面固定五个动作：
-##   <前缀>_left / _right / _jump / _attack / _crystal
+## 输入方案。每个玩家拿一个"前缀"，前缀下面固定六个动作：
+##   <前缀>_left / _right / _jump / _attack / _crystal / _down
+##   down 只用来从单向平台上跳下去（S / ↓ / 2P 的 K / 手柄十字键下、摇杆往下）
 ## 前缀有：
 ##   solo      单人：和 1P 同一套键（A D W C V），另外方向键和空格也认，任何手柄也认
 ##   kb_left   键盘左半边 1P：左手 A D 移动、W 跳，拇指 C 攻击、V 马灯
@@ -10,7 +11,7 @@ extends Node
 ## 单人不用 J/K/L，免得练出来的手感和双人时 2P 的位置打架。
 ## 动作在启动时用代码注册，不写在 project.godot 里，方便按设备号生成。
 
-const ACTIONS: Array[String] = ["left", "right", "jump", "attack", "crystal"]
+const ACTIONS: Array[String] = ["left", "right", "jump", "attack", "crystal", "down"]
 const PAD_COUNT := 4
 const DEADZONE := 0.35
 
@@ -20,6 +21,7 @@ const KB_SOLO := {
 	"jump": [KEY_W, KEY_UP, KEY_SPACE],
 	"attack": [KEY_C],
 	"crystal": [KEY_V],
+	"down": [KEY_S, KEY_DOWN],
 }
 const KB_LEFT := {
 	"left": [KEY_A],
@@ -27,6 +29,7 @@ const KB_LEFT := {
 	"jump": [KEY_W],
 	"attack": [KEY_C],
 	"crystal": [KEY_V],
+	"down": [KEY_S],
 }
 const KB_RIGHT := {
 	"left": [KEY_J, KEY_LEFT],
@@ -34,13 +37,14 @@ const KB_RIGHT := {
 	"jump": [KEY_I, KEY_UP],
 	"attack": [KEY_M, KEY_PERIOD],
 	"crystal": [KEY_N, KEY_SLASH],
+	"down": [KEY_K, KEY_DOWN],
 }
 
 ## 给界面显示用的按键名
 const KEY_NAMES := {
-	"solo": {"move": "A/D", "jump": "W", "attack": "C", "crystal": "V"},
-	"kb_left": {"move": "A/D", "jump": "W", "attack": "C", "crystal": "V"},
-	"kb_right": {"move": "J/L", "jump": "I", "attack": "M", "crystal": "N"},
+	"solo": {"move": "A/D", "jump": "W", "attack": "C", "crystal": "V", "down": "S"},
+	"kb_left": {"move": "A/D", "jump": "W", "attack": "C", "crystal": "V", "down": "S"},
+	"kb_right": {"move": "J/L", "jump": "I", "attack": "M", "crystal": "N", "down": "K"},
 }
 
 
@@ -63,7 +67,7 @@ func all_schemes() -> Array[String]:
 func key_name(scheme: String, what: String) -> String:
 	if KEY_NAMES.has(scheme):
 		return KEY_NAMES[scheme][what]
-	return {"move": "Stick", "jump": "A", "attack": "X", "crystal": "Y"}[what]
+	return {"move": "Stick", "jump": "A", "attack": "X", "crystal": "Y", "down": "Down"}[what]
 
 
 func _ensure(action: String) -> void:
@@ -89,6 +93,8 @@ func _bind_pad(prefix: String, device: int) -> void:
 	_add_axis(prefix + "_right", device, JOY_AXIS_LEFT_X, 1.0)
 	_add_button(prefix + "_left", device, JOY_BUTTON_DPAD_LEFT)
 	_add_button(prefix + "_right", device, JOY_BUTTON_DPAD_RIGHT)
+	_add_axis(prefix + "_down", device, JOY_AXIS_LEFT_Y, 1.0)
+	_add_button(prefix + "_down", device, JOY_BUTTON_DPAD_DOWN)
 	_add_button(prefix + "_jump", device, JOY_BUTTON_A)
 	_add_button(prefix + "_attack", device, JOY_BUTTON_X)
 	_add_axis(prefix + "_attack", device, JOY_AXIS_TRIGGER_RIGHT, 1.0)

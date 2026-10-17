@@ -336,8 +336,88 @@ def alarm():
     return lowpass(sq, 0.25) * env(len(tt), 0.01, 0.05)
 
 
+# —— 第二关 Boss「总机」 ——
+# 电话铃：老式双铃锤来回敲，"铃铃铃铃"
+def bell():
+    d = 0.9
+    x = np.zeros(int(SR * d))
+    for i in range(int(d / 0.045)):
+        s = int(SR * i * 0.045)
+        seg = (np.sin(2 * np.pi * 2100 * t(0.06)) + 0.6 * np.sin(2 * np.pi * 3170 * t(0.06))) * decay(int(SR * 0.06), 40)
+        x[s:s + len(seg)] += seg[:len(x) - s]
+    return x * env(len(x), 0.005, 0.2)
+
+
+# 拨号盘回转一格："咔"
+def dial():
+    d = 0.05
+    return highpass(noise(d), 0.5) * decay(int(SR * d), 160) + np.sin(2 * np.pi * 900 * t(d)) * decay(int(SR * d), 120) * 0.4
+
+
+# 插线通电："滋——"
+def buzz():
+    d = 0.6
+    hum = np.sign(np.sin(2 * np.pi * 100 * t(d))) * 0.4
+    crackle = highpass(noise(d), 0.6) * (rng.uniform(0, 1, int(SR * d)) > 0.85)
+    return (lowpass(hum, 0.3) + crackle * 0.8) * env(int(SR * d), 0.01, 0.1)
+
+
+# 忙音："嘟、嘟、嘟"
+def busy():
+    d = 1.0
+    tt = t(d)
+    on = ((tt * 4).astype(int) % 2 == 0).astype(float)
+    return (np.sin(2 * np.pi * 480 * tt) + np.sin(2 * np.pi * 620 * tt)) * lowpass(on, 0.01) * 0.5
+
+
+# "声音"小球：一声颤抖的哼
+def voice():
+    d = 0.4
+    tt = t(d)
+    f = 330 + 40 * np.sin(2 * np.pi * 7 * tt)
+    return np.sin(2 * np.pi * np.cumsum(f) / SR) * env(len(tt), 0.05, 0.2) * 0.6
+
+
+# —— 第三关最终 Boss「老电视」 ——
+# 换台：旋钮"咔哒"一声 + 一小截雪花
+def tvclick():
+    d = 0.18
+    click = highpass(noise(0.02), 0.5) * decay(int(SR * 0.02), 200)
+    x = np.zeros(int(SR * d))
+    x[:len(click)] += click
+    x += highpass(noise(d), 0.3) * env(int(SR * d), 0.01, 0.08) * 0.35
+    return x
+
+
+# 雪花声：电视没信号的"沙沙"，1.5 秒，可循环
+def static():
+    d = 1.5
+    n = int(SR * d)
+    x = highpass(noise(d), 0.25) * (0.8 + 0.2 * np.sin(2 * np.pi * 60 * t(d)))
+    f = int(SR * 0.03)
+    x[:f] *= np.linspace(0, 1, f)
+    x[-f:] *= np.linspace(1, 0, f)
+    return x
+
+
+# 关机：显像管"啾——"往下掉，最后一声轻响
+def tvoff():
+    d = 0.9
+    return sweep(4200, 120, d) * decay(int(SR * d), 3) * 0.6 + lowpass(noise(d), 0.1) * decay(int(SR * d), 8) * 0.4
+
+
+# 开机：高频的"嗡——"慢慢起来
+def tvon():
+    d = 1.4
+    tt = t(d)
+    whine = np.sin(2 * np.pi * 15700 / 4 * tt) * 0.15
+    hum = np.sin(2 * np.pi * 60 * tt) * 0.4 + np.sin(2 * np.pi * 120 * tt) * 0.2
+    return (whine + hum) * np.minimum(tt / 0.8, 1.0) * env(len(tt), 0.01, 0.3)
+
+
 if __name__ == "__main__":
     for fn in [charge, ready, shoot, hit, scrap, jump, land, jet, lantern_pick, lantern_drop, hurt, crack,
                ui_move, ui_confirm, ui_back, title_on, join, leave,
-               whistle, boom, rivets, embers, vent, scrape, suction, clang, ding, alarm]:
+               whistle, boom, rivets, embers, vent, scrape, suction, clang, ding, alarm,
+               bell, dial, buzz, busy, voice, tvclick, static, tvoff, tvon]:
         write(fn.__name__, fn())

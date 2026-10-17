@@ -270,6 +270,9 @@ def extrude(pts, front, depth=0.07, side=None, top=None, under=None, cap=9):
     """把一个正面多边形朝灭点挤出厚度：灭点左边的东西露右侧面，比视线低的露顶面。"""
     cx = sum(p[0] for p in pts) / len(pts)
     cy = sum(p[1] for p in pts) / len(pts)
+    # 小东西的厚度跟着自己的大小收：一个 7×2 的灯座不能挤出 9 格厚，会变成一块歪木板
+    span = min(max(p[0] for p in pts) - min(p[0] for p in pts), max(p[1] for p in pts) - min(p[1] for p in pts))
+    cap = int(min(cap, max(1, span // 2 + 1)))
     ox = int(np.clip(round((VP[0] - cx) * depth), -cap, cap))
     oy = int(np.clip(round((VP[1] - cy) * depth), -cap, cap))
     side = side or shade(front, -2)
@@ -325,10 +328,14 @@ def floor_lamp(x, fy, top):
 
 
 def hanging_lamp(x, ceil, y):
-    scr.line(x, ceil, x, y - 4, (80, 64, 66))
-    scr.poly([(x - 8, y + 2), (x + 9, y + 2), (x + 4, y - 4), (x - 3, y - 4)], (226, 200, 150))
-    scr.poly([(x + 3, y + 2), (x + 9, y + 2), (x + 4, y - 4), (x + 2, y - 4)], (200, 172, 130))
-    scr.rect(x - 2, y + 3, x + 2, y + 4, (252, 240, 196))
+    """吊灯：电线、灯罩（朝光一侧亮、背光一侧暗、底边一道深色口沿）、贴着灯罩的灯泡。
+    灯罩亮面和灯泡都是发光色（最亮通道 ≥ 240），光照色块不会改它，在什么色调的屏幕里都和墙分得开。"""
+    scr.line(x, ceil, x, y - 5, (70, 56, 60))
+    scr.rect(x - 1, y - 5, x + 1, y - 4, (90, 72, 70))                            # 灯头
+    scr.poly([(x - 8, y + 3), (x + 9, y + 3), (x + 4, y - 4), (x - 3, y - 4)], (244, 222, 168))
+    scr.poly([(x + 3, y + 3), (x + 9, y + 3), (x + 4, y - 4), (x + 2, y - 4)], (190, 160, 122))
+    scr.line(x - 8, y + 2, x + 8, y + 2, (120, 96, 84))                          # 灯罩口沿
+    scr.rect(x - 2, y + 3, x + 2, y + 4, (255, 244, 204))                        # 灯泡贴着灯罩
 
 
 def sofa(x0, x1, fy):
@@ -548,9 +555,10 @@ def plant(x, fy):
     scr.line(x, fy - 7, x + 8, fy - 7, shade(pot, 2))
 
 
-def light_pass(tv, light_at, gain=2.6, amp=0.9, cell=9, min_px=30, seed=0):
+def light_pass(tv, light_at, gain=2.6, amp=0.9, cell=9, min_px=160, seed=0):
     """Oscar 的色块：每个大面按离场景光源的远近切成一档一档，档的边是直线段（三角网格），
-    再加一点低频扰动让边缘有棱角。发光的东西（最亮通道 >= 240）不动，小零件不动。"""
+    再加一点低频扰动让边缘有棱角。发光的东西（最亮通道 >= 240）不动；
+    小于 min_px 的颜色（灯罩、相框、小摆件）也不动，不然小东西会被切碎、和墙糊在一起。"""
     x0, y0, x1, y1 = tv.sx0, tv.sy0, tv.sx1, tv.sy1
     h, w = y1 - y0 + 1, x1 - x0 + 1
     sub = scr.a[y0:y1 + 1, x0:x1 + 1]

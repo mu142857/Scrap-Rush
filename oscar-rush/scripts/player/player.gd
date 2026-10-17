@@ -29,6 +29,8 @@ const APEX_SPEED := 30.0
 const APEX_GRAVITY_MULT := 0.5
 const APEX_TIME := 0.06
 const COYOTE_TIME := 0.10
+## 站在单向平台上按"下"（S）就从平台上穿下去；这么久之内不和那块平台碰撞
+const DROP_TIME := 0.25
 const JUMP_BUFFER_TIME := 0.10
 # —— 火箭靴 ——
 const JET_MAX_UP := 120.0
@@ -86,6 +88,8 @@ var charge_level := 0
 var fuel_level := 0
 
 var _coyote := 0.0
+var _drop_t := 0.0
+var _drop_bodies: Array[PhysicsBody2D] = []
 var _buffer := 0.0
 var _jump_hold := 0.0
 var _jump_min := 0.0
@@ -253,6 +257,8 @@ func _physics_process(delta: float) -> void:
 	if _stun <= 0.0:
 		axis = Input.get_axis(_act("left"), _act("right"))
 	_move_x(axis, delta, on_floor)
+	if _drop_through(delta, on_floor):
+		on_floor = false
 	_jump_and_gravity(delta, on_floor)
 	_attack(delta)
 	_crystal_input()
@@ -309,6 +315,41 @@ func _move_x(axis: float, delta: float, on_floor: bool) -> void:
 func _against_wall(dir: float) -> bool:
 	var hit := move_and_collide(Vector2(dir * 0.5, 0.0), true, safe_margin, true)
 	return hit != null and absf(hit.get_normal().x) > 0.9
+
+
+## 站在单向平台上按"下"：暂时不和脚下那块平台碰撞，掉下去。返回 true 表示这一帧开始往下掉。
+## 只对单向平台（one_way_collision）有用，实心地面按了没反应。
+func _drop_through(delta: float, on_floor: bool) -> bool:
+	if _drop_t > 0.0:
+		_drop_t -= delta
+		if _drop_t <= 0.0:
+			for b in _drop_bodies:
+				if is_instance_valid(b):
+					remove_collision_exception_with(b)
+			_drop_bodies.clear()
+	if not on_floor or _stun > 0.0 or not Input.is_action_just_pressed(_act("down")):
+		return false
+	var found := false
+	for i in get_slide_collision_count():
+		var c := get_slide_collision(i)
+		if c.get_normal().y > -0.7:
+			continue
+		var shape := c.get_collider_shape()
+		var one_way: bool = (shape is CollisionShape2D and shape.one_way_collision) \
+			or (shape is CollisionPolygon2D and shape.one_way_collision)
+		var body := c.get_collider() as PhysicsBody2D
+		if one_way and body:
+			found = true
+			if not _drop_bodies.has(body):
+				add_collision_exception_with(body)
+				_drop_bodies.append(body)
+	if not found:
+		return false
+	_drop_t = DROP_TIME
+	_coyote = 0.0
+	position.y += 1.0
+	velocity.y = maxf(velocity.y, 40.0)
+	return true
 
 
 func _jump_and_gravity(delta: float, on_floor: bool) -> void:

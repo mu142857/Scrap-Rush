@@ -12,7 +12,7 @@ const D := preload("res://scripts/levels/level3_data.gd")
 const DARKNESS := Color(0.36, 0.35, 0.41)
 const CLIMB_SPEED := 110.0
 ## 镜头中心多远以内的屏幕灯才开
-const LIGHT_RANGE := 420.0
+const LIGHT_RANGE := 620.0
 const TINT_LIGHT := {
 	"color": Color(1.0, 0.82, 0.6),
 	"bw": Color(0.75, 0.78, 0.86),

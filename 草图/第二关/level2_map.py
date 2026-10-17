@@ -48,9 +48,9 @@ MW, MH = 3700, 600
 CX, CY = MW / 2, MH / 2
 
 # ---------------------------------------------------------------- 地形（地图坐标）
-A_X1 = 1000                  # 前半段右边界
+A_X1 = 1000                  # 前半段右边界（天桥从这里开始）
 B_X0 = 2840                  # 后半段左边界
-A1_Y, A3_Y, A2_Y = 96, 200, 300
+WALL = 12                    # 机房的墙、天花板、地板厚度
 GIRDER = 10
 BRIDGE_Y = 300               # 胶片天桥地面（下齿孔边顶面）
 FILM_DY = BRIDGE_Y - LB.FLOOR            # 胶片样图在 270 高画布里的地面是 167
@@ -60,6 +60,25 @@ ROWS = [(3170 + 40 * i, 300 + 22 * (i + 1)) for i in range(9)]   # 观众席台�
 ORCH_Y = 520
 STAGE = (3600, 500)
 
+# 前半段（10-17 作者定，换掉和第一关一样的三层折返）：四间悬在交换局大厅里的机房，
+# 房间之间用玻璃气动管传送。x0/x1 是室内左右，top 是天花板下沿，floor 是地面
+ROOMS = [
+    {"name": "R1 接线员大厅", "x0": 40, "x1": 420, "top": 440, "floor": 540, "theme": "switch"},
+    {"name": "R2 继电器机房", "x0": 532, "x1": 900, "top": 340, "floor": 430, "theme": "relay"},
+    {"name": "R3 电话簿仓库", "x0": 52, "x1": 440, "top": 150, "floor": 250, "theme": "books"},
+    {"name": "R4 片库", "x0": 560, "x1": A_X1, "top": 200, "floor": BRIDGE_Y, "theme": "film"},
+]
+# 气动管：mouth 是管口（房间墙上，人走进这块就被吸走，x, y, w, h），path 是管子走的折线，
+# out/vel 是从下一间房喷出来的位置和速度，needs 是先打完第几场遭遇战管口才开
+TUBES = [
+    {"mouth": (404, 516, 16, 24), "path": [(426, 528), (468, 528), (468, 410), (526, 410)],
+     "out": (548, 429), "vel": (130, -90), "needs": 0},
+    {"mouth": (884, 406, 16, 24), "path": [(906, 418), (940, 418), (940, 470), (500, 470), (500, 236), (446, 236)],
+     "out": (424, 249), "vel": (-130, -90), "needs": 1},
+    {"mouth": (52, 226, 16, 24), "path": [(46, 238), (20, 238), (20, 62), (640, 62), (640, 194)],
+     "out": (640, 214), "vel": (60, 40), "needs": 2},
+]
+
 SOLIDS = []                  # 碰撞矩形：x, y, w, h, 名字
 
 
@@ -67,12 +86,14 @@ def solid(x0, y0, x1, y1, name):
     SOLIDS.append({"name": name, "x": x0, "y": y0, "w": x1 - x0, "h": y1 - y0})
 
 
-solid(0, 0, A_X1, 24, "A 天花板")
-solid(0, 0, 16, MH, "A 左墙")
-solid(16, A1_Y, 820, A1_Y + GIRDER, "A1 顶层")
-solid(120, A3_Y, 984, A3_Y + GIRDER, "A3 中层")
-solid(984, 24, A_X1, A3_Y + GIRDER, "A 右墙（中层以上）")
-solid(16, A2_Y, A_X1, MH, "A2 底层")
+for r in ROOMS:
+    n, x0, x1, top, fl = r["name"], r["x0"], r["x1"], r["top"], r["floor"]
+    right = x1 if r["theme"] == "film" else x1 + WALL       # 片库右边敞开，直接接天桥
+    solid(x0 - WALL, top - WALL, right, top, n + " 天花板")
+    solid(x0 - WALL, fl, right, MH if n.startswith("R1") else fl + WALL, n + " 地面")
+    solid(x0 - WALL, top, x0, fl, n + " 左墙")
+    if r["theme"] != "film":
+        solid(x1, top, x1 + WALL, fl, n + " 右墙")
 solid(A_X1, BRIDGE_Y, B_X0, FILM_BOT, "胶片天桥")
 solid(B_X0, 200, 3116, 214, "放映室天花板")
 solid(3100, 214, 3116, 262, "放映室前墙（下面钻过去）")
@@ -85,14 +106,14 @@ solid(3116, 0, MW, 40, "观众厅天花板")
 solid(MW - 16, 0, MW, MH, "B 右墙")
 
 ENCOUNTERS = [
-    {"name": "E1 顶层", "x0": 280, "x1": 760, "floor_y": A1_Y, "dir": "→"},
-    {"name": "E2 中层", "x0": 200, "x1": 820, "floor_y": A3_Y, "dir": "←"},
-    {"name": "E3 底层", "x0": 180, "x1": 900, "floor_y": A2_Y, "dir": "→"},
-    {"name": "E4 乐池", "x0": 3470, "x1": 3684, "floor_y": ORCH_Y, "dir": "→"},
+    {"name": "E1 接线员大厅", "x0": 110, "x1": 396, "floor_y": 540, "ceil": 440, "dir": "→"},
+    {"name": "E2 继电器机房", "x0": 566, "x1": 880, "floor_y": 430, "ceil": 340, "dir": "→"},
+    {"name": "E3 电话簿仓库", "x0": 72, "x1": 410, "floor_y": 250, "ceil": 150, "dir": "←"},
+    {"name": "E4 乐池", "x0": 3470, "x1": 3684, "floor_y": ORCH_Y, "ceil": 330, "dir": "→"},
 ]
-PHONES = [(520, 62), (540, 166), (560, 266), (3520, 470)]          # 墙上的电话：铃响预告来波
+PHONES = [(250, 500), (720, 392), (250, 212), (3520, 470)]           # 墙上的电话：铃响预告来波
 REEL_CHANGES = [1640, 2280]                                         # 天桥上的换卷点（镜头停下，打精英怪）
-SPAWN = (40, A1_Y)
+SPAWN = (70, 540)
 EXIT = (3664, STAGE[1])
 
 # ---------------------------------------------------------------- 调色（取自 Oscar 场景2）
@@ -322,17 +343,190 @@ def hang_rod(c, x, y0, y1, knobs=()):
         ball(c, x, ky, 3)
 
 
-def relay_rack(c, x0, y0, x1, y1):
-    """电话局的继电器架：灰框，一排排小继电器（灰筒 + 黄铜顶）。"""
-    fill(c, x0, y0, x1, y1, GREY[1])
-    fill(c, x0, y0, x0 + 1, y1, GREY[4])
-    fill(c, x1 - 1, y0, x1, y1, GREY[2])
+def relay_rack(c, x0, y0, x1, y1, lit=0.0, seed=0, dim=False):
+    """电话局的继电器架：灰框，一排排小继电器（灰筒 + 黄铜顶），lit 是亮着的指示灯比例。
+    dim=True 是中景用的暗版，免得和机房里的抢眼。"""
+    rng = np.random.default_rng(seed)
+    g = [DARK[1], DARK[2], DARK[3], DARK[4], GREY[0]] if dim else GREY
+    top = BRASS[0] if dim else BRASS[3]
+    fill(c, x0, y0, x1, y1, g[1])
+    fill(c, x0, y0, x0 + 1, y1, g[4])
+    fill(c, x1 - 1, y0, x1, y1, g[2])
     for y in range(y0 + 4, y1 - 4, 9):
-        fill(c, x0 + 2, y + 6, x1 - 2, y + 6, GREY[3])
+        fill(c, x0 + 2, y + 6, x1 - 2, y + 6, g[3])
         for x in range(x0 + 4, x1 - 3, 4):
-            fill(c, x, y + 1, x + 1, y + 5, GREY[4])
-            c.put(x, y + 1, BRASS[3])
-            c.put(x + 1, y + 5, GREY[2])
+            fill(c, x, y + 1, x + 1, y + 5, g[4])
+            c.put(x, y + 1, top)
+            c.put(x + 1, y + 5, g[2])
+            if lit and rng.random() < lit:
+                c.put(x + 1, y + 7, LAMP if rng.random() < 0.6 else (200, 90, 60))
+
+
+FAR_WIRE = [(30, 25, 21), (36, 30, 24), (44, 36, 28), (52, 42, 32)]
+
+
+def rotary_dial(c, cx, cy, R):
+    """远处墙上一只巨大的转盘拨号盘：外圈、十个指孔、指挡、中心的号码牌。用很暗的几档灰。"""
+    ramp = [DARK[1], DARK[2], DARK[3], DARK[4], GREY[0], GREY[1]]
+    for y in range(cy - R, cy + R + 1):
+        for x in range(cx - R, cx + R + 1):
+            d = math.hypot(x - cx, y - cy)
+            if d > R:
+                continue
+            v = 0.55 - 0.35 * ((x - cx) + (y - cy)) / (2 * R)
+            if d > R - 3:
+                v -= 0.25
+            c.put(x, y, q(ramp, v))
+    for k in range(10):                                      # 指孔：从右上顺时针一圈，底部留空给指挡
+        a = math.radians(-60 - k * 27)
+        hx, hy = cx + R * 0.7 * math.cos(a), cy + R * 0.7 * math.sin(a)
+        hr = int(R * 0.15)
+        sellipse(c, int(hx), int(hy), hr, hr, DARK[0])
+        sellipse(c, int(hx) + 1, int(hy) + 1, hr - 2, hr - 2, DARK[1])
+        c.put(int(hx) - hr // 2, int(hy) - hr // 2, GREY[1])
+    sellipse(c, cx, cy, int(R * 0.36), int(R * 0.36), GREY[1])
+    sellipse(c, cx, cy, int(R * 0.3), int(R * 0.3), (52, 46, 38))
+    for k in range(3):                                       # 号码牌上的几行"字"
+        fill(c, cx - 14 + k * 3, cy - 8 + k * 7, cx + 10 - k * 3, cy - 7 + k * 7, GREY[0])
+    a = math.radians(65)                                     # 指挡
+    fill(c, int(cx + R * 0.86 * math.cos(a)) - 3, int(cy + R * 0.86 * math.sin(a)) - 10,
+         int(cx + R * 0.86 * math.cos(a)) + 3, int(cy + R * 0.86 * math.sin(a)) + 4, GREY[2])
+
+
+def telephone_pole(c, x, top, bottom):
+    """电线杆：木杆、两根横担、一排白瓷瓶。远景用，很暗。"""
+    fill(c, x - 3, top, x + 3, bottom, (34, 26, 20))
+    fill(c, x - 3, top, x - 2, bottom, (44, 34, 26))
+    for k, dy in enumerate((4, 12, 20)):
+        fill(c, x - 26, top + dy, x + 26, top + dy + 2, (40, 31, 24))
+        for side in (-18, 0, 18):
+            fill(c, x + side - 1, top + dy - 3, x + side + 1, top + dy - 1, (70, 66, 60))
+
+
+def pipe(c, pts, dim=False):
+    """玻璃气动管：8 像素粗，两边一像素金属边，中间深色玻璃，靠上（或靠左）一条高光，
+    每隔 40 像素一道黄铜箍，拐角是黄铜弯头。dim=True 是远景里更暗的版本。"""
+    edge, glass, hi, ring, ring_hi = ((GREY[3], DARK[3], GREY[5], BRASS[2], BRASS[4]) if not dim else
+                                      (DARK[4], DARK[2], GREY[1], BRASS[0], BRASS[1]))
+    for (ax, ay), (bx, by) in zip(pts, pts[1:]):
+        if ay == by:                                        # 横管
+            x0, x1 = min(ax, bx), max(ax, bx)
+            fill(c, x0, ay - 4, x1, ay + 3, glass)
+            fill(c, x0, ay - 4, x1, ay - 4, edge)
+            fill(c, x0, ay + 3, x1, ay + 3, edge)
+            fill(c, x0, ay - 2, x1, ay - 2, hi)
+            for x in range(x0 + 20, x1 - 5, 40):
+                fill(c, x, ay - 5, x + 2, ay + 4, ring)
+                fill(c, x, ay - 5, x, ay + 4, ring_hi)
+        else:                                               # 竖管
+            y0, y1 = min(ay, by), max(ay, by)
+            fill(c, ax - 4, y0, ax + 3, y1, glass)
+            fill(c, ax - 4, y0, ax - 4, y1, edge)
+            fill(c, ax + 3, y0, ax + 3, y1, edge)
+            fill(c, ax - 2, y0, ax - 2, y1, hi)
+            for y in range(y0 + 20, y1 - 5, 40):
+                fill(c, ax - 5, y, ax + 4, y + 2, ring)
+                fill(c, ax - 5, y, ax + 4, y, ring_hi)
+    for (x, y) in pts[1:-1]:                                # 弯头
+        fill(c, x - 5, y - 5, x + 4, y + 4, ring)
+        fill(c, x - 5, y - 5, x + 4, y - 5, ring_hi)
+        fill(c, x - 5, y - 5, x - 5, y + 4, ring_hi)
+
+
+def tube_mouth(c, x, y, w, h):
+    """管口：墙上的黄铜喇叭口，里面黑洞洞的。上面那盏红/绿灯由游戏画。"""
+    fill(c, x, y, x + w - 1, y + h - 1, BRASS[2])
+    fill(c, x, y, x + w - 1, y, BRASS[4])
+    fill(c, x, y, x, y + h - 1, BRASS[3])
+    fill(c, x + 3, y + 3, x + w - 4, y + h - 1, DARK[0])
+    fill(c, x + 3, y + 3, x + w - 4, y + 3, DARK[3])
+    for yy in range(y + 6, y + h - 2, 5):                    # 里面的吸气格栅
+        fill(c, x + 4, yy, x + w - 5, yy, DARK[2])
+
+
+def room_interior(c, r, seed=0):
+    """一间机房的室内（墙面 + 墙上的东西）。主题：switch 插线板、relay 继电器、books 电话簿、film 片库。"""
+    rng = np.random.default_rng(seed)
+    x0, x1, top, fl = r["x0"], r["x1"], r["top"], r["floor"]
+    vgrad(c, x0, top, x1 - 1, fl - 1, DARK, 0.85, 0.35)
+    if r["theme"] == "switch":
+        for i, x in enumerate(range(x0 + 8, x1 - 46, 52)):
+            switch_panel(c, x, top + 6, 44, fl - top - 14, seed=seed * 10 + i)
+    elif r["theme"] == "relay":
+        for i, x in enumerate(range(x0 + 6, x1 - 34, 40)):
+            relay_rack(c, x, top + 14, x + 32, fl - 4, lit=0.12, seed=seed * 10 + i)
+        fill(c, x0, top + 6, x1 - 1, top + 9, BRASS[1])          # 走线槽
+        fill(c, x0, top + 6, x1 - 1, top + 6, BRASS[3])
+        for k in range(6):
+            a = x0 + int(rng.integers(0, x1 - x0 - 60))
+            wire(c, a, top + 10, a + int(rng.integers(30, 60)), top + 10, int(rng.integers(6, 16)))
+    elif r["theme"] == "books":
+        spines = [(96, 40, 32), (70, 60, 44), (52, 58, 64), (110, 88, 52), (64, 42, 52), (88, 74, 60)]
+        for sy in range(top + 26, fl - 4, 24):                  # 书架：一层层电话簿
+            fill(c, x0 + 4, sy, x1 - 5, sy + 2, WOOD[4])
+            fill(c, x0 + 4, sy, x1 - 5, sy, WOOD[5])
+            x = x0 + 6
+            while x < x1 - 10:
+                w = int(rng.integers(3, 7))
+                h = int(rng.integers(11, 19))
+                if rng.random() < 0.12:
+                    x += w + 3
+                    continue
+                col = spines[int(rng.integers(len(spines)))]
+                fill(c, x, sy - h, x + w - 1, sy - 1, col)
+                fill(c, x, sy - h, x + w - 1, sy - h, step_color(col, 1))
+                fill(c, x, sy - h + 4, x + w - 1, sy - h + 4, step_color(col, 2))
+                x += w
+        cx, cy = (x0 + x1) // 2, top + 22                      # 墙上的大挂钟
+        sellipse(c, cx, cy, 15, 15, WOOD[3])
+        sellipse(c, cx, cy, 12, 12, (196, 184, 160))
+        for k in range(12):
+            a = math.radians(k * 30)
+            c.put(int(cx + 10 * math.cos(a)), int(cy + 10 * math.sin(a)), GREY[1])
+        c.line(cx, cy, cx, cy - 8, GREY[0])
+        c.line(cx, cy, cx + 6, cy + 3, GREY[0])
+        fill(c, x1 - 40, top + 4, x1 - 38, fl - 1, WOOD[3])     # 梯子
+        fill(c, x1 - 28, top + 4, x1 - 26, fl - 1, WOOD[3])
+        for yy in range(top + 10, fl, 12):
+            fill(c, x1 - 38, yy, x1 - 28, yy + 1, WOOD[4])
+    elif r["theme"] == "film":
+        for sy in range(top + 30, fl - 20, 26):                 # 片盒架
+            fill(c, x0 + 6, sy, x0 + 260, sy + 2, GREY[3])
+            fill(c, x0 + 6, sy, x0 + 260, sy, GREY[5])
+            for x in range(x0 + 10, x0 + 250, 16):
+                if rng.random() < 0.8:
+                    hgt = int(rng.integers(2, 5))
+                    for k in range(hgt):
+                        sellipse(c, x + 6, sy - 3 - k * 4, 7, 2, GREY[4 - k % 2])
+                        c.put(x + 2, sy - 4 - k * 4, GREY[6])
+        for x in range(x0 + 270, x1 - 90, 30):                  # 倒片台
+            fill(c, x, fl - 18, x + 24, fl - 16, WOOD[4])
+            fill(c, x + 2, fl - 16, x + 3, fl - 1, WOOD[2])
+            fill(c, x + 21, fl - 16, x + 22, fl - 1, WOOD[2])
+
+
+def hanging_bulb(c, x, y0, y1):
+    """天桥上空吊着的小灯泡：一根线、黄铜灯头、暖黄的泡，外面一圈分档的光晕。"""
+    fill(c, x, y0, x, y1 - 3, GREY[2])
+    sellipse(c, x, y1 + 3, 9, 9, (34, 27, 21))
+    sellipse(c, x, y1 + 3, 5, 5, (58, 44, 30))
+    fill(c, x - 1, y1 - 2, x + 1, y1, BRASS[3])
+    fill(c, x - 2, y1 + 1, x + 2, y1 + 5, LAMP)
+    fill(c, x - 1, y1 + 6, x + 1, y1 + 6, LAMP)
+    c.put(x - 1, y1 + 2, (255, 236, 190))
+
+
+def dim_reel(c, cx, cy, r):
+    """远处吊着的大片盘剪影：很暗的盘面、三个圆孔、一圈缠着的胶片。"""
+    for y in range(cy - r, cy + r + 1):
+        for x in range(cx - r, cx + r + 1):
+            d = math.hypot(x - cx, y - cy)
+            if d <= r:
+                c.put(x, y, DARK[3] if d > r * 0.82 else (DARK[2] if int(d) % 4 else DARK[1]))
+    for k in range(3):
+        a = math.radians(90 + 120 * k)
+        sellipse(c, int(cx + r * 0.5 * math.cos(a)), int(cy + r * 0.5 * math.sin(a)), int(r * 0.17), int(r * 0.17), VOID)
+    sellipse(c, cx, cy, max(3, r // 8), max(3, r // 8), DARK[4])
 
 
 def film_reel(c, cx, cy, r, seed=0):
@@ -413,17 +607,20 @@ def draw_far(design):
     L = Layer(0.55, design)
     c = L.c
     fill(c, 0, 0, MW - 1, MH - 1, VOID)
-    # 前半段背后：一整面很高的交换台墙（远、暗）
-    for i, x in enumerate(range(-40, 1100, 46)):
-        X, Y0, Y1 = L.X(x), L.Y(30), L.Y(560)
-        vgrad(c, X, Y0, X + 40, Y1, DARK, 0.9, 0.3)
-        fill(c, X, Y0, X + 40, Y0, DARK[4])
-        rng = np.random.default_rng(i)
-        for gy in range(Y0 + 10, Y1 - 10, 9):
-            for gx in range(X + 5, X + 38, 6):
-                c.put(gx, gy, DARK[4])
-            if rng.random() < 0.35:
-                c.put(X + 5 + 6 * int(rng.integers(0, 5)), gy - 3, LAMP_OFF if rng.random() < 0.7 else LAMP)
+    # 前半段背后：交换局大厅很高的后墙，一只巨大的转盘拨号盘，几根电线杆拉着满天的电话线
+    vgrad(c, L.X(-60), L.Y(0), L.X(1060), L.Y(MH), DARK, 0.15, 0.7)
+    rotary_dial(c, L.X(470), L.Y(300), 130)
+    poles = [(-20, 40), (250, 70), (700, 50), (1040, 80)]
+    for x, top in poles:
+        telephone_pole(c, L.X(x), L.Y(top), L.Y(MH))
+    for (ax, at), (bx, bt) in zip(poles, poles[1:]):
+        for k, dy in enumerate((6, 14, 22)):
+            for side in (-18, 0, 18):
+                wire(c, L.X(ax) + side, L.Y(at) + dy, L.X(bx) + side, L.Y(bt) + dy, 18 + k * 6, ramp=FAR_WIRE)
+    rng = np.random.default_rng(3)
+    for _ in range(40):                                  # 远处零星的信号灯
+        c.put(int(rng.integers(L.X(-40), L.X(1040))), int(rng.integers(L.Y(20), L.Y(580))),
+              LAMP_OFF if rng.random() < 0.7 else LAMP)
     # 天桥背后：黑暗里投着几块巨大的、很暗的画面（录像里的家，和最后一关呼应）
     dim = [(21, 19, 18), (27, 24, 21), (34, 29, 25), (42, 35, 28)]
     for k, (x, y, w, h) in enumerate(((1180, 50, 260, 150), (1720, 330, 220, 130), (2260, 60, 280, 160))):
@@ -449,6 +646,9 @@ def draw_far(design):
             for px, hh in ((X + 70, 32), (X + 86, 24), (X + 196, 30), (X + 212, 22)):
                 fill(c, px, g - hh, px + 10, g + 6, dim[0])
                 sellipse(c, px + 5, g - hh - 6, 5, 5, dim[0])
+    for x, y, r in ((1320, 110, 90), (2080, 480, 120), (2640, 140, 80), (1600, 560, 70)):
+        dim_reel(c, L.X(x), L.Y(y), r)
+        fill(c, L.X(x), 0, L.X(x) + 1, L.Y(y) - r, DARK[3])
     # 后半段背后：观众厅很高的后墙，竖向装饰肋
     for x in range(2760, 3800, 36):
         X = L.X(x)
@@ -460,17 +660,19 @@ def draw_far(design):
 def draw_mid(design):
     L = Layer(0.75, design)
     c = L.c
-    # 前半段：天花板垂下来的杆子、配重球、线圈，和几排继电器架
-    for x, by in ((160, 150), (430, 250), (700, 120), (900, 330)):
+    # 前半段：几排很高的继电器架（灯亮着），吊着的配重球、线圈，和远处别的气动管
+    for i, x in enumerate((-10, 150, 470, 760, 960)):
+        relay_rack(c, L.X(x), L.Y(30 + (i % 2) * 60), L.X(x) + 44, L.Y(580), lit=0.1, seed=i, dim=True)
+    for x, by in ((90, 330), (330, 380), (700, 150), (860, 520)):
         X = L.X(x)
         hang_rod(c, X, 0, L.Y(by), knobs=(L.Y(by) - 30,))
         ball(c, X, L.Y(by) + 12, 12)
-    for x, cy in ((300, 160), (620, 260), (840, 60)):
+    for x, cy in ((240, 300), (600, 520), (920, 40)):
         X = L.X(x)
         hang_rod(c, X, 0, L.Y(cy) - 9)
         coil(c, X, L.Y(cy))
-    for x in (40, 250, 520, 780):
-        relay_rack(c, L.X(x), L.Y(330), L.X(x) + 60, L.Y(520))
+    for path in (((-20, 120), (300, 120), (300, 400), (560, 400)), ((620, 580), (620, 260), (1040, 260))):
+        pipe(c, [(L.X(x), L.Y(y)) for x, y in path], dim=True)
     # 天桥一带：远处下垂的胶片（悬链线）和吊着的线圈
     for (ax, ay, bx, by, sag) in ((1000, 120, 1500, 90, 70), (1400, 420, 2000, 450, 60), (1900, 140, 2500, 110, 80),
                                   (2350, 430, 2900, 400, 50), (1150, 520, 1600, 540, 30)):
@@ -490,6 +692,8 @@ def draw_mid(design):
         X = L.X(x)
         hang_rod(c, X, L.Y(FILM_BOT) + 4, L.Y(400) - 9)
         coil(c, X, L.Y(400))
+    for k, x in enumerate(range(1080, 2800, 160)):
+        hanging_bulb(c, L.X(x), 0, L.Y(60 + (k * 53) % 110))
     # 后半段：观众厅的吊灯（黄铜 + 暖光）
     for x in (3260, 3460):
         X = L.X(x)
@@ -531,14 +735,9 @@ def leader(c, x0, y0, w, h):
 def draw_back(design):
     L = Layer(1.0, design)
     c = L.c
-    # ---- 前半段：三层楼背后的墙，挂满插线板
-    for (y0, y1) in ((24, A1_Y - 1), (A1_Y + GIRDER + 6, A3_Y - 1), (A3_Y + GIRDER + 6, A2_Y - 1)):
-        vgrad(c, 16, y0, 984, y1, DARK, 0.75, 0.35)
-    for i, x in enumerate(range(28, 970, 52)):
-        switch_panel(c, x, 30, 44, A1_Y - 36, seed=i)
-        switch_panel(c, x + 20, A1_Y + 22, 44, A3_Y - A1_Y - 30, seed=100 + i)
-        if x > 130:
-            switch_panel(c, x + 6, A3_Y + 22, 44, A2_Y - A3_Y - 30, seed=200 + i)
+    # ---- 前半段：四间机房，每间布置不一样
+    for i, r in enumerate(ROOMS):
+        room_interior(c, r, seed=i)
     # ---- 天桥起点：一只巨大的供片盘挂在悬崖边上，胶片从它下沿出来
     film_reel(c, A_X1 + 20, FILM_TOP - 4, 74, seed=1)
     fill(c, A_X1 + 18, 0, A_X1 + 21, FILM_TOP - 78, GREY[3])
@@ -559,6 +758,20 @@ def draw_back(design):
     for x in (3150, 3238, 3326):                              # 壁灯
         fill(c, x - 2, 150, x + 2, 156, BRASS[2])
         fill(c, x - 1, 146, x + 1, 149, LAMP)
+    # 银幕上方一圈放射纹（装饰艺术风格）
+    sun = (3518, 186)
+    for y in range(48, 140):
+        for x in range(3340, 3700 - 17):
+            a = math.degrees(math.atan2(sun[1] - y, x - sun[0]))
+            if 12 < a < 168 and math.hypot(x - sun[0], y - sun[1]) > 50:
+                c.put(x, y, BRASS[0] if int(a / 7) % 2 else DARK[3])
+    for x0 in (3170, 3250):                                   # 左墙上的两个包厢
+        fill(c, x0, 110, x0 + 60, 112, BRASS[3])
+        vgrad(c, x0, 113, x0 + 60, 150, VELVET, 0.7, 0.3)
+        for k in range(x0 + 4, x0 + 60, 8):
+            fill(c, k, 113, k + 1, 150, VELVET[1])
+        fill(c, x0 - 2, 150, x0 + 62, 156, BRASS[1])
+        fill(c, x0 - 2, 150, x0 + 62, 150, BRASS[3])
     # 银幕：放的是老电影开头的倒计时片头（圆圈、十字线、扫过的扇形、大数字 3），1 倍像素直接画
     sx0, sy0, sw, sh = 3370, 190, 296, 214
     fill(c, sx0 - 6, sy0 - 6, sx0 + sw + 6, sy0 + sh + 6, DARK[0])
@@ -602,16 +815,17 @@ def draw_back(design):
 def draw_props(design):
     L = Layer(1.0, design)
     c = L.c
-    # 前半段：每层摆几张接线台、墙上的手摇电话、Oscar 的插线板
-    for x, w in ((120, 70), (420, 90), (640, 60)):
-        operator_desk(c, x, A1_Y, w, seed=x)
-    for x, w in ((260, 80), (520, 70), (760, 90)):
-        operator_desk(c, x, A3_Y, w, seed=x)
-    for x, w in ((60, 60), (330, 90), (620, 70), (860, 60)):
-        operator_desk(c, x, A2_Y, w, seed=x)
+    # 前半段：气动管（在墙后面，从一间房接到另一间）、管口、接线台、墙上的电话、Oscar 的插线板
+    for t in TUBES:
+        pipe(c, t["path"])
+    for t in TUBES:
+        tube_mouth(c, *t["mouth"])
+    for x, w in ((150, 70), (300, 80)):
+        operator_desk(c, x, 540, w, seed=x)
+    operator_desk(c, 600, 430, 60, seed=7)
     for px, py in PHONES:
         wall_phone(c, px, py)
-    for x, y in ((40, 50), (880, 150), (100, 250), (900, 250)):
+    for x, y in ((60, 470), (840, 370), (380, 170)):
         plug_board(c, x, y)
     # 后半段：放映机（胶片进它的片门）
     projector(c, B_X0 + 34, BRIDGE_Y)
@@ -653,19 +867,24 @@ def cable_vault(c, spans, y0, y1):
 def draw_solid(design):
     L = Layer(1.0, design)
     c = L.c
-    # 前半段
-    block(c, 0, 0, A_X1, 23)
-    fill(c, 0, 23, A_X1, 23, GREY[3])
-    block(c, 0, 0, 15, MH - 1, seam=200)
-    fill(c, 15, 24, 15, MH - 1, GREY[3])
-    girder(c, 16, 820, A1_Y)
-    girder(c, 120, 984, A3_Y)
-    block(c, 984, 24, A_X1 - 1, A3_Y + GIRDER - 1, seam=100)
-    fill(c, 984, 24, 984, A3_Y + GIRDER - 1, GREY[4])
-    girder(c, 16, A_X1 - 1, A2_Y, under=False)
-    block(c, 16, A2_Y + GIRDER, A_X1 - 1, MH - 1)
-    cable_vault(c, [(60, 300), (360, 640), (700, 950)], A2_Y + 44, MH - 30)
-    fill(c, A_X1 - 1, A2_Y, A_X1 - 1, MH - 1, GREY[4])        # 悬崖边
+    # 前半段：四间机房的外壳（钢板墙、铆钉、地面亮边）
+    for r in ROOMS:
+        x0, x1, top, fl = r["x0"], r["x1"], r["top"], r["floor"]
+        right = x1 - 1 if r["theme"] == "film" else x1 + WALL - 1
+        block(c, x0 - WALL, top - WALL, right, top - 1, seam=48)
+        fill(c, x0 - WALL, top - 1, right, top - 1, GREY[3])
+        bottom = MH - 1 if r["name"].startswith("R1") else fl + WALL - 1
+        girder(c, x0 - WALL, right, fl, th=WALL, under=False)
+        if bottom > fl + WALL:
+            block(c, x0 - WALL, fl + WALL, right, bottom, seam=60)
+        block(c, x0 - WALL, top, x0 - 1, fl - 1, seam=200)
+        fill(c, x0 - 1, top, x0 - 1, fl - 1, GREY[4])
+        if r["theme"] != "film":
+            block(c, x1, top, x1 + WALL - 1, fl - 1, seam=200)
+            fill(c, x1, top, x1, fl - 1, GREY[4])
+        # 墙外侧的铭牌（房间名用色块代替，不写字）
+        fill(c, x0 + 20, top - WALL + 3, x0 + 44, top - WALL + 7, BRASS[2])
+        fill(c, x0 + 20, top - WALL + 3, x0 + 44, top - WALL + 3, BRASS[4])
     # 胶片天桥单独一层（draw_film），游戏里不吃场景压暗、自己发光
     # 吊杆夹住上齿孔边
     for x in range(A_X1 + 260, B_X0 - 60, 300):
@@ -711,8 +930,10 @@ def draw_solid(design):
     fill(c, 3116, 39, MW - 1, 39, BRASS[2])
     block(c, MW - 16, 40, MW - 1, MH - 1, seam=200)
     fill(c, MW - 16, 40, MW - 16, MH - 1, GREY[3])
-    # 出口：舞台上银幕右边的一扇小门
+    # 出口：舞台上银幕右边的一扇小门，门上一盏出口灯
     ex, ey = EXIT
+    fill(c, ex - 6, ey - 34, ex + 6, ey - 29, (90, 160, 100))
+    fill(c, ex - 5, ey - 33, ex + 5, ey - 30, (170, 240, 170))
     fill(c, ex - 10, ey - 26, ex + 10, ey - 1, WOOD[2])
     fill(c, ex - 8, ey - 24, ex + 8, ey - 1, (250, 220, 150))
     fill(c, ex - 10, ey - 26, ex + 10, ey - 26, WOOD[5])
@@ -732,16 +953,17 @@ def draw_near(design):
     L = Layer(1.0, design)
     c = L.c
     dark = [(10, 9, 9), (16, 13, 12), (22, 18, 16)]
-    # 前半段：天花板垂下来的一捆捆线缆（剪影，挡在人前面）
+    # 前半段：每间机房天花板垂下来一两捆线缆
     rng = np.random.default_rng(7)
-    for x in (70, 350, 610, 930):
-        for k in range(4):
-            ax = x + k * 3
-            n = int(rng.integers(30, 60))
-            for y in range(24, 24 + n):
-                sway = int(2 * math.sin(y / 9 + k))
-                c.put(ax + sway, y, dark[k % 3])
-                c.put(ax + sway + 1, y, dark[(k + 1) % 3])
+    for r in ROOMS:
+        for x in (r["x0"] + 70, r["x1"] - 120):
+            for k in range(4):
+                ax = x + k * 3
+                n = int(rng.integers(14, 30))
+                for y in range(r["top"], r["top"] + n):
+                    sway = int(2 * math.sin(y / 9 + k))
+                    c.put(ax + sway, y, dark[k % 3])
+                    c.put(ax + sway + 1, y, dark[(k + 1) % 3])
     # 后半段：每排台阶上的座椅靠背
     for rx, ry in ROWS:
         for k in range(3):
@@ -762,8 +984,8 @@ def route_overlay(base):
     """Oscar 草图那种红线：路线 + 遭遇战框 + 电话 + 换卷点 + 出生点和出口。"""
     c = base.copy()
     RED, ORANGE, YELLOW, WHITE, GREEN = (230, 40, 40), (240, 140, 40), (250, 220, 60), (250, 250, 250), (60, 220, 90)
-    path = [(40, A1_Y - 6), (826, A1_Y - 6), (850, A3_Y - 6), (110, A3_Y - 6), (80, A2_Y - 6),
-            (B_X0 + 300, BRIDGE_Y - 6)]
+    path = [(SPAWN[0], 534), (412, 534)] + TUBES[0]["path"] + [(548, 424), (892, 424)] + TUBES[1]["path"] + \
+        [(424, 244), (60, 244)] + TUBES[2]["path"] + [(640, 294), (B_X0 + 300, BRIDGE_Y - 6)]
     for rx, ry in ROWS:
         path.append((rx + 20, ry - 6))
     path += [(ROWS[-1][0] + 60, ORCH_Y - 6), (STAGE[0] - 4, ORCH_Y - 6), (STAGE[0] + 6, STAGE[1] - 6), (EXIT[0], STAGE[1] - 6)]
@@ -771,7 +993,7 @@ def route_overlay(base):
         for o in (0, 1):
             c.line(ax, ay + o, bx, by + o, RED)
     for e in ENCOUNTERS:
-        y0, y1 = e["floor_y"] - 70, e["floor_y"] - 1
+        y0, y1 = e["ceil"] + 2, e["floor_y"] - 1
         for (ax, ay, bx, by) in ((e["x0"], y0, e["x1"], y0), (e["x0"], y1, e["x1"], y1),
                                  (e["x0"], y0, e["x0"], y1), (e["x1"], y0, e["x1"], y1)):
             c.line(ax, ay, bx, by, ORANGE)
@@ -792,9 +1014,10 @@ def route_overlay(base):
     return c
 
 
-def view(layer_imgs, cam_x, cam_y, scale=3):
-    """按 parallax_scene.gd 的规则把各层叠成游戏里镜头在 (cam_x, cam_y) 时看到的 480×270。"""
-    sw, sh = 480, 270
+def view(layer_imgs, cam_x, cam_y, zoom=1, scale=3):
+    """按 parallax_scene.gd 的规则把各层叠成游戏里镜头在 (cam_x, cam_y) 时看到的画面（zoom=2 时一屏 240×135）。"""
+    sw, sh = 480 // zoom, 270 // zoom
+    scale *= zoom
     cam_x = min(max(cam_x, sw / 2), MW - sw / 2)
     cam_y = min(max(cam_y, sh / 2), MH - sh / 2)
     offx, offy = cam_x - CX, cam_y - CY
@@ -828,7 +1051,6 @@ def write_gd_data():
          "const EXIT := Rect2(%d, %d, 24, 34)" % (EXIT[0] - 12, EXIT[1] - 30),
          "const A_X1 := %d" % A_X1,
          "const B_X0 := %d" % B_X0,
-         "const FLOORS := {\"A1\": %d, \"A3\": %d, \"A2\": %d, \"orch\": %d, \"stage\": %d}" % (A1_Y, A3_Y, A2_Y, ORCH_Y, STAGE[1]),
          "const BRIDGE_Y := %d" % BRIDGE_Y,
          "const FILM_TOP := %d" % FILM_TOP,
          "const FILM_BOT := %d" % FILM_BOT,
@@ -843,7 +1065,6 @@ def write_gd_data():
     L.append("]")
     L.append("## 遭遇战的场子：left/right 是闸门 x，ceil 是天花板（怪从这里掉），floor 是地面")
     L.append("const ARENAS := [")
-    ceil_of = {A1_Y: 24, A3_Y: A1_Y + GIRDER, A2_Y: A3_Y + GIRDER, ORCH_Y: 330}
     for e in ENCOUNTERS:
         fl, fr = e["floor_y"], e["floor_y"]
         x0, x1 = e["x0"], e["x1"]
@@ -852,7 +1073,19 @@ def write_gd_data():
             # 因为 Encounter 只认两扇闸门里低的那个地面以上算"进场"，乐池比舞台低
             x0, fl, fr = ROWS[7][0] + 20, ROWS[7][1], ORCH_Y
         L.append('\t{"name": "%s", "left": %d, "right": %d, "ceil": %d, "floor_l": %d, "floor_r": %d},'
-                 % (e["name"], x0, x1, ceil_of[e["floor_y"]], fl, fr))
+                 % (e["name"], x0, x1, e["ceil"], fl, fr))
+    L.append("]")
+    L.append("## 气动管：mouth 是管口（人走进去就被吸走），path 是管子的折线，out/vel 是喷出来的位置和速度，")
+    L.append("## needs 是先打完 ARENAS 里第几场管口才开")
+    L.append("const TUBES := [")
+    for t in TUBES:
+        L.append('\t{"mouth": Rect2(%d, %d, %d, %d), "path": [%s], "out": Vector2(%d, %d), "vel": Vector2(%d, %d), "needs": %d},'
+                 % (*t["mouth"], ", ".join("Vector2(%d, %d)" % p for p in t["path"]), *t["out"], *t["vel"], t["needs"]))
+    L.append("]")
+    L.append("## 机房（室内范围），提示牌和调试用")
+    L.append("const ROOMS := [")
+    for r in ROOMS:
+        L.append('\t{"name": "%s", "rect": Rect2(%d, %d, %d, %d)},' % (r["name"], r["x0"], r["top"], r["x1"] - r["x0"], r["floor"] - r["top"]))
     L.append("]")
     (GAME / "scripts/levels/level2_data.gd").write_text("\n".join(L) + "\n")
 
@@ -872,9 +1105,11 @@ def main():
     overview = compose(design_layers)
     overview.save(MAPDIR / "level2_overview.png")
     route_overlay(overview).save(MAPDIR / "level2_route.png")
-    for name, (cx, cy) in {"A1": (300, A1_Y), "A3": (600, A3_Y), "A2": (700, A2_Y), "bridge_in": (1150, BRIDGE_Y),
-                           "bridge": (1900, BRIDGE_Y), "booth": (2980, BRIDGE_Y), "hall": (3400, 440)}.items():
-        view(game_layers, cx, cy - 20).save(MAPDIR / f"level2_view_{name}.png")
+    # 机房和放映厅按游戏里的 2 倍镜头（一屏 240×135），天桥按 1 倍（480×270）
+    for name, (cx, cy, z) in {"R1": (250, 520, 2), "R2": (720, 410, 2), "R3": (250, 230, 2), "R4": (760, 280, 2),
+                              "hallA": (480, 300, 1), "bridge_in": (1150, 268, 1), "bridge": (1900, 268, 1),
+                              "booth": (2980, 280, 2), "hall": (3400, 420, 2), "stage": (3600, 490, 2)}.items():
+        view(game_layers, cx, cy, zoom=z).save(MAPDIR / f"level2_view_{name}.png")
     data = {
         "size": [MW, MH],
         "parallax": {name: s for name, _, s, _ in builders},
