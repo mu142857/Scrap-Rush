@@ -475,5 +475,5 @@ func _physics_process(_delta: float) -> void:
 	for n in get_tree().get_nodes_in_group("player"):
 		if (n as Node2D).global_position.x >= EXIT_X:
 			_leaving = true
-			get_tree().change_scene_to_file.call_deferred(next_scene)
+			SceneFade.go(get_tree(), next_scene)
 			return

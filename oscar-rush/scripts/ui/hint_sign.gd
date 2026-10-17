@@ -29,6 +29,8 @@ var _text_half := 0.0
 
 
 func _ready() -> void:
+	# Coach（新手提示框）放到屏幕上方时会避开提示牌
+	add_to_group("hint_sign")
 	z_index = 30
 	var unshaded := CanvasItemMaterial.new()
 	unshaded.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED

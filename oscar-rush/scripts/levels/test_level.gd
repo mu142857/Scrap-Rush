@@ -245,11 +245,8 @@ func _open_bridge() -> void:
 
 func _leave() -> void:
 	_leaving = true
-	Game.flash(Color.BLACK, 1.0, 0.6)
-	await get_tree().create_timer(0.25, true, false, true).timeout
-	Engine.time_scale = 1.0
-	get_tree().paused = false
-	get_tree().change_scene_to_file(BOSS_SCENE)
+	# 全局统一的切场：淡到全黑 → 切 → 在 Boss 房里淡开（SceneFade 自己会恢复 time_scale 和暂停）
+	SceneFade.go(get_tree(), BOSS_SCENE)
 
 
 func _retry() -> void:

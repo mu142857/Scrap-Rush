@@ -110,6 +110,8 @@ var _dark := false
 ## 重生后这段时间里马灯血量的变化不放特效
 var _quiet_until := 0.0
 var _rage_t := 0.0
+## 等着出的横幅：[字, 颜色]；精英名字卡在屏幕上时先不出
+var _banner_pending: Array = []
 
 
 func _ready() -> void:
@@ -250,6 +252,12 @@ func _process(delta: float) -> void:
 	_gauge.queue_redraw()
 
 	# ---- 横幅 ----
+	if not _banner_pending.is_empty() and not _elite_intro_on():
+		_banner.text = _banner_pending[0]
+		_banner.label_settings.font_color = _banner_pending[1]
+		_banner.visible = true
+		_banner_t = 2.2
+		_banner_pending = []
 	if _banner_t > 0.0:
 		_banner_t -= delta
 		_banner.modulate.a = clampf(_banner_t / 0.4, 0.0, 1.0)
@@ -296,9 +304,9 @@ func _process(delta: float) -> void:
 	# 怒火：越生气，人身上冒的红火星越多
 	if Upgrades.mutation == "rage" and level and not get_tree().paused:
 		_rage_t -= delta
-		var m := Mutations.rage_mult()
-		if _rage_t <= 0.0 and m >= 1.2:
-			_rage_t = lerpf(0.5, 0.15, (m - 1.2) / 0.8)
+		var rage := Mutations.rage_mult()
+		if _rage_t <= 0.0 and rage >= 1.2:
+			_rage_t = lerpf(0.5, 0.15, (rage - 1.2) / 0.8)
 			for pl in get_tree().get_nodes_in_group("player"):
 				var n := pl as Node2D
 				Game.sparks(n.get_parent(), n.global_position + Vector2(randf_range(-4, 4), -10), Mutations.RAGE_COLOR, 2, 35.0, Vector2.UP)
@@ -318,11 +326,19 @@ func _on_tier(old: int, new: int) -> void:
 		_show_banner(tr("%s: %s") % [tr(NAMES[new]), tr(TIER_LINES[0] if new == 0 else "a little calmer")], col)
 
 
+## 精英怪登场的名字卡（elite_base.gd 的 IntroCard）也在屏幕上方正中，两段字会叠在一起：
+## 有精英正在播出场动画时，横幅先排着，等名字卡收起再出（换台雪花和音效照常立刻出）
 func _show_banner(text: String, col: Color) -> void:
-	_banner.text = text
-	_banner.label_settings.font_color = col
-	_banner.visible = true
-	_banner_t = 2.2
+	_banner_pending = [text, col]
+	_banner_t = 0.0
+	_banner.visible = false
+
+
+func _elite_intro_on() -> bool:
+	for e in get_tree().get_nodes_in_group("enemy"):
+		if e.has_method("in_intro") and e.call("in_intro"):
+			return true
+	return false
 
 
 ## 表旁边跳字：涨是红色往下掉一点，降是冷色往上飘

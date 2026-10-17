@@ -20,6 +20,7 @@ static var _font: FontFile
 var _bar: Control
 var _hint: Label
 var _banner: Label
+var _banner_tw: Tween
 var _shown_hp := 100.0
 ## Boss 房里关掉底部按键提示（那里放 Boss 血条）
 var show_hint := true
@@ -107,12 +108,20 @@ func _process(delta: float) -> void:
 		_bar.queue_redraw()
 
 
-func show_banner(text: String) -> void:
+## 屏幕中间的大字。hold > 0：停 hold 秒以后淡掉、藏起来（关卡中途的提示用）；
+## hold = 0：一直留着（马上要切场景、重来时用，和以前一样）
+func show_banner(text: String, hold := 0.0) -> void:
 	_banner.text = text
 	_banner.visible = true
 	_banner.modulate.a = 0.0
-	var tw := create_tween().set_ignore_time_scale(true).set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
-	tw.tween_property(_banner, "modulate:a", 1.0, 0.25)
+	if _banner_tw:
+		_banner_tw.kill()
+	_banner_tw = create_tween().set_ignore_time_scale(true).set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	_banner_tw.tween_property(_banner, "modulate:a", 1.0, 0.25)
+	if hold > 0.0:
+		_banner_tw.tween_interval(hold)
+		_banner_tw.tween_property(_banner, "modulate:a", 0.0, 0.5)
+		_banner_tw.tween_callback(_banner.hide)
 
 
 func _update_hint() -> void:

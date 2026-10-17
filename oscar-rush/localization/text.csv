@@ -19,8 +19,8 @@ Need one more player    (lantern key: leave),还差一个人    （马灯键：�
 "%d players ready  -  any player press ATTACK to start
 (lantern key: leave)","%d 人到齐  -  任何一人按「攻击」出发
 （马灯键：退出）"
-KB-L,左键盘
-KB-R,右键盘
+KB-L,左半
+KB-R,右半
 PAD%d,手柄%d
 MASTER VOLUME,总音量
 MUSIC,音乐

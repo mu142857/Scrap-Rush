@@ -6,6 +6,8 @@ extends Node
 
 const LINES := [
 	"（占位台词）这里就是废品星……比想象中还要吵。",
+	{"text": "（占位）马灯亮度可以，出发了。", "skin": "robot"},
+	{"text": "（占位）我去前面看看，你们跟上。", "skin": "dino"},
 	"Placeholder line. Long enough to wrap onto a second line, so we can check how English text breaks inside the box.",
 	{"text": "（占位）名字也可以每句单独换。", "name": "???"},
 	"最后一句。翻过去对话框就会关掉，游戏继续。",

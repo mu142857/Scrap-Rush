@@ -81,7 +81,7 @@ func _ready() -> void:
 			var lab := Label.new()
 			lab.label_settings = Hud.small_text(DIM)
 			lab.text = ["POWER", "RATE", "REACH"][k]
-			lab.position = Vector2(14, 134 + k * 10)
+			lab.position = Vector2(14, _stat_y(k))
 			lab.size = Vector2(50, 10)
 			c.add_child(lab)
 
@@ -179,19 +179,13 @@ func _choose() -> void:
 	tw.tween_property(_cards[_selected], "scale", Vector2(1.18, 1.18), 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	await tw.finished
 	await get_tree().create_timer(0.25).timeout
-	var f := create_tween()
-	f.tween_property(_fade, "color:a", 1.0, 0.4)
-	await f.finished
-	get_tree().change_scene_to_file(LEVEL_SCENE)
+	SceneFade.go(get_tree(), LEVEL_SCENE)
 
 
 func _back() -> void:
 	_busy = true
 	Game.sfx("ui_back", -6.0)
-	var f := create_tween()
-	f.tween_property(_fade, "color:a", 1.0, 0.3)
-	await f.finished
-	get_tree().change_scene_to_file(TITLE_SCENE)
+	SceneFade.go(get_tree(), TITLE_SCENE, 0.4)
 
 
 func _draw_card(c: Control, i: int) -> void:
@@ -219,4 +213,9 @@ func _draw_card(c: Control, i: int) -> void:
 		var v: int = CARDS[i][4 + k]
 		for j in 5:
 			var col := WARM if j < v else Color(0.22, 0.21, 0.23)
-			c.draw_rect(Rect2(64 + j * 11, 137 + k * 10, 9, 4), col)
+			c.draw_rect(Rect2(64 + j * 11, _stat_y(k) + 3.0, 9, 4), col)
+
+
+## 卡片下面 威力 / 射速 / 射程 三行的 y：中文字满 11 像素高，行距 10 会上下贴住，拉到 12、整体上移 6
+func _stat_y(k: int) -> float:
+	return 128.0 + k * 12.0 if Lang.is_zh() else 134.0 + k * 10.0

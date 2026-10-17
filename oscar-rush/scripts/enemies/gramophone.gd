@@ -1,9 +1,10 @@
 class_name Gramophone
 extends EliteBase
 ## 留声机（第二关精英怪，从策划案第九节原设计 B3 留声机来）：大喇叭朝前，转盘上放着唱片，唱臂会动。
-## 红灯在喇叭的喉咙深处。和主角保持一段距离（远了靠近、近了后退），横扫和声波轮着放，都先冒红色"!"：
+## 红灯在喇叭的喉咙深处。和主角保持一段距离（远了靠近、近了后退；26 以内的台阶走得下去、蹦得上去），
+## 横扫和声波轮着放，都先冒红色"!"：
 ## - 唱针横扫：唱臂伸长，唱针贴着地面从脚下一直划到场子那头（撞墙、到坑边或划满 320 停），要跳过去。
-##   唱针头宽 6、高 8，碰到伤 12；伸出去的唱臂不伤人。两种轮着来：
+##   唱针头宽 6、高 8，碰到伤 12；伸出去的唱臂不伤人。上下 26 以内的台阶都跟着走。两种轮着来：
 ##   - 单程：划到头抬起来收回去。
 ##   - 来回：划到头停 0.45 秒（唱头一闪一闪发红），再贴地划回来，要再跳一次。
 ## - 声波：喇叭放出一串往外扩的声波（空心圆弧，只往前半边放，越扩越淡），碰到伤 8、情绪 +5。
@@ -28,6 +29,14 @@ const NEAR := 50.0
 const FAR := 110.0
 const MOVE_TIME := Vector2(2.4, 3.0)
 const ATTACK_RANGE := 240.0
+## 走路时往前看多远、最多蹦上多高的台阶（座位一排 22）、最多往下走多深（落在座位边角上时，
+## 前面可能一下子低两排、44 像素；再深就当是坑）、蹦上台阶的起跳速度（重力 900，蹦 30 像素高）
+const AHEAD := 24.0
+const STEP := 26.0
+const DROP := 60.0
+const HOP_SPEED := 235.0
+## 搭在台阶边角上时往下滑的速度
+const LEDGE_SLIDE := 40.0
 const SWEEP_WARN := 0.8
 ## 横扫最长等多久（来回那种 5 秒内也收回来了）
 const SWEEP_MAX := 6.0
@@ -152,6 +161,7 @@ func _tick(delta: float) -> void:
 			set_frame(int(_time / WALK_FRAME_TIME) % 2)
 			if _state_t >= RECOVER_TIME:
 				_enter(State.MOVE)
+	_slide_off_ledge()
 	move_and_slide()
 
 
@@ -221,9 +231,14 @@ func _move(delta: float) -> void:
 		want = dir
 	elif dx < NEAR:
 		want = -dir                         # 面朝主角往后退
-	var free := want != 0 and _ground_at(want, 24.0) and not _wall_at(want)
-	if free:
+	var path := _path_ahead(want) if want != 0 else -1
+	if path >= 0:
 		velocity.x = want * MOVE_SPEED * speed_mult()
+		# 前面是一级往上的台阶（电影院的座位一排比一排高 22）：蹦上去
+		if path == 1 and is_on_floor():
+			velocity.y = -HOP_SPEED
+			Game.sfx("land", -12.0, 0.7)
+			Game.dust(get_parent(), global_position, 3)
 	else:
 		_brake(delta)
 
@@ -237,16 +252,41 @@ func _face(p: Player) -> void:
 		dir = 1 if p.global_position.x > global_position.x else -1
 
 
-func _ground_at(side: int, dist: float) -> bool:
-	var from := global_position + Vector2(side * dist, -2)
-	var q := PhysicsRayQueryParameters2D.create(from, from + Vector2(0, 8), 1)
-	return not get_world_2d().direct_space_state.intersect_ray(q).is_empty()
+## 身子 42 宽，座位一排只有 40 宽：会搭在一排座位的边角上、大半个身子悬在下一排上面，看着像卡在椅子上
+## （作者 10-17 在乐池里看到的）。脚底正中间下面没地、只有一边踩着时，往没踩着的那边滑下去；
+## 正在往踩着的那边走（刚蹦上一级）就不管。
+func _slide_off_ledge() -> void:
+	if not is_on_floor():
+		return
+	var space := get_world_2d().direct_space_state
+	var y := global_position.y
+	var mid := space.intersect_ray(PhysicsRayQueryParameters2D.create(Vector2(global_position.x, y - 2.0), Vector2(global_position.x, y + 3.0), 1))
+	if not mid.is_empty():
+		return
+	for side in [-1, 1]:
+		var x: float = global_position.x + side * (body_rect.size.x / 2.0 - 0.5)
+		var under := space.intersect_ray(PhysicsRayQueryParameters2D.create(Vector2(x, y - 2.0), Vector2(x, y + 3.0), 1))
+		if not under.is_empty():
+			# 正往踩着的那边走（刚蹦上台阶）就让它走上去，不然一推一拉卡在边上
+			if velocity.x * side <= 0.0:
+				velocity.x = -side * LEDGE_SLIDE
+			return
 
 
-func _wall_at(side: int) -> bool:
-	var from := global_position + Vector2(0, -8)
-	var q := PhysicsRayQueryParameters2D.create(from, from + Vector2(side * 26.0, 0), 1)
-	return not get_world_2d().direct_space_state.intersect_ray(q).is_empty()
+## 往 side 那边走一步行不行：0 平地或往下 DROP 以内，1 往上 STEP 以内的台阶（要蹦一下），-1 墙或坑。
+## 第二关乐池（E4）整片都是 20~22 高的台阶（两排座位、乐池、舞台），只能走平地的话落在哪排座位上就卡在哪。
+func _path_ahead(side: int) -> int:
+	var space := get_world_2d().direct_space_state
+	var x0 := global_position.x
+	var x1 := x0 + side * AHEAD
+	var y := global_position.y
+	var low := space.intersect_ray(PhysicsRayQueryParameters2D.create(Vector2(x0, y - 4.0), Vector2(x1, y - 4.0), 1))
+	if low.is_empty():
+		var down := space.intersect_ray(PhysicsRayQueryParameters2D.create(Vector2(x1, y - 2.0), Vector2(x1, y + DROP), 1))
+		return 0 if not down.is_empty() else -1
+	var high := space.intersect_ray(PhysicsRayQueryParameters2D.create(
+			Vector2(x0, y - STEP - 2.0), Vector2(x1, y - STEP - 2.0), 1))
+	return 1 if high.is_empty() else -1
 
 
 ## 帧里的像素（原图朝左）→ 相对脚底中间的位置，朝右时镜像
@@ -374,7 +414,7 @@ func _update_visual() -> void:
 
 
 ## 伸长的唱臂 + 贴地划过去的唱针。原点 = 唱针尖（地面上）。
-## 往前划：跟着地面走（往上、往下 12 像素以内的台阶跟过去），撞墙、到坑边、划满 REACH 就停。
+## 往前划：跟着地面走（往上、往下 STEP 以内的台阶跟过去），撞墙、到坑边、划满 REACH 就停。
 ## returns 为假：停下就抬起来收回去。为真：停 PAUSE 秒（唱头闪红），再贴地划回来，划回到起点再收。
 ## 只有唱针头伤人；抬起来收回去的时候不伤人。
 class Needle:
@@ -382,6 +422,7 @@ class Needle:
 
 	const SPEED := 150.0
 	const BACK_SPEED := 130.0
+	const STEP := 26.0
 	const RETRACT_SPEED := 420.0
 	const REACH := 320.0
 	const PAUSE := 0.45
@@ -452,9 +493,10 @@ class Needle:
 		var y := global_position.y
 		var nx := x + _move_dir * step
 		var space := elite.get_world_2d().direct_space_state
-		# 往上、往下 12 像素以内的台阶都跟过去（来回划时，去程走下去的台阶回程要走得上来）
-		var wall := PhysicsRayQueryParameters2D.create(Vector2(x, y - 13.0), Vector2(nx + _move_dir * 3.0, y - 13.0), 1)
-		var fy := _floor_y(nx, y - 13.0, 25.0)
+		# 往上、往下 STEP 以内的台阶都跟过去（来回划时，去程走下去的台阶回程要走得上来；
+		# 乐池的座位一排 22 高，原来只跟 12 的话唱针一出去就停了）
+		var wall := PhysicsRayQueryParameters2D.create(Vector2(x, y - STEP - 1.0), Vector2(nx + _move_dir * 3.0, y - STEP - 1.0), 1)
+		var fy := _floor_y(nx, y - STEP - 1.0, STEP * 2.0 + 1.0)
 		var home_reached := _returning and (nx - _start_x) * dir <= 0.0
 		if not space.intersect_ray(wall).is_empty() or is_nan(fy) or _travel >= REACH or home_reached:
 			Game.sparks(get_parent(), global_position + Vector2(0, -2), GROOVE, 6, 60.0, Vector2.UP)

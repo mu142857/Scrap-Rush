@@ -165,8 +165,12 @@ func _add_menu_keys() -> void:
 		m.device = -1
 		if not InputMap.action_has_event(pair[0], m):
 			InputMap.action_add_event(pair[0], m)
-	var back := InputEventJoypadButton.new()
-	back.button_index = JOY_BUTTON_B
-	back.device = -1
-	if not InputMap.action_has_event("ui_cancel", back):
-		InputMap.action_add_event("ui_cancel", back)
+	# 手柄：A 确认、B 返回，十字键上下左右（项目的 ui_* 默认里没有手柄按钮）
+	for pair in [["ui_accept", JOY_BUTTON_A], ["ui_cancel", JOY_BUTTON_B],
+			["ui_up", JOY_BUTTON_DPAD_UP], ["ui_down", JOY_BUTTON_DPAD_DOWN],
+			["ui_left", JOY_BUTTON_DPAD_LEFT], ["ui_right", JOY_BUTTON_DPAD_RIGHT]]:
+		var b := InputEventJoypadButton.new()
+		b.button_index = pair[1]
+		b.device = -1
+		if not InputMap.action_has_event(pair[0], b):
+			InputMap.action_add_event(pair[0], b)

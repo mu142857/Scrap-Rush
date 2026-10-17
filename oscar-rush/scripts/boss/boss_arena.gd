@@ -362,10 +362,9 @@ func _leave() -> void:
 	await get_tree().create_timer(2.5).timeout
 	if next_shop != "":
 		ShopRoom.next_scene = next_shop
-		get_tree().change_scene_to_file("res://scenes/shop.tscn")
+		SceneFade.go(get_tree(), "res://scenes/shop.tscn")
 	else:
-		get_tree().change_scene_to_file(next_scene)
-	Game.flash(Color.BLACK, 1.0, 0.6)
+		SceneFade.go(get_tree(), next_scene)
 
 
 func _on_crystal_broken() -> void:

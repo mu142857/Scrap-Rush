@@ -90,7 +90,12 @@ func _play(from: float, to: float) -> void:
 	var dur := FRAMES * FRAME_TIME
 	var t := 0.0
 	while t < dur:
+		# 桥伸到一半关卡被重来（马灯碎了、按 R）：节点已经不在树上了，别再等
+		if not is_inside_tree():
+			return
 		await get_tree().physics_frame
+		if not is_inside_tree():
+			return
 		t += get_physics_process_delta_time()
 		var k := clampf(t / dur, 0.0, 1.0)
 		var last := int(roundf(frame))

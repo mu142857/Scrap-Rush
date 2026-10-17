@@ -22,6 +22,9 @@ const SHOTS := {
 	"booth": [Vector2(2960, 300), 5, 0.0, 60],
 	"hall": [Vector2(3290, 388), 5, 0.0, 60],
 	"E4": [Vector2(3580, 520), 5, 0.0, 90],
+	# 下面两个不截单张，只跑着（配 --write-movie 录连续帧），每 30 帧打一行横幅状态
+	"banner": [Vector2(1030, 300), -1, 0.0, 99999],
+	"exit": [Vector2(3618, 500), 5, 0.0, 99999],
 }
 var _frame := 0
 var _i := 0
@@ -51,6 +54,8 @@ func _ready() -> void:
 
 
 var _fight_start := {}
+var _wave_seen := {}
+var _done := {}
 
 
 func _physics_process(_delta: float) -> void:
@@ -64,8 +69,21 @@ func _physics_process(_delta: float) -> void:
 			if not _fight_start.has(n):
 				_fight_start[n] = _frame
 				print("[l2tour] f%d fight start %d..%d" % [_frame, n.left, n.right])
-			elif _frame - _fight_start[n] > 150:
+			elif _frame - _fight_start[n] > 2400:
+				print("[l2tour] f%d STUCK %d..%d wave=%d alive=%d queue=%d" % [_frame, n.left, n.right, n._wave, n._alive.size(), n._queue.size()])
 				_run([0, "clear", null])
+			elif (_frame - _fight_start[n]) % 90 == 0:
+				# 真打：把场上活着的怪一只只打死，让每一波（包括精英）都真的生出来、死掉
+				var killed := []
+				for e in n._alive:
+					if is_instance_valid(e) and not e.get("dead") and e.has_method("hurt"):
+						killed.append(e.get_script().resource_path.get_file().get_basename())
+						e.hurt(99999.0, Vector2.UP, true)
+				if not killed.is_empty():
+					print("[l2tour] f%d %d..%d wave %d killed %s" % [_frame, n.left, n.right, n._wave, killed])
+		elif n is Encounter and n.cleared and _fight_start.has(n) and not _done.has(n):
+			_done[n] = true
+			print("[l2tour] f%d CLEARED for real %d..%d after %d frames" % [_frame, n.left, n.right, _frame - _fight_start[n]])
 	_autopilot()
 	while _i < _steps.size() and _frame >= _steps[_i][0]:
 		_run(_steps[_i])
@@ -108,6 +126,15 @@ func _single() -> void:
 	if _frame == 2 and shot == "tube":
 		var encs: Array = lvl.get("_encounters")
 		encs[0].cleared = true
+	if _frame == 2 and shot == "exit":
+		var encs: Array = lvl.get("_encounters")
+		encs[3].cleared = true
+	if _frame == 20 and shot == "exit":
+		Input.action_press("solo_right")
+	if _frame % 30 == 0 and shot in ["banner", "exit"] and is_instance_valid(lvl) and lvl.is_inside_tree():
+		var hud: Node = lvl.get("hud")
+		var b: Label = hud.get("_banner")
+		print("[l2shot] f%d banner visible=%s alpha=%.2f text=%s" % [_frame, b.visible, b.modulate.a, b.text])
 	if _frame == 3:
 		_run([0, "teleport", s[0]])
 		if s[1] >= 0:

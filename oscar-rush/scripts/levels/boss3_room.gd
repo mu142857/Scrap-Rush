@@ -264,8 +264,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if _can_quit and event.is_pressed() and not event.is_echo():
 		_can_quit = false
 		Run.reset_run()
-		Game.flash(Color.BLACK, 1.0, 0.6)
-		get_tree().change_scene_to_file("res://scenes/title.tscn")
+		SceneFade.go(get_tree(), "res://scenes/title.tscn", 1.2)
 		return
 	# 结局里不许按 R 重打
 	if _state < 3:

@@ -413,13 +413,9 @@ func _leave() -> void:
 	_leaving = true
 	hud.show_banner("SCREENS CLEARED")
 	await get_tree().create_timer(1.6, true, false, true).timeout
-	Game.flash(Color.BLACK, 1.0, 0.8)
-	await get_tree().create_timer(0.4, true, false, true).timeout
-	Engine.time_scale = 1.0
-	get_tree().paused = false
 	# 最后一次商店就在老电视门口，出去就是最终 Boss（boss3），打完进结局
 	ShopRoom.next_scene = "res://scenes/boss3.tscn"
-	get_tree().change_scene_to_file("res://scenes/shop.tscn")
+	SceneFade.go(get_tree(), "res://scenes/shop.tscn")
 
 
 func _retry() -> void:

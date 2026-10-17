@@ -9,12 +9,19 @@ extends CanvasLayer
 ##   add_child(box)
 ##   box.play(["第一句", {"text": "第二句", "name": "RED"}])
 ##   await box.finished
-## 每句可以是字符串，也可以是 {text, name, portrait}；没写的沿用 speaker / portrait。
+## 每句可以是字符串，也可以是 {text, name, portrait, skin}；没写的沿用 speaker / portrait。
+## skin 是船员名（Run.SKINS），自动换成那个人的立绘，名字默认是 skin 的大写。
 ## 一句最多三行：中文约 25 字一行，英文约 45 个字母一行，再长就拆成两句。
 
 signal finished
 
 const RED_PORTRAIT := preload("res://art/chars/red_portrait.png")
+## 船员立绘，键和 Run.SKINS 一样；还没有立绘的（bird）用 portrait
+const PORTRAITS := {
+	"red": RED_PORTRAIT,
+	"robot": preload("res://art/chars/robot_portrait.png"),
+	"dino": preload("res://art/chars/dino_portrait.png"),
+}
 const CHARS_PER_SEC := 32.0
 ## 刚打开时先不收按键，免得触发对话的那一下跳键直接把第一句翻掉
 const INPUT_DELAY := 0.2
@@ -112,8 +119,9 @@ func _next() -> void:
 		return
 	var line = _lines[_index]
 	var d: Dictionary = line if line is Dictionary else {"text": str(line)}
-	_name.text = d.get("name", speaker)
-	_face.texture = d.get("portrait", portrait)
+	var skin: String = d.get("skin", "")
+	_name.text = d.get("name", skin.to_upper() if skin != "" else speaker)
+	_face.texture = d.get("portrait", PORTRAITS.get(skin, portrait))
 	_text.text = d.get("text", "")
 	_shown = 0.0
 	_text.visible_characters = 0

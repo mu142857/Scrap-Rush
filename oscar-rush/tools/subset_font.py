@@ -1,4 +1,4 @@
-"""把像素字体裁成只含用到的字，网页版小一些（原字体 1.3M，裁完一百多 K）。
+"""把像素字体裁小一点，网页版少下载一些（原字体 1.3M）。
 
     python3 tools/subset_font.py
 
@@ -7,6 +7,7 @@
 
 留下的字：
 - 拉丁字母、常用标点、箭头、方块等符号整段保留（英文怎么改都不会缺字）；
+- GB2312 一级常用汉字 3755 个整批保留（直接写在代码里的中文对白也基本不会缺字）；
 - localization/text.csv 里所有译文用到的字；
 - scripts/ 里字符串（引号里）出现的非 ASCII 字（比如 —、“”）。
 改了 text.csv 或加了中文字符串以后重跑一次；跑完会检查一遍，缺字会报出来。
@@ -36,10 +37,24 @@ RANGES = [
 ]
 
 
+def gb2312_level1() -> set[int]:
+    """GB2312 一级常用汉字 3755 个（区位 16~55 区）"""
+    out: set[int] = set()
+    for hi in range(0xB0, 0xD8):
+        for lo in range(0xA1, 0xFF):
+            try:
+                out.add(ord(bytes([hi, lo]).decode("gb2312")))
+            except UnicodeDecodeError:
+                pass
+    return out
+
+
 def wanted() -> set[int]:
     chars: set[int] = set()
     for a, b in RANGES:
         chars.update(range(a, b + 1))
+    # 常用字整批留着：别的地方直接写中文对白（不走 text.csv）也不会变方框
+    chars.update(gb2312_level1())
     with open(CSV, encoding="utf-8", newline="") as f:
         for row in csv.reader(f):
             for cell in row:

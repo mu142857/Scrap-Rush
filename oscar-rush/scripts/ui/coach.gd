@@ -31,6 +31,10 @@ var _start_x := 0.0
 var _jumped := false
 var _poll := 0.0
 var _last_hp := -1.0
+## 有精英正在登场（名字卡在屏幕上方）
+var _card_on := false
+## 场上有活着的精英（屏幕底部有它的血条）
+var _elite_on := false
 
 
 func _ready() -> void:
@@ -123,10 +127,12 @@ func _process(delta: float) -> void:
 			_start_x = p.global_position.x if p else 0.0
 			_jumped = false
 	if _tip != "":
-		_tip_t += delta
+		# 精英登场的名字卡也在屏幕上方正中：名字卡在的时候提示先藏起来、不计时，免得两段字叠在一起
+		if not _card_on:
+			_tip_t += delta
 		if _finished():
 			_done = true
-		var target := 0.0 if _done else 1.0
+		var target := 0.0 if (_done or _card_on) else 1.0
 		_alpha = move_toward(_alpha, target, delta * (2.5 if _done else 5.0))
 		if _done and _alpha <= 0.0:
 			_tip = ""
@@ -139,7 +145,11 @@ func _process(delta: float) -> void:
 		if (p as Node2D).get_global_transform_with_canvas().origin.y > BOX.position.y - 8.0:
 			low = true
 			break
-	_box.position.y = move_toward(_box.position.y, TOP_Y if low else BOX.position.y, delta * 600.0)
+	# 精英战时屏幕底部是精英的血条和名字，提示框也挪上去
+	var y := TOP_Y if (low or _elite_on) else BOX.position.y
+	if y == TOP_Y:
+		y = _below_signs(y)
+	_box.position.y = move_toward(_box.position.y, y, delta * 600.0)
 	_box.queue_redraw()
 	if _toast_t > 0.0:
 		_toast_t -= delta
@@ -171,6 +181,13 @@ func _finished() -> bool:
 
 ## 每 0.15 秒看一眼：有没有怪靠近、马灯血量
 func _watch() -> void:
+	_card_on = false
+	_elite_on = false
+	for e in get_tree().get_nodes_in_group("enemy"):
+		if e.has_method("in_intro") and not e.get("dead"):
+			_elite_on = true
+			if e.call("in_intro"):
+				_card_on = true
 	if not seen.has("shoot"):
 		var p := _lead()
 		if p:
@@ -197,6 +214,18 @@ func _on_checkpoint() -> void:
 
 func _on_resumed() -> void:
 	_want("resumed")
+
+
+## 提示框放在屏幕上方时，别压住关卡里的路线提示牌（字在箭头尖上方约 30 像素）：撞上了就挪到箭头下面
+func _below_signs(y: float) -> float:
+	for n in get_tree().get_nodes_in_group("hint_sign"):
+		var sign := n as Node2D
+		if sign == null or float(sign.get("_alpha")) < 0.05:
+			continue
+		var at := sign.get_global_transform_with_canvas().origin
+		if absf(at.x - 240.0) < 220.0 and at.y - 34.0 < y + BOX.size.y and at.y + 4.0 > y:
+			y = at.y + 10.0
+	return minf(y, BOX.position.y)
 
 
 func _lead() -> Player:

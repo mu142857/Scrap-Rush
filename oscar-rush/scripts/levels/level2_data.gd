@@ -4,8 +4,8 @@ extends RefCounted
 
 const BOUNDS := Rect2(0, 0, 3700, 600)
 const SPAWN := Vector2(70, 540)
-## 出口：舞台上的小门，门前一块
-const EXIT := Rect2(3652, 470, 24, 34)
+## 出口：舞台上的小门，从门左边一直延到右墙（乐池那场打的时候人常挤在墙角，打完站着就能走）
+const EXIT := Rect2(3652, 470, 32, 34)
 const A_X1 := 1000
 const B_X0 := 2840
 const BRIDGE_Y := 300

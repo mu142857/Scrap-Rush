@@ -51,13 +51,13 @@ const CHARGE_TIME_MIN := 0.35
 const SHOT_COOLDOWN := 0.12
 ## 三把武器（开局选，见 weapon_select.gd；商店也能换）。单体每秒伤害都在 100 左右：
 ##   flash  闪光灯：按住蓄力 0.6 秒，蓄满 100 伤害、更快更大、穿透一排；没蓄满也有 35~80 伤害、只微微下坠
-##   rivet  铆钉枪：按住一直连发，每 0.11 秒一颗、每颗 11 伤害，散布 ±8°（打大 Boss 打不满），射程短，有后坐
-##   hammer 蒸汽锤：按一下，0.12 秒后以自己为中心炸一圈（半径 48，贴身 200、边缘 80，吹散 Boss 子弹），冷却 1.6 秒
+##   rivet  铆钉枪：按住一直连发，每 0.1 秒一颗、每颗 13 伤害，散布 ±9°（散开能顺带打到旁边的怪），射程短、尽头逐渐消失，有后坐
+##   hammer 蒸汽锤：按一下，0.12 秒后以自己为中心炸一圈（半径 48，圈里统一 170 伤害，吹散 Boss 子弹），冷却 1.6 秒
 ## （2026-10-17 作者试玩后改：闪光灯太弱、蓄力表现太夸张、铆钉枪要更散更痛、蒸汽锤要近高远低）
 ## 快充升级对三把都有效：蓄力更快 / 射得更快 / 冷却更短
-const RIVET_INTERVAL := 0.11
+const RIVET_INTERVAL := 0.1
 const RIVET_UPGRADE := 0.01
-const RIVET_SPREAD := 8.0
+const RIVET_SPREAD := 9.0
 const RIVET_MOVE_MULT := 0.8
 const RIVET_RECOIL := 10.0
 const HAMMER_COOLDOWN := 1.6
@@ -565,8 +565,9 @@ func _blast() -> void:
 	var b := SteamBlast.new()
 	b.color = strip_color
 	b.position = global_position + Vector2(0, -10)
-	get_parent().add_child(b)
+	# 蒸汽锤一进场景就结算伤害，所以变异（怒火的倍率等）要在 add_child 之前算
 	Mutations.on_attack(self, b)
+	get_parent().add_child(b)
 	_hammer_cd = hammer_cooldown()
 	_release_flash = 0.6
 	_ring = 0.35
@@ -741,9 +742,9 @@ func _draw_weapon() -> void:
 					continue
 				var a := -PI / 2.0 + TAU * i / CHARGE_DOTS
 				var p := c + Vector2(cos(a), sin(a)) * CHARGE_RING_R
-				var col := Color(strip_color, 0.75)
+				var col := strip_color.lerp(Color.WHITE, 0.3)
 				if charge_full:
-					col = Color(1, 1, 1, 0.65 + 0.3 * sin(_anim_time * 8.0))
+					col = Color(1, 1, 1, 0.85 + 0.15 * sin(_anim_time * 8.0))
 				_px(p, col)
 		"rivet":
 			if _muzzle > 0.0:

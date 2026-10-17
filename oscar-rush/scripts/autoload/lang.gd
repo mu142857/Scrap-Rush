@@ -9,7 +9,7 @@ extends RefCounted
 ##   先 tr("英文原文") 再用（静态函数里用 TranslationServer.translate）；
 ## - 改了英文原文，text.csv 里那一行的 key 也要跟着改，不然中文版那句就变回英文。
 ## 加了新字：往 text.csv 加一行，再跑 python3 tools/subset_font.py 重新生成字体子集
-## （fonts/PixelFont.ttf 只留用到的汉字，完整的原字体在 tools/fonts/）。
+## （fonts/PixelFont.ttf 留 GB2312 一级常用字 + 用到的字，完整的原字体在 tools/fonts/）。
 ##
 ## Settings.language：""= 跟随系统（中文系统用中文，其他用英文），"en"、"zh" = 玩家选过。
 ## 字体：天王星像素 11Px（文泉驿点阵宋体 11px 的矢量版，GPLv2 + 字体嵌入例外），英文和中文同一套，
@@ -46,3 +46,9 @@ static func current() -> String:
 
 static func is_zh() -> bool:
 	return current() == "zh"
+
+
+## 22 号大字菜单的行距：英文大写字只有十几像素高，中文一个字满 22 像素，
+## 英文原来的行距（19、20）会让上下两行的字贴在一起，中文时拉到 25
+static func menu_step(en_step: float) -> float:
+	return maxf(en_step, 25.0) if is_zh() else en_step

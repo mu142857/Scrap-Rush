@@ -86,7 +86,7 @@ func open() -> void:
 		_options.append("RESTART")
 	_options += ["SETTINGS", "TITLE"]
 	for i in _options.size():
-		_labels.append(_label("", TOP + i * STEP, 22, DIM, 3))
+		_labels.append(_label("", TOP + i * Lang.menu_step(STEP), 22, DIM, 3))
 	_selected = 0
 	_confirming = ""
 	_refresh()
@@ -115,6 +115,7 @@ func _refresh() -> void:
 		if _confirming == _options[i]:
 			t = tr("SURE? PRESS AGAIN")
 		_labels[i].text = ("> %s <" % t) if on else t
+		_labels[i].position.y = TOP + i * Lang.menu_step(STEP)
 		_labels[i].label_settings.font_color = (WARM if _confirming == _options[i] else LIT) if on else DIM
 	var h := ""
 	match _options[_selected]:
@@ -200,7 +201,7 @@ func _open_if_still_possible() -> void:
 
 func _option_at() -> int:
 	var p := _root.get_global_mouse_position()
-	var i := floori((p.y - TOP + 2.0) / STEP)
+	var i := floori((p.y - TOP + 2.0) / Lang.menu_step(STEP))
 	return i if i >= 0 and i < _options.size() and absf(p.x - 240.0) < 100.0 else -1
 
 

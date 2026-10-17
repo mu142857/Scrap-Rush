@@ -31,23 +31,30 @@ const FILM_TEX := preload("res://art/levels/level2_film.png")
 ## 小怪：电线蛇 wire_snake、保险丝甲虫 fuse、手摇电话 phone、拾荒者 scavenger、幻灯机 slide、胶片盘 reel；
 ## 精英：总机台 switchboard（交换局）、留声机 gramophone（继电器机房、乐池）、放映机 projector（天桥换卷）。
 ## 留一点第一关的扑灯蛾，配合放灯的玩法。
+## 10-17 作者："第二关的怪物和第一关太像了，多加点披着袍子的人形怪"：加了三种披袍人形小怪（RobedEncounter.ROBED），
+## 场面以人形为主、机器为辅：交换局主要是接线员 hooded（近战甩电话线），后面掺引座员 usher（远程手电）；
+## 放映厅和天桥主要是观众 audience（成群坐着，走近就一起站起来扑）和引座员。
+## 10-17 作者："第二关是不是精英怪又重复"：三个精英各只出一次——总机台在 E1、放映机在第二场换卷、留声机在最后的乐池。
+## 另外三场（E2、E3、第一场换卷）不放精英，最后一波换成加强的人形怪小队，每场的花样不一样。
 const WAVES := [
-	# E1 接线员大厅：先认识电线蛇、保险丝甲虫、手摇电话
-	[["wire_snake", "fuse"], ["phone", "fuse", "fuse"], ["switchboard", "wire_snake"]],
-	# E2 继电器机房：拾荒者第一次出来偷灯，最后留声机
-	[["scavenger", "fuse"], ["wire_snake", "wire_snake", "phone"], ["slide", "fuse", "moth"], ["gramophone", "fuse"]],
-	# E3 电话簿仓库：总机台再来一次，带幻灯机
-	[["fuse", "fuse", "scavenger"], ["phone", "slide", "wire_snake"], ["switchboard", "slide"]],
-	# E4 放映厅乐池：最后一场，留声机
-	[["slide", "slide", "moth"], ["reel", "reel", "scavenger"], ["phone", "fuse", "fuse", "slide"], ["gramophone", "reel"]],
+	# E1 接线员大厅：先认识接线员，配电线蛇、保险丝甲虫；最后总机台
+	[["hooded", "fuse"], ["hooded", "hooded", "wire_snake"], ["switchboard", "hooded"]],
+	# E2 继电器机房：拾荒者第一次出来偷灯、手摇电话叫人；最后一波接线员成群贴上来，引座员在后面照
+	[["hooded", "scavenger"], ["hooded", "wire_snake", "phone"], ["usher", "hooded", "fuse"],
+		["hooded", "hooded", "hooded", "usher", "wire_snake"]],
+	# E3 电话簿仓库：远近夹击——两个引座员站远处照，接线员和拾荒者贴身；最后两头各一个引座员
+	[["hooded", "hooded", "fuse"], ["usher", "usher", "wire_snake"], ["scavenger", "hooded", "phone", "fuse"],
+		["usher", "usher", "hooded", "hooded", "scavenger"]],
+	# E4 放映厅乐池：一排观众坐着，引座员打手电；最后留声机
+	[["audience", "audience", "audience"], ["usher", "usher", "reel"], ["audience", "audience", "audience", "slide"], ["gramophone", "usher"]],
 ]
-## 天桥上两个换卷点的精英怪战：都是放映机，第二场小怪更多
+## 天桥上两个换卷点：第一场不放精英，是一大群观众扑上来；第二场才是放映机
 const REEL_WAVES := [
-	[["reel", "reel"], ["slide", "reel", "moth"], ["projector"]],
-	[["reel", "reel", "slide"], ["scavenger", "reel", "slide"], ["projector", "reel"]],
+	[["audience", "audience", "reel"], ["usher", "reel", "audience"], ["audience", "audience", "audience", "audience", "usher"]],
+	[["audience", "audience", "audience"], ["usher", "usher", "reel"], ["projector", "audience"]],
 ]
-## 天桥上一直从画框里走出来的小怪：胶片天桥上主要是胶片盘
-const WANDERERS := ["reel", "reel", "moth", "slide", "scavenger", "fuse"]
+## 天桥上一直从画框里走出来的小怪：观众和胶片盘为主
+const WANDERERS := ["audience", "reel", "usher", "audience", "reel", "moth"]
 const WANDER_GAP := 2.4
 const WANDER_MAX := 4
 
@@ -256,7 +263,8 @@ func _physics_process(delta: float) -> void:
 	if players.is_empty():
 		return
 	for p in players:
-		if D.EXIT.has_point(p.global_position):
+		# 出口在乐池那场（最后一场）的场子里：打完才能走
+		if D.EXIT.has_point(p.global_position) and _encounters.back().cleared:
 			_leave()
 			return
 		if p.global_position.y > D.BOUNDS.end.y + 24.0:
@@ -393,7 +401,7 @@ func _begin_bridge() -> void:
 	_cam.set_wide(true)
 	Game.sfx("rivets", -6.0, 0.6)
 	Game.add_shake(2.0)
-	hud.show_banner("THE FILM IS ROLLING")
+	hud.show_banner("THE FILM IS ROLLING", 1.6)
 
 
 func _end_bridge() -> void:
@@ -412,7 +420,7 @@ func _end_bridge() -> void:
 func _start_reel(i: int) -> void:
 	_state = REEL
 	var v := _cam.view_rect()
-	var enc := Encounter.new()
+	var enc := RobedEncounter.new()
 	enc.left = v.position.x + BURN_W + 6.0
 	enc.right = v.end.x - 10.0
 	enc.ceil_y = D.FILM_TOP + 14.0
@@ -440,7 +448,7 @@ func _wander(delta: float) -> void:
 	var v := _cam.view_rect()
 	var x := v.end.x - randf_range(40.0, 150.0)
 	var kind: String = WANDERERS[randi() % WANDERERS.size()]
-	var path: String = Encounter.TYPES[kind]
+	var path: String = RobedEncounter.ROBED.get(kind, Encounter.TYPES.get(kind, ""))
 	var e: Node2D = (load(path) as GDScript).new()
 	e.set("respawn_time", 0.0)
 	e.position = Vector2(x, D.FILM_TOP + 22.0)
@@ -521,15 +529,27 @@ func _on_crystal_broken() -> void:
 	_retry()
 
 
+## 出口：主角自己走进舞台小门（门里透出光），横幅出来，画面慢慢淡黑，切到 Boss2 房间再淡开。
+## 黑幕挂在根节点上（SceneFade），切场景时不断；Boss2 那边主角从门口走进来、落闸、打名字卡，接得上。
 func _leave() -> void:
 	_leaving = true
-	hud.show_banner("PICTURE HOUSE CLEARED")
-	Game.flash(Color.BLACK, 1.0, 0.6)
-	await get_tree().create_timer(0.6, true, false, true).timeout
-	Engine.time_scale = 1.0
-	get_tree().paused = false
+	var door := Vector2(D.EXIT.get_center().x, D.EXIT.end.y - 4.0)
+	for p in _players():
+		p.velocity = Vector2.ZERO
+		p.process_mode = Node.PROCESS_MODE_DISABLED
+		var tw := create_tween()
+		tw.tween_property(p, "global_position:x", door.x, 0.35)
+		tw.tween_property(p, "modulate:a", 0.0, 0.3)
+	if is_instance_valid(_crystal):
+		var tc := create_tween()
+		tc.tween_interval(0.35)
+		tc.tween_property(_crystal, "modulate:a", 0.0, 0.3)
+	Game.sfx("scrape", -10.0, 0.6)
+	hud.show_banner("PICTURE HOUSE CLEARED", 1.2)
+	await get_tree().create_timer(0.55, false).timeout
+	Game.sfx("whistle", -8.0, 0.55)
 	# 先打总机（boss2），打完它才进商店、去第三关（boss2_room.gd 的 next_shop = NEXT_SCENE）
-	get_tree().change_scene_to_file("res://scenes/boss2.tscn")
+	SceneFade.go(get_tree(), "res://scenes/boss2.tscn", 0.9, 0.2, 0.8)
 
 
 func _retry() -> void:
@@ -604,7 +624,23 @@ class Capsule extends Node2D:
 
 
 ## 交换台的遭遇战：每一波来之前，场子旁边墙上的电话先响铃（多给 0.6 秒反应）
-class PhoneEncounter extends Encounter:
+## 认得第二关披袍人形小怪的遭遇战（encounter.gd 的种类表里没有它们，这里补上）
+class RobedEncounter extends Encounter:
+	const ROBED := {
+		"hooded": "res://scripts/enemies/hooded_operator.gd",
+		"usher": "res://scripts/enemies/usher.gd",
+		"audience": "res://scripts/enemies/audience.gd",
+	}
+
+	func _make(kind: String) -> Node2D:
+		if ROBED.has(kind):
+			var e: Node2D = (load(ROBED[kind]) as GDScript).new()
+			e.set("respawn_time", 0.0)
+			return e
+		return super._make(kind)
+
+
+class PhoneEncounter extends RobedEncounter:
 	var phone := Vector2.ZERO
 
 	func _spawn_wave(i: int) -> void:

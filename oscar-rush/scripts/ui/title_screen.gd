@@ -163,7 +163,7 @@ func _build_ui() -> void:
 	_title = _label("SCRAP RUSH", 30.0, 33, WARM, 4)
 	_sub = _label("LUDUM DARE 60  /  OLD TECH", 72.0, 11, DIM, 2)
 	for i in _options.size():
-		_option_labels.append(_label(_options[i], OPTION_TOP + i * OPTION_STEP, 22, DIM, 3))
+		_option_labels.append(_label(_options[i], OPTION_TOP + i * Lang.menu_step(OPTION_STEP), 22, DIM, 3))
 	_hint = _label("", 246.0, 11, DIM, 2)
 	for l in [_title, _sub, _hint] + _option_labels:
 		l.modulate.a = 0.0
@@ -214,6 +214,7 @@ func _refresh() -> void:
 		var l := _option_labels[i]
 		var on := i == _selected
 		l.text = ("> %s <" % tr(_options[i])) if on else tr(_options[i])
+		l.position.y = OPTION_TOP + i * Lang.menu_step(OPTION_STEP)
 		l.label_settings.font_color = LIT if on else DIM
 		l.pivot_offset = l.size * 0.5
 		if on:
@@ -290,7 +291,7 @@ func _unhandled_input(event: InputEvent) -> void:
 ## 鼠标指着第几项（480×270 的坐标），没指着返回 -1
 func _option_at() -> int:
 	var pos := get_viewport().get_mouse_position()
-	var i := floori((pos.y - OPTION_TOP + 2.0) / OPTION_STEP)
+	var i := floori((pos.y - OPTION_TOP + 2.0) / Lang.menu_step(OPTION_STEP))
 	return i if i >= 0 and i < _options.size() and absf(pos.x - 240.0) < 90.0 else -1
 
 
