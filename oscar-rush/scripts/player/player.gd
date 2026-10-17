@@ -32,9 +32,13 @@ const COYOTE_TIME := 0.10
 ## 站在单向平台上按"下"（S）就从平台上穿下去；这么久之内不和那块平台碰撞
 const DROP_TIME := 0.25
 const JUMP_BUFFER_TIME := 0.10
+## 撞头修正（夜间打磨）：往上跳时头只蹭到平台角这么几像素，就把人往旁边挪一下让他过去，不被顶下来
+const CORNER_NUDGE := 4
 # —— 火箭靴 ——
 const JET_MAX_UP := 120.0
 const JET_ACCEL := 1500.0
+## 下落中开喷：先用更大的推力止跌，不然从快速下落里要 0.35 秒才停得住，手感发飘
+const JET_BRAKE_MULT := 1.8
 ## 一直按着跳跃键时，上升速度慢到这个值（快到顶点）就自动接上喷气
 const JET_ARM_SPEED := -40.0
 const FUEL_TIME := 1.0
@@ -289,6 +293,7 @@ func _physics_process(delta: float) -> void:
 	_crystal_input()
 
 	var fall_speed := velocity.y
+	_corner_nudge(delta)
 	move_and_slide()
 	# 外力（Boss 吸气之类）按位移直接挪，不进 velocity，免得被走路的加减速抵消
 	if _push != Vector2.ZERO:
@@ -299,6 +304,9 @@ func _physics_process(delta: float) -> void:
 		Game.dust(get_parent(), global_position, 3 + int(clampf((fall_speed - 140.0) / 60.0, 0.0, 4.0)))
 		if fall_speed > 330.0:
 			Game.add_shake(2.0)
+		# 落地压扁：落得越快压得越扁（蓄力时的压扁优先）
+		if _squash <= 0.0:
+			_squash = clampf(0.4 + (fall_speed - 140.0) / 400.0, 0.4, 0.75)
 
 	_animate(delta)
 	queue_redraw()
@@ -334,6 +342,24 @@ func _move_x(axis: float, delta: float, on_floor: bool) -> void:
 	# 贴墙站着、贴墙跳、贴墙往下掉时都会一顿一顿地抖
 	if velocity.x != 0.0 and _against_wall(signf(velocity.x)):
 		velocity.x = 0.0
+
+
+## 往上跳时，头顶只差几像素就能擦过平台的角：把人横着挪过去，不让他撞头掉下来（Celeste 式的撞角修正）
+func _corner_nudge(delta: float) -> void:
+	if velocity.y >= 0.0:
+		return
+	var up := Vector2(0.0, velocity.y * delta - 1.0)
+	if not test_move(global_transform, up):
+		return
+	var dirs := [1, -1] if velocity.x >= 0.0 else [-1, 1]
+	for off in range(1, CORNER_NUDGE + 1):
+		for d in dirs:
+			var side := Vector2(off * d, 0.0)
+			if test_move(global_transform, side):
+				continue
+			if not test_move(global_transform.translated(side), up):
+				position.x += off * d
+				return
 
 
 ## 这个方向上是不是紧贴着一面竖直的墙（斜坡不算，斜坡要能走上去）
@@ -396,6 +422,9 @@ func _jump_and_gravity(delta: float, on_floor: bool) -> void:
 		_apex = APEX_TIME
 		Game.sfx("jump", -14.0, 1.0, 0.08)
 		Game.dust(get_parent(), global_position, 6)
+		# 起跳时身子往上拉长一下（_squash 小于 0.35 时走"拉长回弹"那段）
+		if _squash <= 0.0:
+			_squash = 0.3
 
 	var want_jet := not on_floor and jump_held and fuel > 0.0 and _stun <= 0.0 \
 		and _jump_hold <= 0.0 and (_jet_armed or velocity.y > JET_ARM_SPEED)
@@ -410,7 +439,8 @@ func _jump_and_gravity(delta: float, on_floor: bool) -> void:
 	elif want_jet:
 		_jump_hold = 0.0
 		_jetting = true
-		velocity.y = move_toward(velocity.y, -JET_MAX_UP, JET_ACCEL * delta)
+		var jet_accel := JET_ACCEL * (JET_BRAKE_MULT if velocity.y > 0.0 else 1.0)
+		velocity.y = move_toward(velocity.y, -JET_MAX_UP, jet_accel * delta)
 		fuel = maxf(fuel - delta / fuel_time(), 0.0)
 	else:
 		_jump_hold = 0.0

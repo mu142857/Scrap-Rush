@@ -7,7 +7,7 @@ extends EliteBase
 ##   冲的时候剪刀那一截（身前 44 像素、地面往上 8～26）伤 12，身子碰到伤 10。要跳起来飞过去，或者站到它背后。
 ## - 跳剪：像胶片被剪掉了一段——人一闪一闪（白色片框线），然后整个消失 0.35 秒，主角身后 46 像素的地上
 ##   出现红色的剪辑标记（像剪辑台上的"><"记号）闪 0.5 秒，它从标记那里冒出来，剪刀举过头顶往前剪下去：
-##   身前 40 像素、地面往上 0～40 伤 14。看到标记就往前跑开。身后是墙（闸门）就落在主角前面。
+##   身前 54 像素、地面往上 0～40 伤 14（站着不动一定挨；标记亮起后往前跑开十来格就躲过）。身后是墙（闸门）就落在主角前面。
 ## 消失的时候打不到。闪烁、标记、速度线、剪下去的白光都是代码画的（unshaded，暗处看得清）。
 ## 贴图 film_editor.png（草图/精英怪/l2_robed_elites.py 导出），6 帧：
 ## 0、1 走；2 冲刺预警（压低、剪刀张开举起来）；3 冲刺（往前扑，剪刀张开朝前）；4 剪（合上）；5 跳剪落下（举过头顶）。
@@ -33,7 +33,7 @@ const GONE_TIME := 0.35
 const MARK_TIME := 0.5
 const BEHIND := 46.0
 const DROP_TIME := 0.22
-const CUT_RECT := Rect2(-40, -40, 44, 40)
+const CUT_RECT := Rect2(-54, -40, 58, 40)
 const CUT_DAMAGE := 14.0
 const RECOVER_TIME := 0.7
 const MARK := Color(1.0, 0.25, 0.2)
@@ -358,7 +358,7 @@ func _draw_fx2() -> void:
 				else:
 					for i in 20:
 						var t := float(i) / 19.0
-						var px := o.x + _attack_dir * (6.0 + 34.0 * t)
+						var px := o.x + _attack_dir * (6.0 + 48.0 * t)
 						var py := o.y - 44.0 + 42.0 * t * t
 						_fx2.draw_rect(Rect2(Vector2(px, py).round(), Vector2(2, 1)), Color(FLASH, 0.9))
 
