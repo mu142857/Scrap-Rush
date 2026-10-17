@@ -488,7 +488,7 @@ func push(v: Vector2) -> void:
 
 ## 被敌人碰到。返回 true 表示这一下算数（不在无敌时间里）
 func hurt(from: Vector2, damage: float) -> bool:
-	if _invuln > 0.0:
+	if _invuln > 0.0 or Game.invincible:
 		return false
 	_invuln = INVULN_TIME
 	var away := signf(global_position.x - from.x)

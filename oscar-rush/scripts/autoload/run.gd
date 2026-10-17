@@ -48,7 +48,7 @@ func retry_level() -> void:
 
 
 func damage_crystal(amount: float) -> void:
-	if crystal_hp <= 0.0:
+	if crystal_hp <= 0.0 or Game.invincible:
 		return
 	crystal_hp = maxf(crystal_hp - amount, 0.0)
 	crystal_changed.emit(crystal_hp, crystal_max)

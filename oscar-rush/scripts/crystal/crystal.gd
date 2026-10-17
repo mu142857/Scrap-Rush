@@ -100,7 +100,7 @@ func take_carried_hit(damage: float) -> void:
 
 ## 放在地上时被敌人碰到
 func take_hit(from: Vector2, damage: float) -> void:
-	if _invuln > 0.0 or carrier != null:
+	if _invuln > 0.0 or carrier != null or Game.invincible:
 		return
 	_invuln = HIT_INVULN
 	velocity = Vector2(signf(global_position.x - from.x) * 60.0, -60.0)

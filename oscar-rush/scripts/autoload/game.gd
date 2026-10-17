@@ -5,6 +5,8 @@ extends Node
 const TITLE_SCENE := "res://scenes/title.tscn"
 
 var shake := 0.0
+## 开发用无敌（F1，见 scripts/debug/dev_mode.gd）：主角不受伤，马灯不掉血
+var invincible := false
 
 var _flash_rect: ColorRect
 var _flash_tween: Tween

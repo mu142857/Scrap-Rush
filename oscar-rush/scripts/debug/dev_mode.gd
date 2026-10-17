@@ -1,5 +1,6 @@
 class_name DevMode
 extends CanvasLayer
+## F1 无敌（随时能按，不用开面板）：主角不受伤、马灯不掉血，左下角一直标着 INVINCIBLE。
 ## 开发者模式：任何场景按 F8 开关，右上角出一个面板。打开时下面这些键才有用：
 ##   1 第一关  2 第一关 Boss 房  3 商店  4 开始界面
 ##   P 零件 +5   H 马灯回满   G 马灯打不碎（开/关）   K 杀掉画面里所有怪
@@ -12,7 +13,7 @@ const SCENES := {
 	KEY_3: "res://scenes/shop.tscn",
 	KEY_4: "res://scenes/title.tscn",
 }
-const HELP := "1 Level 1   2 Boss   3 Shop   4 Title\nP +5 parts   H fill lantern   G unbreakable lantern\nK kill all   U max gear   [ ] emotion -/+   T slow-mo"
+const HELP := "F1 invincible   1 Level 1   2 Boss   3 Shop   4 Title\nP +5 parts   H fill lantern   G unbreakable lantern\nK kill all   U max gear   [ ] emotion -/+   T slow-mo"
 
 var on := false
 var god := false
@@ -20,6 +21,7 @@ var slow := false
 
 var _panel: ColorRect
 var _label: Label
+var _badge: Label
 
 
 func _ready() -> void:
@@ -34,11 +36,22 @@ func _ready() -> void:
 	_label.position = Vector2(4, 2)
 	_panel.add_child(_label)
 	_panel.visible = false
+	_badge = Label.new()
+	_badge.label_settings = Hud.small_text(Color(1.0, 0.85, 0.3))
+	_badge.text = "INVINCIBLE (F1)"
+	_badge.position = Vector2(6, 240)
+	_badge.visible = false
+	add_child(_badge)
 
 
 func _input(event: InputEvent) -> void:
 	var k := event as InputEventKey
 	if k == null or not k.pressed or k.echo:
+		return
+	if k.physical_keycode == KEY_F1:
+		Game.invincible = not Game.invincible
+		_badge.visible = Game.invincible
+		get_viewport().set_input_as_handled()
 		return
 	if k.physical_keycode == KEY_F8:
 		on = not on
@@ -99,6 +112,8 @@ func _process(_delta: float) -> void:
 	var cur := get_tree().current_scene
 	var scene_name := cur.scene_file_path.get_file().get_basename() if cur else "-"
 	var flags := ""
+	if Game.invincible:
+		flags += "  [INVINCIBLE]"
 	if god:
 		flags += "  [UNBREAKABLE]"
 	if slow:
