@@ -6,6 +6,8 @@
 - 正弦的频率都取 8 秒内转整数圈；
 - 篝火的噼啪按 8 秒取模摆放。
 每段归一到同一个响度（RMS -18 dBFS），游戏里用 scripts/audio/ambience.gd 里的音量再压低。
+按 22050Hz 合成，写文件时降到 11025Hz（OUT_SR）：全是低沉的嗡鸣，5kHz 以上的能量比主体低 62~86 dB，
+降采样听不出差别，包体减半。用 FFT 降（把整段当一个周期），首尾照样严丝合缝（10-18 包体瘦身）。
 """
 import wave
 from pathlib import Path
@@ -13,6 +15,7 @@ from pathlib import Path
 import numpy as np
 
 SR = 22050
+OUT_SR = 11025
 SEC = 8
 N = SR * SEC
 OUT = Path(__file__).resolve().parent.parent / "sfx"
@@ -58,11 +61,13 @@ def norm(x: np.ndarray, rms_db: float = -18.0) -> np.ndarray:
 
 
 def save(name: str, x: np.ndarray) -> None:
-    y = (norm(x) * 32767).astype(np.int16)
+    from scipy.signal import resample
+    x = resample(norm(x), N * OUT_SR // SR)
+    y = (np.clip(x / (np.max(np.abs(x)) + 1e-9) * np.max(np.abs(norm(x))), -1, 1) * 32767).astype(np.int16)
     with wave.open(str(OUT / f"amb_{name}.wav"), "wb") as w:
         w.setnchannels(1)
         w.setsampwidth(2)
-        w.setframerate(SR)
+        w.setframerate(OUT_SR)
         w.writeframes(y.tobytes())
     print("wrote", f"sfx/amb_{name}.wav")
 

@@ -59,7 +59,10 @@ def save(name: str, frames: list) -> None:
     OUT.mkdir(exist_ok=True)
     img = sheet(frames)
     assert img.width <= 2048 and img.height <= 2048, (name, img.size)
-    img.save(OUT / f"{name}.png")
+    # 减到 256 色（八叉树、不抖动）：录的画面带光照有上万种颜色，减完几乎没有像素变化超过 24 级，
+    # 进包的贴图从 3.6MB 降到约 0.86MB（10-18）。空着的格子会变成黑色，播放时用不到
+    img = img.convert("RGB").quantize(colors=256, method=Image.Quantize.FASTOCTREE, dither=Image.Dither.NONE)
+    img.save(OUT / f"{name}.png", optimize=True)
     print(name, len(frames), "frames", img.size)
 
 
