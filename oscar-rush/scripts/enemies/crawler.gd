@@ -62,6 +62,7 @@ func _ready() -> void:
 	mat.shader = _shader
 	_sprite.material = mat
 	add_child(_sprite)
+	Bestiary.watch(self, "crawler")   # 怪物图鉴：第一次出现在画面里就记一笔
 
 	# 老机器的指示灯：一颗不吃光照的红点加一圈小红光，黑暗里也看得到怪在哪
 	_led = Node2D.new()
@@ -87,6 +88,8 @@ func _ready() -> void:
 	cs.position = Vector2(0, -5)
 	_contact.add_child(cs)
 	add_child(_contact)
+	# 夜间打磨：挨打顿一格、死时抖一下碎几块（见 elite_fx.gd，和第二关的小怪一样）
+	EliteFx.attach_small(self, 5)
 
 
 func aim_point() -> Vector2:
@@ -143,7 +146,8 @@ func _physics_process(delta: float) -> void:
 	_knock -= delta
 	velocity.y = minf(velocity.y + GRAVITY * delta, 400.0)
 	if _knock <= 0.0:
-		velocity.x = dir * SPEED
+		# 情绪档位：越生气爬得越快（和 EnemyBase 的新怪一样）
+		velocity.x = dir * SPEED * EnemyBase.speed_mult()
 	move_and_slide()
 	if is_on_floor() and _knock <= 0.0 and (is_on_wall() or not _ground_ahead()):
 		dir = -dir
@@ -156,18 +160,19 @@ func _physics_process(delta: float) -> void:
 	(_sprite.material as ShaderMaterial).set_shader_parameter("flash", _flash)
 	# 指示灯在铁盒朝前的上角
 	_led.position = Vector2(-6 if dir < 0 else 5, -11)
+	EnemyBase.led_glow(_led.get_child(0) as PointLight2D)
 	_led.queue_redraw()
 
+	var dmg := CONTACT_DAMAGE * EnemyBase.damage_mult()
 	for b in _contact.get_overlapping_bodies():
 		if b is Player:
-			(b as Player).hurt(global_position, CONTACT_DAMAGE)
+			(b as Player).hurt(global_position, dmg)
 		elif b is Crystal:
-			(b as Crystal).take_hit(global_position, CONTACT_DAMAGE)
+			(b as Crystal).take_hit(global_position, dmg)
 
 
 func _draw_led() -> void:
-	var col := LED_COLOR if int(_anim * 3.0) % 4 != 0 else LED_COLOR.darkened(0.5)
-	_led.draw_rect(Rect2(0, 0, 1, 1), col.lerp(Color.WHITE, _flash))
+	_led.draw_rect(Rect2(0, 0, 1, 1), EnemyBase.led_color(_anim, _flash))
 
 
 func _ground_ahead() -> bool:

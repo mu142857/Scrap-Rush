@@ -40,6 +40,11 @@ func _setup() -> void:
 	contact_damage = 10.0
 
 
+func _after_ready() -> void:
+	# 夜间打磨：挨打顿一格、死时抖一下碎几块（见 elite_fx.gd）
+	EliteFx.attach_small(self, 5, 0.35)   # 0.35：第二关机房很暗，叠一层暗处亮层
+
+
 func _tick(delta: float) -> void:
 	_timer -= delta
 	_tick_pending(delta)

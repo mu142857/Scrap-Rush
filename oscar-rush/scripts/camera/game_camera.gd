@@ -32,6 +32,15 @@ var _look := 0.0
 var _look_down := 0.0
 var _ground_y := 0.0
 var _has_ground := false
+## 合作时镜头往外拉 / 推回去的快慢
+const COOP_ZOOM_SPEED := 3.0
+## 合作时所有人四周至少留这么多（游戏像素）：左右、上（头顶）、下（脚下）
+const COOP_PAD := Vector2(28, 40)
+
+## 想要的缩放（2，或者 3~4 人时 1.5）；实际 zoom 是它按屏幕倍率对齐以后的值
+var _base_zoom := ZOOM
+## 关卡的镜头子类自己管缩放（天桥变宽、第三关按屏幕挑倍数）时设成 false
+var manages_zoom := true
 ## 主角上一个、这一个物理帧的位置（_pos 插值用）
 var _prev := {}
 var _curr := {}
@@ -40,9 +49,26 @@ var _curr := {}
 func _ready() -> void:
 	# 物理帧里排在主角后面，记到的是主角这一帧动完的位置
 	process_physics_priority = 100
-	var z := ZOOM if _players().size() <= 2 else ZOOM_CROWD
-	zoom = Vector2(z, z)
+	_base_zoom = ZOOM if _players().size() <= 2 else ZOOM_CROWD
+	zoom = Vector2.ONE * pixel_zoom(get_viewport(), _base_zoom)
 	make_current()
+
+
+## 把缩放对齐到"一个游戏像素正好占整数个屏幕像素"：窗口不是 480×270 的整数倍时
+## （1366×768 是 2.84 倍、网页版跟着浏览器窗口变），zoom 2 会让场景的像素一大一小。
+## 这里改用最接近的 k / 屏幕倍率（k 是整数），画面大小差一点点，像素永远是方的、一样大。
+## round_down = true 时往小取（视野往大取），用在"必须装下整块屏幕"的地方。
+## UI 层（zoom 1）不受影响；要连 UI 也整数倍，设置里开"像素完美"。
+static func pixel_zoom(vp: Viewport, z: float, round_down := false) -> float:
+	var t := vp.get_screen_transform().get_scale()
+	var s := minf(t.x, t.y)
+	# 窗口比 480×270 还小（headless 测试的窗口就很小）时不对齐：
+	# 不然 1 / s 会把 zoom 算成 7 倍多，画面只剩几十像素，按画面范围算东西的逻辑全被带偏（第二关会话 10-17 夜里报的）
+	if s < 1.0:
+		return z
+	var px := z * s
+	var k := floorf(px + 0.001) if round_down else roundf(px)
+	return maxf(k, 1.0) / s
 
 
 ## 第一帧直接对准，不从原点滑过来
@@ -53,6 +79,16 @@ func snap() -> void:
 
 
 func _process(delta: float) -> void:
+	if manages_zoom:
+		# 合作时两人拉开，原来的倍数装不下所有人，就往外拉（最远 1 倍）；靠拢后慢慢推回去。停住时照样像素对齐
+		var want := minf(_base_zoom, coop_fit_zoom())
+		var tgt := pixel_zoom(get_viewport(), want, want < _base_zoom)
+		# 往小对齐可能落到 1 倍以下（视野比关卡还大，商店这种一屏的房间会露出外面），最多拉到 1 倍
+		tgt = maxf(tgt, 1.0)
+		var z := lerpf(zoom.x, tgt, 1.0 - exp(-COOP_ZOOM_SPEED * delta))
+		if absf(z - tgt) < 0.002:
+			z = tgt
+		zoom = Vector2(z, z)
 	var players := _players()
 	if players.is_empty():
 		return
@@ -106,6 +142,15 @@ func _target_position() -> Vector2:
 	else:
 		target_y = focus.y
 	var target_x := focus.x + _look
+	# 合作两人拉开到要往外拉的时候，对准所有人的正中间、不往前看，不然有人会贴着画面边
+	if players.size() > 1 and coop_fit_zoom() < _base_zoom:
+		var lo := _pos(players[0])
+		var hi := lo
+		for p in players:
+			lo = lo.min(_pos(p))
+			hi = hi.max(_pos(p))
+		target_x = (lo.x + hi.x) * 0.5
+		target_y = (lo.y + hi.y) * 0.5
 	var extra := get_tree().get_nodes_in_group("camera_focus")
 	if not extra.is_empty():
 		target_x = lerpf(target_x, (extra[0] as Node2D).global_position.x, EXTRA_FOCUS_WEIGHT)
@@ -135,6 +180,22 @@ func _physics_process(_delta: float) -> void:
 		if not seen.has(k):
 			_curr.erase(k)
 			_prev.erase(k)
+
+
+## 能把所有玩家（四周留 COOP_PAD）装进画面的最大缩放，不小于 1；单人时返回很大的数（不限制）
+func coop_fit_zoom() -> float:
+	var players := _players()
+	if players.size() < 2:
+		return 99.0
+	var lo := _pos(players[0])
+	var hi := lo
+	for p in players:
+		var at := _pos(p)
+		lo = lo.min(at)
+		hi = hi.max(at)
+	var need := (hi - lo) + COOP_PAD * 2.0 + Vector2(0, 20)
+	var view := get_viewport_rect().size
+	return maxf(1.0, minf(view.x / need.x, view.y / need.y))
 
 
 ## 人被瞬移（出气动管、下天桥）以后调：落地高度按人现在的位置重新记，不再追旧房间的地面

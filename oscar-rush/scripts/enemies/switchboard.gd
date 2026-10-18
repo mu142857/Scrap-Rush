@@ -2,10 +2,10 @@ class_name Switchboard
 extends EliteBase
 ## 总机台（第二关精英怪，从策划案第九节原设计 B2 接线员来）：一整面插孔板长了腿，前面垂着带插头的线。
 ## 慢慢朝主角挪，两招轮着放，都先冒红色"!"：
-## - 插线通电：一根线甩出去插进主角脚下的地面。那一段约 60 像素先冒火花 0.6 秒，再通电 2 秒，站在上面伤 10。
+## - 插线通电：预警时主角脚下那一段先标出蓝色方括号；一根线甩出去插进主角脚下的地面。那一段约 60 像素先冒火花 0.6 秒，再通电 2 秒，站在上面伤 10。
 ##   插头本身能打（"enemy" 组，血 100，一发蓄满就断），打掉提前断电。
 ## - 拔线召唤：从板上拔下两根跳线，线头落地变成两只保险丝甲虫（fuse_beetle.gd 还没有时用爬虫）。
-##   自己召出来的还活着两只就不召，改插线；总机台死了，召出来的跟着断电。
+##   自己召出来的还活着两只就不召，改插线；总机台死了，召出来的跟着断电碎掉（不炸、不放电）。
 ## 贴图 switchboard.png（草图/精英怪/l2_switch_gramophone.py 导出），6 帧：
 ## 0、1 走；2 插线预警（线甩到头顶抡）；3 插线（线甩出去了，灯全亮）；4 拔线预警（两根跳线拽紧）；
 ## 5 拔线（孔空了冒火花）。
@@ -16,7 +16,8 @@ const MOVE_SPEED := 14.0
 const WALK_FRAME_TIME := 0.22
 ## 离主角这么近就站住（插线是远招，不用贴脸）
 const STOP_DIST := 60.0
-const MOVE_TIME := Vector2(2.2, 2.8)
+## 两招之间走几步就出下一招（10-18 作者嫌停顿太长、一辈子只放几次招：2.2~2.8 → 0.6~1.0，连收招一共空 1.1~1.5 秒）
+const MOVE_TIME := Vector2(0.6, 1.0)
 ## 主角在这么远以内才出招
 const ATTACK_RANGE := 220.0
 const PLUG_WARN := 0.7
@@ -26,8 +27,9 @@ const PLUG_HOLD := 0.9
 const PLUG_REACH := 200.0
 const PULL_WARN := 0.7
 const PULL_TIME := 0.6
-const RECOVER_TIME := 0.8
-const MAX_SUMMONS := 2
+const RECOVER_TIME := 0.5
+## 场上最多几只甲虫；拉闸一次最多掉两只，补到这个数为止（10-18：2 → 3，不然甲虫没打掉就一直拉不了闸）
+const MAX_SUMMONS := 3
 const BEETLE_PATH := "res://scripts/enemies/fuse_beetle.gd"
 const CRAWLER_PATH := "res://scripts/enemies/crawler.gd"
 ## 甩出去那根线的根（帧内像素，朝左）
@@ -36,9 +38,20 @@ const CORD_ROOT := Vector2i(8, 33)
 const DROP_X := [20.0, 30.0]
 ## 不吃光照的那层叠图多不透明（暗处也看得出身子的样子）
 const FILL_ALPHA := 0.4
+## 血打空以后先"断电"这么久：板上的灯乱闪、越闪越慢，红灯一跳一跳地灭掉，然后炸成一地废铁
+const DIE_TIME := 1.0
+## 挨打时贴图往后顿 1 格多久（精英怪不吃击退，没有这一下打上去像打在墙上）
+const JOLT_TIME := 0.07
 
 var state := State.MOVE
 var _fill: Sprite2D
+## 断电演出进行了多久，-1 = 没在死
+var _dying := -1.0
+var _jolt := 0.0
+## 插线预警时标在主角脚下的那一段（线会甩到那里）
+var _aim: Node2D
+## 插线锁定的那个主角：预警开始时选最近的，方括号跟着他走，线也甩到他脚下（双人时不会中途换人）
+var _aim_target: Player = null
 var _state_t := 0.0
 var _move_time := 1.4
 ## 下一招：0 插线，1 拔线
@@ -58,22 +71,22 @@ func _setup() -> void:
 	body_rect = Rect2(-15, -46, 30, 46)
 	contact_rect = Rect2(-15, -44, 30, 44)
 	led_pixel = Vector2i(16, 7)
-	max_hp = 1250.0
+	max_hp = 1950.0   # 10-18：1250 → 1950，出招变密以后每招都能放 3 轮以上
 	contact_damage = 10.0
 
 
-## 遭遇战把怪的脚底放在天花板下 14 像素（encounter.gd），第二关的机房有实心天花板，
-## 这只 46 高，一出生身子就卡在天花板里，被物理挤到天花板上面去了（看得见血条、看不见怪）。
-## 出生时先往上探一下：头顶有天花板就把自己往下挪到天花板下面。
+## 第二关机房很暗，背后又是一整面插孔板，深灰的身子融进墙里只剩红灯（作者 10-17 找不到它）。
+## 叠一层不吃光照的同一张图，半透明，暗处也看得出形状；亮处基本看不出差别。
+## （出生卡进天花板的问题已经在 encounter.gd 的 _drop_below_ceiling 统一修了，这里原来的补丁删了）
 func _after_ready() -> void:
-	var feet := global_position
-	var top := feet.y + body_rect.position.y - 2.0
-	var q := PhysicsRayQueryParameters2D.create(Vector2(feet.x, feet.y - 1.0), Vector2(feet.x, top), 1)
-	var hit := get_world_2d().direct_space_state.intersect_ray(q)
-	if not hit.is_empty():
-		global_position.y = (hit.position as Vector2).y - body_rect.position.y + 1.0
-	# 第二关机房很暗，背后又是一整面插孔板，深灰的身子融进墙里只剩红灯（作者 10-17 找不到它）。
-	# 叠一层不吃光照的同一张图，半透明，暗处也看得出形状；亮处基本看不出差别
+	_aim = Node2D.new()
+	_aim.top_level = true
+	_aim.z_index = 6
+	var aim_mat := CanvasItemMaterial.new()
+	aim_mat.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+	_aim.material = aim_mat
+	_aim.draw.connect(_draw_aim)
+	add_child(_aim)
 	_fill = Sprite2D.new()
 	_fill.texture = _sprite.texture
 	_fill.hframes = hframes
@@ -86,6 +99,10 @@ func _after_ready() -> void:
 
 
 func _tick(delta: float) -> void:
+	if _dying >= 0.0:
+		_tick_dying(delta)
+		move_and_slide()
+		return
 	_state_t += delta
 	match state:
 		State.MOVE:
@@ -147,6 +164,7 @@ func _start_attack(p: Player) -> void:
 		Game.sfx("dial", -8.0, 0.8)
 		_next = 0
 	else:
+		_aim_target = p
 		warn(PLUG_WARN)
 		_enter(State.PLUG_WARN)
 		Game.sfx("ready", -12.0, 0.7)
@@ -187,7 +205,7 @@ func cord_root() -> Vector2:
 
 ## 插线：落点是主角脚下的地面（最远 PLUG_REACH）
 func _throw() -> void:
-	var p := nearest_player()
+	var p := _aim_target if is_instance_valid(_aim_target) else nearest_player()
 	var tx := global_position.x + _attack_dir * 90.0
 	var from_y := global_position.y - 20.0
 	if p:
@@ -215,7 +233,7 @@ func _summon() -> void:
 	Game.sfx("crack", -6.0, 1.4)
 	Game.sfx("buzz", -10.0, 1.6)
 	Game.add_shake(2.0)
-	for i in DROP_X.size():
+	for i in mini(DROP_X.size(), MAX_SUMMONS - _alive_summons()):
 		var pos := global_position + Vector2(_attack_dir * DROP_X[i], -6.0)
 		if _in_wall(pos):
 			pos = global_position + Vector2(0, -6.0)
@@ -252,17 +270,65 @@ func _in_wall(pos: Vector2) -> bool:
 	return not get_world_2d().direct_space_state.intersect_point(q, 1).is_empty()
 
 
+func is_targetable() -> bool:
+	return super.is_targetable() and _dying < 0.0
+
+
+func _on_hurt(_damage: float, full: bool) -> void:
+	_jolt = JOLT_TIME
+	if full:
+		Game.sfx("clang", -14.0, 1.7, 0.1)
+
+
+## 血打空了：先演一段断电（DIE_TIME），然后才真的死（EliteBase 的大爆炸、顿帧、扣情绪都在那一刻）。
+## 断电期间不动、不伤人、不再挨打，插着的线马上断电收回。
+func _die() -> void:
+	if _dying >= 0.0:
+		return
+	_dying = 0.0
+	velocity.x = 0.0
+	_contact.set_deferred("monitoring", false)
+	if is_instance_valid(_cord):
+		_cord.cut()
+	Game.sfx("buzz", -6.0, 0.6)
+	Game.sfx("tvoff", -8.0, 0.8)
+	Game.hitstop(0.08)
+	Game.add_shake(2.0)
+
+
+func _tick_dying(delta: float) -> void:
+	_dying += delta
+	velocity.x = move_toward(velocity.x, 0.0, 600.0 * delta)
+	# 灯全亮（帧 3）和全灭（帧 0）来回闪，越闪越慢，最后一段灭着
+	var k := _dying / DIE_TIME
+	var period := lerpf(0.04, 0.14, k)
+	set_frame(3 if k < 0.75 and int(_dying / period) % 2 == 0 else 0)
+	# 插孔板上一直往外冒蓝火花
+	if randf() < 0.3:
+		Game.sparks(get_parent(), global_position + Vector2(randf_range(-12.0, 12.0), randf_range(-40.0, -14.0)),
+				Color(0.6, 0.85, 1.0), 2, 40.0)
+	if _dying >= DIE_TIME:
+		EliteFx.scrap_burst(get_parent(), Rect2(global_position + body_rect.position, body_rect.size), 20)
+		Game.sparks(get_parent(), cord_root(), Color(0.6, 0.85, 1.0), 12, 90.0)
+		super._die()
+
+
 ## 死了：线断电、召出来的甲虫跟着灭
 func _on_die() -> void:
 	if is_instance_valid(_cord):
 		_cord.cut()
+	# 召出来的甲虫跟着断电：冒一下火花、碎掉就没了。不走甲虫自己的死法（烧熔丝再炸、地面带电），
+	# 不然打赢的那一刻主角脚边还会被电一下（夜间打磨）。遭遇战不数它们，直接拿掉不影响清场
 	for e in _summons:
-		if is_instance_valid(e) and e.get("dead") != true and e.has_method("hurt"):
-			e.call("hurt", 9999.0, Vector2.UP, true)
+		if is_instance_valid(e) and e.get("dead") != true:
+			Game.sparks(get_parent(), e.global_position + Vector2(0, -4), Color(0.6, 0.85, 1.0), 6, 50.0)
+			EliteFx.scrap_burst(get_parent(), Rect2(e.global_position + Vector2(-6, -8), Vector2(12, 8)), 4)
+			e.queue_free()
 	_summons.clear()
 
 
 func _on_respawn() -> void:
+	_dying = -1.0
 	_enter(State.MOVE)
 
 
@@ -275,7 +341,30 @@ func _process(_delta: float) -> void:
 	_fill.flip_h = _sprite.flip_h
 	_fill.offset = _sprite.offset
 	_fill.position = _sprite.position
-	_fill.modulate = Color(_sprite.modulate.lerp(Color(3, 3, 3), _flash), FILL_ALPHA)
+	# 死前那一段亮层加厚，灯一闪一灭在暗处也看得清
+	_fill.modulate = Color(_sprite.modulate.lerp(Color(3, 3, 3), _flash), 0.75 if _dying >= 0.0 else FILL_ALPHA)
+
+## 插线预警：主角脚下那一段地面（和通电那段一样宽）两头各一个蓝色的方括号，跟着主角走，一闪一闪越来越快。
+## 线到点就甩到这里，提前 0.7 秒知道"会插到我脚下"
+func _draw_aim() -> void:
+	if state != State.PLUG_WARN or _dying >= 0.0:
+		return
+	var p := _aim_target if is_instance_valid(_aim_target) else nearest_player()
+	if p == null or not p.is_on_floor():
+		return
+	var k := _state_t / PLUG_WARN
+	if int(_state_t / lerpf(0.12, 0.05, k)) % 2 == 1:
+		return
+	var c := Color(0.6, 0.85, 1.0, 0.5 + 0.4 * k)
+	var x := roundf(clampf(p.global_position.x, global_position.x - PLUG_REACH, global_position.x + PLUG_REACH))
+	var y := roundf(p.global_position.y)
+	var half := CordPlug.HALF
+	for side in [-1.0, 1.0]:
+		var ex: float = x + side * half
+		_aim.draw_rect(Rect2(ex, y - 4.0, 1, 4), c)
+		_aim.draw_rect(Rect2(ex if side < 0.0 else ex - 2.0, y - 4.0, 3, 1), c)
+	_aim.draw_rect(Rect2(x - half, y - 1.0, half * 2.0 + 1.0, 1), Color(c, c.a * 0.35))
+
 
 ## 预警时板子抖、一闪一闪发红，越接近放招越快（照钢琴）
 func _update_visual() -> void:
@@ -293,6 +382,19 @@ func _update_visual() -> void:
 		_sprite.modulate = Color.WHITE.lerp(Color(1.8, 0.75, 0.6), pulse * (0.4 + 0.6 * warn_t))
 	else:
 		_sprite.modulate = Color.WHITE
+	# 挨打：往背离主角的方向顿 1 格
+	_jolt = maxf(_jolt - get_physics_process_delta_time(), 0.0)
+	if _jolt > 0.0:
+		_sprite.position.x -= dir
+	if _aim:
+		_aim.queue_redraw()
+	if _dying >= 0.0:
+		# 断电：越抖越厉害，开头闪白；红灯一跳一跳地灭
+		var k := _dying / DIE_TIME
+		var amp := 1.0 + 2.0 * k
+		_sprite.position.x += amp if int(_dying * 34.0) % 2 == 0 else -amp
+		_sprite.modulate = Color.WHITE.lerp(Color(2.0, 2.0, 2.0), clampf(1.0 - k * 4.0, 0.0, 1.0))
+		_led.visible = _led.visible and k < 0.6 and int(_dying * (8.0 + 16.0 * k)) % 2 == 0
 
 
 ## 甩出去的插头 + 连回总机台的线。插进地面以后：火花 SPARK 秒 → 通电 LIVE 秒 → 收回去。

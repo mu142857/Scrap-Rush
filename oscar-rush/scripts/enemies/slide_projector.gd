@@ -59,6 +59,8 @@ func _after_ready() -> void:
 	_line.visible = false
 	add_child(_line)
 	_cool = randf_range(0.6, 1.2)
+	# 夜间打磨：挨打顿一格、死时抖一下碎几块（见 elite_fx.gd）
+	EliteFx.attach_small(self, 6, 0.35)   # 0.35：第二关机房很暗，叠一层暗处亮层
 
 
 func _tick(delta: float) -> void:
@@ -88,6 +90,8 @@ func _tick(delta: float) -> void:
 					_state = LOCK
 					_timer = LOCK_TIME
 					Game.sfx("ready", -6.0, 1.9, 0.05)
+					# 锁住了、马上开火：头顶红"!"（和精英怪的预警一个样子）
+					EliteFx.mark(self, LOCK_TIME)
 		LOCK:
 			_brake(delta)
 			set_frame(2)

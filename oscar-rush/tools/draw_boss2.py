@@ -20,6 +20,9 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "art/boss"
+## 预览图只给人看，不放进 art/（不然会被打进网页版包里）
+PREVIEW = Path(__file__).resolve().parent.parent.parent / "草图/boss预览"
+
 
 PAL = {
     # 暗红木（交换台）
@@ -159,7 +162,7 @@ def head():
 
 
 # —— 房间 ——
-M = 16
+M = 24
 AW, AH = 320, 180
 CW, CH = AW + 2 * M, AH + 2 * M
 FLOOR_Y, WALL, CEIL = 164, 8, 12
@@ -168,7 +171,7 @@ DESK_X = 262                                     # 桌子（总机飞走以后�
 SCONCES = [(WALL + 1, 58), (320 - WALL - 2, 58)]  # 两边墙上的壁灯（光由代码给）
 PLATES = [(8, 80), (80, 152), (152, 224)]        # 玩家这边的三块铜地板（会通电）
 BULBS = [60, 140, 220]                           # 天花板吊灯（代码不画，画在前景里，光由代码给）
-CROP = (300, 0)
+CROP = (292, -8)
 
 
 def px(img, x, y, c):
@@ -183,7 +186,21 @@ def rect(img, x0, y0, x1, y1, c):
             px(img, x, y, c)
 
 
+def limit_colors(arr, n=40):
+    """收成 n 色、不抖动：暗角是连续渐变，不收的话一张背景有七百多种颜色，放大以后发糊、和前景的硬边像素对不上（美术巡检提的）"""
+    im = Image.fromarray(arr).convert("RGB").quantize(colors=n, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
+    return np.array(im.convert("RGBA"))
+
+
 def background():
+    # 第二关的美术重组过，原来取背景用的 level2_far/mid/back/props 已经没有了：
+    # 这时直接用现有的 room2_bg.png，四边按边缘像素补到新画布大小（补出来的那圈都被前景的墙、天花板、地面盖住）
+    if not (ROOT / "art/levels/level2_far.png").exists():
+        old = np.array(Image.open(OUT / "room2_bg.png").convert("RGBA"))
+        ph, pw = (CH - old.shape[0]) // 2, (CW - old.shape[1]) // 2
+        if ph <= 0 and pw <= 0:
+            return old
+        return np.pad(old, ((ph, CH - old.shape[0] - ph), (pw, CW - old.shape[1] - pw), (0, 0)), mode="edge")
     layers = None
     for n in ["far", "mid", "back", "props"]:
         im = Image.open(ROOT / f"art/levels/level2_{n}.png").convert("RGBA")
@@ -198,7 +215,7 @@ def background():
     bg[..., 0] *= 0.85
     bg[..., 2] *= 1.15
     bg[..., 3] = 255
-    return bg.clip(0, 255).astype(np.uint8)
+    return limit_colors(bg.clip(0, 255).astype(np.uint8))
 
 
 def foreground():
@@ -265,6 +282,7 @@ def gate():
 
 
 def main():
+    PREVIEW.mkdir(parents=True, exist_ok=True)
     OUT.mkdir(parents=True, exist_ok=True)
     hd, dk = head().rgba(), desk().rgba()
     Image.fromarray(hd).save(OUT / "operator_head.png")
@@ -279,7 +297,7 @@ def main():
     prev.alpha_composite(Image.fromarray(b), (262 + M - W // 2, FLOOR_Y + M - H + 1))
     hero = Image.open(ROOT / "art/chars/red_body.png").convert("RGBA").crop((0, 0, 16, 20))
     prev.alpha_composite(hero, (40 + M - 8, FLOOR_Y + M - 20))
-    prev.resize((CW * 3, CH * 3), Image.NEAREST).save(OUT / "preview_operator.png")
+    prev.resize((CW * 3, CH * 3), Image.NEAREST).save(PREVIEW / "preview_operator.png")
     print("wrote operator_head.png operator_desk.png room2_bg.png room2_fg.png gate2.png preview_operator.png")
 
 

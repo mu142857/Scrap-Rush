@@ -50,6 +50,8 @@ func _after_ready() -> void:
 	_marker.visible = false
 	add_child(_marker)
 	_timer = randf_range(HOP_INTERVAL.x, HOP_INTERVAL.y)
+	# 夜间打磨：挨打顿一格、死时抖一下碎几块（见 elite_fx.gd，和第二关的小怪一样）
+	EliteFx.attach_small(self, 5)
 
 
 func _tick(delta: float) -> void:
@@ -95,6 +97,8 @@ func _crouch(big: bool) -> void:
 	_marker.visible = big
 	if big:
 		_marker.global_position = _land.round()
+		# 大跳之前：头顶红"!"（落点标记照旧）
+		EliteFx.mark(self, _timer)
 
 
 func _launch() -> void:

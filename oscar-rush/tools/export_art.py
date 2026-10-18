@@ -126,10 +126,35 @@ def export_scene_split(tmp: Path) -> None:
             im = Image.open(png).convert("RGBA")
             out = im if out is None else Image.alpha_composite(out, im)
         save(np.array(out), ROOT / f"art/levels/scene1_{name}.png")
+    punch_gaps()
     for layer, name, x0, y0, x1, y1 in ANIMATED:
         frames = export_frames(src, tmp, [l for l in _all_layers(src) if l != layer])
         cells = [f[y0:y1, x0:x1] for f in frames]
-        save(np.concatenate(cells, axis=1), ROOT / f"art/levels/scene1_{name}.png")
+        # 一行最多排到 2048 宽（WebGL2 只保证这么宽，桥 27 帧横排有 9720 宽），排不下就换行；bridge.gd 按贴图大小算几列几行
+        cols = max(1, 2048 // (x1 - x0))
+        blank = np.zeros_like(cells[0])
+        rows = [cells[i:i + cols] for i in range(0, len(cells), cols)]
+        rows = [r + [blank] * (cols - len(r)) for r in rows]
+        save(np.concatenate([np.concatenate(r, axis=1) for r in rows], axis=0), ROOT / f"art/levels/scene1_{name}.png")
+
+
+# 碰撞上是缺口、美术上却连着的地方：把那一层的像素挖掉，后面的视差层露出来，人一看就知道能掉下去
+# （2026-10-17 夜间打磨，碰撞会话。作者早先就说过中层左端那个往下跳的口子看不出来）。
+# 断口每行左右错开几格，像是断掉的，不是整整齐齐切开的。[图层文件, x0, x1, y0, y1]
+GAP_PUNCHES = [
+    ("near_b", 0, 46, 203, 226),     # 中层桁架走道左端 0~48 的缺口（碰撞见 test_level.gd 的 SOLIDS）
+]
+
+
+def punch_gaps() -> None:
+    rng = np.random.RandomState(7)
+    for name, x0, x1, y0, y1 in GAP_PUNCHES:
+        path = ROOT / f"art/levels/scene1_{name}.png"
+        arr = np.array(Image.open(path).convert("RGBA"))
+        for y in range(y0, y1):
+            edge = x1 + int(rng.randint(-3, 4))
+            arr[y, x0:max(edge, x0), 3] = 0
+        save(arr, path)
 
 
 def _all_layers(src: Path) -> list[str]:

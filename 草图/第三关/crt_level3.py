@@ -380,6 +380,15 @@ for row in rows:
         if k.VARIANT["mirror"]:
             sc.PLATFORMS[n0:] = [(tv.sx0 + tv.sx1 - b, tv.sx0 + tv.sx1 - a, y) for a, b, y in sc.PLATFORMS[n0:]]
         tv.platforms = sc.PLATFORMS[n0:]
+        # 能站的家具顶面压一道亮边：屋顶、街道这种场景里，背景楼和能站的水塔、站台顶一样暗，分不出哪儿能踩
+        # （2026-10-17 夜，监督会话的清单"可站的平台一眼认出来"）。亮边取这块屏幕自己最亮的那档颜色，不出色调
+        sa = k.scr.a[tv.sy0:tv.sy1 + 1, tv.sx0:tv.sx1 + 1, :3].reshape(-1, 3).astype(float)
+        lum = sa @ [0.3, 0.55, 0.15]
+        hi = sa[lum >= np.percentile(lum, 94)].mean(0)
+        for a_, b_, y_ in tv.platforms:
+            seg = k.scr.a[y_, a_:b_ + 1]
+            on = seg[:, 3] > 0
+            seg[on, :3] = (seg[on, :3] * 0.4 + hi * 0.6).astype(np.uint8)
 k.VARIANT.update(mirror=False, hue=0.0)
 
 PASSAGES, HOLE_DATA = [], []

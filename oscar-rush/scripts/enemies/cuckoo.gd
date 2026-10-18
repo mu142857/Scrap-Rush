@@ -15,7 +15,7 @@ const STOP_DIST := 20.0
 const SEE_DIST := 240.0
 const WALK_FRAME_TIME := 0.22
 # —— 布谷 ——
-const CUCKOO_INTERVAL := 3.0
+const CUCKOO_INTERVAL := 1.4  # 10-18 作者：招和招之间停太久
 const WARN_TIME := 0.5
 const OPEN_TIME := 1.0
 const WEAK_MULT := 2.0
@@ -39,22 +39,63 @@ var _timer := 0.0
 var _cuckoo_t := CUCKOO_INTERVAL
 var _sweep_cd := 0.0
 var _last_tick := -1
+var _weak_fx: Node2D
+## 门的位置（原图朝左，相对脚底中间）：弱点框画在这一圈
+const DOOR_RECT := Rect2(-3, -30, 8, 7)
 
 
 func _setup() -> void:
 	elite_name = "CUCKOO CLOCK"
 	intro_title = "TIME'S UP"
 	intro_frame = 3
+	fill_alpha = 0.35
+	death_time = 1.1
+	death_frame = 3
 	texture_path = "res://art/enemies/cuckoo.png"
 	hframes = 7
 	frame_size = Vector2i(53, 40)
 	body_rect = Rect2(-9, -38, 18, 38)
 	led_pixel = Vector2i(26, 21)
-	max_hp = 900.0
+	max_hp = 2900.0  # 10-18 作者：血不够，三把武器 20～35 秒
 	contact_damage = 10.0
 
 
+## 门开着时门口一圈金色的角框一闪一闪：告诉玩家"现在打这里伤害翻倍"。不吃压暗
+func _after_ready() -> void:
+	_weak_fx = Node2D.new()
+	var unshaded := CanvasItemMaterial.new()
+	unshaded.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+	_weak_fx.material = unshaded
+	_weak_fx.z_index = 9
+	_weak_fx.draw.connect(_draw_weak)
+	add_child(_weak_fx)
+
+
+func _draw_weak() -> void:
+	if _state != OPEN or dead or dying():
+		return
+	var r := DOOR_RECT
+	if dir > 0:
+		r.position.x = -r.position.x - r.size.x
+	r.position += global_position.round() - global_position
+	# 开门那一刻框大一圈，然后缩到门边；一闪一闪
+	var k := clampf((OPEN_TIME - _timer) / 0.15, 0.0, 1.0)
+	r = r.grow(roundf(3.0 * (1.0 - k)) + 1.0)
+	if int(_timer * 12.0) % 2 == 1 and k >= 1.0:
+		return
+	var col := Color(1.0, 0.85, 0.35)
+	var a := r.position
+	var b := r.end - Vector2.ONE
+	for c in [a, Vector2(b.x, a.y), Vector2(a.x, b.y), b]:
+		var sx := 1.0 if c.x == a.x else -1.0
+		var sy := 1.0 if c.y == a.y else -1.0
+		_weak_fx.draw_rect(Rect2(c, Vector2.ONE), col)
+		_weak_fx.draw_rect(Rect2(c + Vector2(sx, 0), Vector2.ONE), col)
+		_weak_fx.draw_rect(Rect2(c + Vector2(0, sy), Vector2.ONE), col)
+
+
 func _tick(delta: float) -> void:
+	_weak_fx.queue_redraw()
 	_timer -= delta
 	_sweep_cd -= delta
 	if _state != WARN and _state != OPEN:
@@ -71,6 +112,7 @@ func _tick(delta: float) -> void:
 				_timer = WARN_TIME
 				velocity.x = 0.0
 				warn(WARN_TIME)
+				pick_focus(p)          # 双人时每只铁鸟轮着追一个人，预警开始就定好
 			elif p and _sweep_cd <= 0.0 and _in_sweep_range(p):
 				_state = SWEEP_WARN
 				_timer = SWEEP_WARN_TIME
@@ -80,7 +122,7 @@ func _tick(delta: float) -> void:
 			_brake(delta)
 			set_frame(2 if int(_timer / 0.08) % 2 == 0 else 0)
 			if _timer <= 0.0:
-				_open(p)
+				_open(focus_player())
 		OPEN:
 			_brake(delta)
 			set_frame(3 + int(_timer / 0.14) % 2)
@@ -157,7 +199,8 @@ func _tick_sound() -> void:
 func hurt(damage: float, from_dir: Vector2, full: bool) -> void:
 	if _state == OPEN and not dead:
 		damage *= WEAK_MULT
-		Game.sparks(get_parent(), global_position + Vector2(0, -26), Color8(255, 210, 140), 8, 90.0)
+		Game.sparks(get_parent(), global_position + Vector2(0, -26), Color8(255, 220, 120), 14, 110.0)
+		Game.sfx("ready", -8.0, 2.2, 0.05)
 	super.hurt(damage, from_dir, full)
 
 
@@ -206,8 +249,8 @@ class IronBird:
 	const WING_UP := "..4.4.."
 	const WING_DOWN := "..444.."
 	const COLORS := {
-		"9": Color8(0x5c, 0x57, 0x52), "8": Color8(0x4f, 0x4b, 0x47), "6": Color8(0x3b, 0x38, 0x35),
-		"4": Color8(0x2a, 0x28, 0x28), "L": Color8(0xff, 0x47, 0x30),
+		"9": Color8(0x9a, 0x92, 0x88), "8": Color8(0x84, 0x7c, 0x74), "6": Color8(0x66, 0x60, 0x5a),
+		"4": Color8(0x4b, 0x47, 0x42), "L": Color8(0xff, 0x47, 0x30),
 	}
 
 	var velocity := Vector2.ZERO
@@ -231,6 +274,10 @@ class IronBird:
 		glow.energy = 0.8
 		glow.texture_scale = 0.35
 		add_child(glow)
+		# 要躲的东西：不吃场景压暗，第一关暗处也看得见（和收银机的硬币、第二关的子弹一样）
+		var unshaded := CanvasItemMaterial.new()
+		unshaded.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+		material = unshaded
 
 	func _physics_process(delta: float) -> void:
 		_t += delta

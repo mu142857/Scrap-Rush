@@ -37,9 +37,12 @@ const TYPES := {
 	"switchboard": "res://scripts/enemies/switchboard.gd",
 	"gramophone": "res://scripts/enemies/gramophone.gd",
 	"projector": "res://scripts/enemies/projector.gd",
+	"chief_operator": "res://scripts/enemies/chief_operator.gd",
+	"film_editor": "res://scripts/enemies/film_editor.gd",
+	"watchman": "res://scripts/enemies/watchman.gd",
 }
 ## 精英怪：登场情绪 +10（策划案第八节）；落在场子里离主角远的那一头，预警更久、火花更大
-const ELITES := ["cuckoo", "sewing", "register", "piano", "vacuum", "roller", "switchboard", "gramophone", "projector"]
+const ELITES := ["cuckoo", "sewing", "register", "piano", "vacuum", "roller", "switchboard", "gramophone", "projector", "chief_operator", "film_editor", "watchman"]
 const ELITE_WARN_TIME := 1.0
 ## 打完一场马灯回这么多血
 const CLEAR_HEAL := 12.0
@@ -66,6 +69,8 @@ var cleared := false
 ## 可选：自定义某种怪怎么出场（比如压路机坐在伸出来的桥上开出来）。
 ## 签名 func(kind: String, x: float) -> Node2D：返回怪（自己负责加进场景）就用它，返回 null 走默认的从天花板掉下来。
 var spawn_hook: Callable
+## 清场回多少马灯。默认 CLEAR_HEAL；第三关按这场怪的数量给（2026-10-18，游戏剧情主题讨论会话，打过招呼）
+var clear_heal := CLEAR_HEAL
 
 var _wave := -1
 var _alive: Array[Node] = []
@@ -124,6 +129,32 @@ func _physics_process(delta: float) -> void:
 	for e in _alive.duplicate():
 		if not is_instance_valid(e) or e.get("dead"):
 			_alive.erase(e)
+		elif _lost(e):
+			# 掉出场子（掉进坑里、被挤出地图）的怪永远打不到：直接算死，不然闸门永远不开（夜间打磨怪物地形测试抓到的）
+			if e.has_method("hurt"):
+				e.call("hurt", 9999999.0, Vector2.DOWN, true)
+			if is_instance_valid(e) and not e.get("dead"):
+				e.queue_free()
+			_alive.erase(e)
+		elif _outside_gates(e):
+			# 跑到闸门外面（被叫班叫到门外、被挤出去）：外面待满 OUTSIDE_PULL_TIME 就拉回场子里；拉了两次还在外面就算死。
+			# 作者 10-18 早上在第二关电话簿仓库看到：总接线长叫班把接线员叫到了右闸门外，打不到，闸门不开，卡关
+			var t: float = e.get_meta("_out_t", 0.0) + delta
+			e.set_meta("_out_t", t)
+			if t >= OUTSIDE_PULL_TIME:
+				e.set_meta("_out_t", 0.0)
+				var pulls: int = e.get_meta("_out_pulls", 0)
+				if pulls >= 2:
+					if e.has_method("hurt"):
+						e.call("hurt", 9999999.0, Vector2.DOWN, true)
+					if is_instance_valid(e) and not e.get("dead"):
+						e.queue_free()
+					_alive.erase(e)
+				else:
+					e.set_meta("_out_pulls", pulls + 1)
+					_pull_back(e)
+		else:
+			e.set_meta("_out_t", 0.0)
 	if not _alive.is_empty():
 		return
 	_gap += delta
@@ -150,6 +181,7 @@ func _start() -> void:
 	var players := get_tree().get_nodes_in_group("player")
 	if not players.is_empty():
 		_entered_left = (players[0] as Node2D).global_position.x < (left + right) / 2.0
+	_pull_players_in()
 	for g in _gates:
 		g.slam()
 	Game.add_shake(4.0)
@@ -229,6 +261,66 @@ func _tick_queue(delta: float) -> void:
 				Run.add_emotion(10.0)
 
 
+## 关门时还在场子外面（或者正站在闸门底下）的人，拉到离得近的那扇门里侧：
+## 两人模式里 1P 进场触发关门时，2P 要是站在闸门下或门外，会被门挤到外面、整场都进不来（夜间打磨测出来的）
+const PULL_IN := 14.0
+
+
+func _pull_players_in() -> void:
+	var band := Rect2(left - 400.0, ceil_y - 4.0, right - left + 800.0, maxf(floor_left, floor_right) - ceil_y + 8.0)
+	for n in get_tree().get_nodes_in_group("player"):
+		var p := n as CharacterBody2D
+		if p == null:
+			continue
+		var pos := p.global_position
+		var inside := pos.x > left + GATE_W and pos.x < right - GATE_W and band.has_point(pos)
+		if inside:
+			continue
+		var to_left := absf(pos.x - left) <= absf(pos.x - right)
+		var x := left + PULL_IN if to_left else right - PULL_IN
+		var y := (floor_left if to_left else floor_right) - 1.0
+		Game.dust(get_parent(), pos, 4)
+		p.global_position = Vector2(x, y)
+		p.velocity = Vector2.ZERO
+		p.reset_physics_interpolation()
+		Game.dust(get_parent(), p.global_position, 4)
+
+
+## 怪在闸门外面待了这么久（秒）就拉回场子里
+const OUTSIDE_PULL_TIME := 1.0
+
+
+## 怪的脚在两扇闸门外面（门的中线以外 2 像素）
+func _outside_gates(e: Node2D) -> bool:
+	var x := e.global_position.x
+	return x < left - 2.0 or x > right + 2.0
+
+
+## 把门外的怪拉回场子里离得近的那扇门里侧（按它的身宽留够距离），落点冒一团火花
+func _pull_back(e: Node2D) -> void:
+	var half := 8.0
+	var br = e.get("body_rect")
+	if br is Rect2:
+		half = maxf(half, (br as Rect2).size.x / 2.0 + 4.0)
+	var to_left := absf(e.global_position.x - left) <= absf(e.global_position.x - right)
+	var x := left + GATE_W / 2.0 + half if to_left else right - GATE_W / 2.0 - half
+	var y := (floor_left if to_left else floor_right) - 1.0
+	Game.sparks(get_parent(), e.global_position + Vector2(0, -8), Color8(255, 190, 120), 6, 60.0)
+	e.global_position = Vector2(x, y)
+	if e is CharacterBody2D:
+		(e as CharacterBody2D).velocity = Vector2.ZERO
+	e.reset_physics_interpolation()
+	if "_home" in e:
+		e.set("_home", e.global_position)
+	Game.sparks(get_parent(), e.global_position + Vector2(0, -8), Color8(255, 190, 120), 6, 60.0)
+
+
+## 怪是不是已经掉出场子了：比场子地面低 200 像素以上，或者跑到闸门外面 200 像素以上
+func _lost(e: Node2D) -> bool:
+	var p := e.global_position
+	return p.y > maxf(floor_left, floor_right) + 200.0 or p.x < left - 200.0 or p.x > right + 200.0
+
+
 ## 出生高度：原来一律放在天花板下 14 像素，高个子的怪（总机台 46、留声机 45、放映机 52……）
 ## 一出生头就嵌进天花板，被物理挤到天花板上面去：血条出来了，房间里看不到怪（2026-10-17）。
 ## 现在加进场景以后（_ready 里才知道碰撞框、贴图多大）按怪的个头往下挪：
@@ -276,8 +368,8 @@ func _finish() -> void:
 		g.rise()
 	Game.sfx("ready", -6.0)
 	# 清场回血（策划案第七节"关卡内回血"）：和 CHECKPOINT 一起出
-	Run.heal_crystal(CLEAR_HEAL)
-	_show_label(tr("CLEAR   LANTERN +%d") % int(CLEAR_HEAL))
+	Run.heal_crystal(clear_heal)
+	_show_label(tr("CLEAR   LANTERN +%d") % int(clear_heal))
 	var part := Part.new()
 	part.position = Vector2((left + right) / 2.0, ceil_y + 20.0)
 	get_parent().add_child.call_deferred(part)
@@ -378,13 +470,19 @@ class Gate:
 			draw_rect(Rect2(x0 + i * 2, h - 1, 1, 2), Color8(90, 70, 58))
 
 
-## 零件（策划案第十节的货币）。打完遭遇战掉在场子中间，碰到就捡
+## 零件（策划案第十节的货币）。打完遭遇战掉在场子中间，蹦出来 0.6 秒后自己飞到最近的玩家身上（多远都飞，
+## 穿墙也飞），碰到就捡，左上角零件数亮出来飘"+1"。
+## 10-18：原来要走到 36 像素以内才吸，清场后从一侧直接出门就会漏掉（新玩家体验报告：第一关只捡到 2 个，进店什么都买不起）。
+## 场上没有玩家时，掉进坑里 3 秒还没落地就直接算捡到（存档已经把它算成拿到了）
 class Part:
 	extends Area2D
 
+	const HOME_DELAY := 0.6
+	const LOST_TIME := 3.0
 	var _t := 0.0
 	var _vy := -60.0
 	var _floor_hit := false
+	var _pull := 60.0
 
 	func _ready() -> void:
 		collision_layer = 0
@@ -407,6 +505,25 @@ class Part:
 
 	func _physics_process(delta: float) -> void:
 		_t += delta
+		var target := Vector2.INF
+		var bd := INF
+		if _t > HOME_DELAY:
+			for n in get_tree().get_nodes_in_group("player"):
+				var at := (n as Node2D).global_position + Vector2(0, -6)
+				if global_position.distance_to(at) < bd:
+					bd = global_position.distance_to(at)
+					target = at
+		if target != Vector2.INF:
+			_floor_hit = true
+			_pull = minf(_pull + 500.0 * delta, 320.0)
+			global_position = global_position.move_toward(target, _pull * delta)
+			# 穿墙飞过来时可能碰不到身体的判定框，贴近了就直接算捡到
+			if global_position.distance_to(target) < 6.0:
+				_collect()
+				return
+		elif not _floor_hit and _t > LOST_TIME:
+			_collect()
+			return
 		if not _floor_hit:
 			_vy = minf(_vy + 500.0 * delta, 200.0)
 			var q := PhysicsRayQueryParameters2D.create(global_position, global_position + Vector2(0, _vy * delta + 4.0), 1)
@@ -419,6 +536,11 @@ class Part:
 
 	func _on_body(b: Node) -> void:
 		if not b is Player:
+			return
+		_collect()
+
+	func _collect() -> void:
+		if is_queued_for_deletion():
 			return
 		Run.add_part()
 		Game.sfx("lantern_pick", -4.0, 1.6)

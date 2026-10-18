@@ -21,6 +21,10 @@ extends CanvasLayer
 const RISE_PER_SEC := 0.25
 const DARK_MULT := 1.5
 const OVERLOAD_DRAIN := 1.0
+## 打完一场遭遇战，情绪 -15："越打越紧 → 清场松一口气"的起伏（夜间打磨：不加的话第一关后半一直顶在失控）
+const CLEAR_CALM := 15.0
+## 这几关进场时情绪清零（策划案第八节"每关开头清零"；重来也清零）。Boss 房不清零，关底战还能紧张
+const RESET_SCENES: Array[String] = ["res://scenes/test_level.tscn", "res://scenes/level2.tscn", "res://scenes/level3.tscn"]
 const UP: Array[float] = [25.0, 50.0, 75.0]
 const DOWN: Array[float] = [20.0, 45.0, 70.0]
 const NAMES: Array[String] = ["CALM", "UNEASY", "ANGRY", "PANIC"]
@@ -33,6 +37,11 @@ const GAUGE_SIZE := Vector2(56, 34)
 const HUD_BAR := Rect2(16, 12, 60, 4)
 const WARM := Color8(255, 211, 138)
 const HEAL_COLOR := Color8(255, 226, 150)
+## 身上的变异：马灯血条右边一个小框，里面是商店同款图标。变异起作用时框跳一下、边框亮成它的颜色；
+## 每关开头图标旁边亮出名字，几秒后淡掉
+const MUT_BOX := Rect2(80, 5, 18, 18)
+const MUT_NAMES := {"rage": "RAGE", "slave": "SLAVE FLASH", "echo": "TAPE ECHO", "dynamo": "DYNAMO"}
+const MUT_NAME_TIME := 4.0
 
 ## 带回差的档位（EnemyBase 现在自己按每 25 分一档算；这里给画面和声音用）
 static var tier := 0
@@ -49,7 +58,13 @@ uniform float vroll = 0.0;
 uniform float pulse = 0.0;
 uniform float wobble = 1.0;
 
-float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+// 10-18：原来的 fract(sin(dot(...))) 在显卡上精度不够，噪点会变成斜条纹（网页版、手机更明显）；
+// 和结局录像一样换成 Dave Hoskins 的 hash12，效果强弱不变
+float hash(vec2 p) {
+	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+	p3 += dot(p3, p3.yzx + 33.33);
+	return fract((p3.x + p3.y) * p3.z);
+}
 
 void fragment() {
 	vec2 uv = SCREEN_UV;
@@ -89,6 +104,12 @@ var _state_label: Label
 var _banner: Label
 var _banner_t := 0.0
 var _bar_fx: Control
+var _mut_label: Label
+## 关卡里的零件数：平时藏着，捡到零件亮 3 秒（商店里有自己常驻的那个，这个就不显示）
+var _parts: PartsCounter
+var _mut_name_t := 0.0
+var _mut_pulse := 0.0
+var _mut_seen := -1
 
 var _shown := 0.0
 var _kick := 0.0
@@ -151,10 +172,30 @@ func _ready() -> void:
 	_bar_fx.size = Vector2(120, 30)
 	_bar_fx.draw.connect(_draw_bar_fx)
 	_top.add_child(_bar_fx)
+	_mut_label = _label(Vector2(MUT_BOX.end.x + 3, MUT_BOX.position.y + 3), 140, Color.WHITE)
+	_mut_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_mut_label.modulate.a = 0.0
+	_top.add_child(_mut_label)
+	_mut_seen = Mutations.proc_frame
+	_parts = PartsCounter.new()
+	_parts.auto_hide = true
+	_parts.position = Vector2(10, 27)
+	_top.add_child(_parts)
+	if Upgrades.mutation != "":
+		_mut_name_t = MUT_NAME_TIME
 
+	var root := get_tree().current_scene
+	if root and root.scene_file_path in RESET_SCENES:
+		Run.emotion = 0.0
 	_last_emotion = Run.emotion
 	_shown = Run.emotion
 	tier = _tier_for(Run.emotion, 0)
+	# 遭遇战清场松一口气：现有的和以后才建的（第二关天桥换卷）都接上
+	for e in get_tree().root.find_children("*", "Encounter", true, false):
+		_hook_encounter(e)
+	get_tree().node_added.connect(func(n: Node):
+		if n is Encounter:
+			_hook_encounter(n))
 	_last_hp = Run.crystal_hp
 	Run.crystal_changed.connect(_on_crystal_changed)
 	if Run.has_signal("resumed"):
@@ -169,6 +210,18 @@ func _label(pos: Vector2, w: float, color: Color) -> Label:
 	l.size = Vector2(w, 12)
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return l
+
+
+func _hook_encounter(e: Node) -> void:
+	if e.has_signal("finished") and not e.is_connected("finished", _on_encounter_cleared):
+		e.connect("finished", _on_encounter_cleared)
+
+
+func _on_encounter_cleared() -> void:
+	if Run.emotion <= 0.0:
+		return
+	Run.add_emotion(-CLEAR_CALM)
+	_calm = 1.0
 
 
 ## 不看回差时的档位（开局用）
@@ -241,7 +294,8 @@ func _process(delta: float) -> void:
 		_alarm_t -= delta
 		if _alarm_t <= 0.0 and level:
 			_alarm_t = 1.0
-			Game.sfx("alarm", -14.0)
+			# -10：混音给警报统一降了 8.4 dB，实际约 -22 dB，和失控心跳差不多、比战斗声低（10-18 对过）
+			Game.sfx("alarm", -10.0)
 	elif not level:
 		state = "PAUSED" if get_tree().current_scene is ShopRoom else ""
 	elif _dark:
@@ -301,6 +355,18 @@ func _process(delta: float) -> void:
 		if aura:
 			aura.healing = _heal_t > 0.0
 	_bar_fx.queue_redraw()
+	_parts.visible = not get_tree().current_scene is ShopRoom
+	# 变异图标：起作用就跳一下；名字只在开头亮几秒
+	if Mutations.proc_frame != _mut_seen:
+		_mut_seen = Mutations.proc_frame
+		_mut_pulse = 1.0
+	_mut_pulse = maxf(_mut_pulse - delta * 4.0, 0.0)
+	_mut_name_t = maxf(_mut_name_t - delta, 0.0)
+	var show_name := level and Upgrades.mutation != "" and _mut_name_t > 0.0
+	if show_name:
+		_mut_label.text = tr(MUT_NAMES.get(Upgrades.mutation, ""))
+		_mut_label.label_settings.font_color = _mut_color()
+	_mut_label.modulate.a = clampf(_mut_name_t, 0.0, 1.0) if show_name else 0.0
 	# 怒火：越生气，人身上冒的红火星越多
 	if Upgrades.mutation == "rage" and level and not get_tree().paused:
 		_rage_t -= delta
@@ -316,6 +382,10 @@ func _on_tier(old: int, new: int) -> void:
 	var col := ZONE_COLORS[new]
 	if new > old:
 		_burst = 1.0
+		# 场上的机器一起白闪一下：它们也"听到"了
+		for en in get_tree().get_nodes_in_group("enemy"):
+			if "_flash" in en and not en.get("dead"):
+				en.set("_flash", 0.8)
 		Game.sfx("tvclick", -4.0, 1.0)
 		Game.sfx("static", -14.0, 1.2)
 		Game.add_shake(2.0)
@@ -400,12 +470,37 @@ func _draw_gauge() -> void:
 	g.draw_rect(Rect2(c - Vector2(1, 1), Vector2(3, 3)), Color(0.7, 0.62, 0.5))
 
 
+static func _mut_color() -> Color:
+	match Upgrades.mutation:
+		"rage":
+			return Mutations.RAGE_COLOR
+		"slave":
+			return Mutations.SLAVE_COLOR
+		"echo":
+			return Mutations.ECHO_COLOR
+		"dynamo":
+			return Mutations.DYNAMO_COLOR
+	return WARM
+
+
 ## 回血时左上角马灯血条上扫过一道亮光
 func _draw_bar_fx() -> void:
+	# 变异图标：小框 + 商店同款 16 像素图标；起作用时往上跳 1 像素、边框换成变异的颜色、四角闪
+	if Upgrades.mutation != "" and _in_level():
+		var idx := ShopStand.ICON_NAMES.find(Upgrades.mutation)
+		var on := _mut_pulse > 0.0
+		var lift := -1.0 if _mut_pulse > 0.5 else 0.0
+		var box := Rect2(MUT_BOX.position + Vector2(0, lift), MUT_BOX.size)
+		UiStyle.panel(_bar_fx, box, on, _time, _mut_color())
+		if idx >= 0:
+			UiStyle.icon(_bar_fx, ShopStand.ICONS, idx, box.position + Vector2.ONE)
 	# 发电机：马灯血条下面 10 小格，杀一只亮一格，满 10 只回血
 	if Upgrades.mutation == "dynamo" and _in_level():
 		UiStyle.bars(_bar_fx, Vector2(HUD_BAR.position.x, HUD_BAR.end.y + 3), Mutations.dynamo_kills, Mutations.DYNAMO_KILLS,
 				4.0, 2.0, 2.0, Mutations.DYNAMO_COLOR)
+	# 过载：马灯血条外面一圈红框一闪一闪，告诉你"灯在烧"
+	if Run.emotion >= 100.0 and _in_level() and int(_time * 6.0) % 2 == 0:
+		_bar_fx.draw_rect(HUD_BAR.grow(2.0), Color(ZONE_COLORS[3].lightened(0.2), 0.95), false, 1.0)
 	if _heal_sweep <= 0.0:
 		return
 	var x := HUD_BAR.position.x + HUD_BAR.size.x * (1.0 - _heal_sweep)
@@ -413,7 +508,8 @@ func _draw_bar_fx() -> void:
 	_bar_fx.draw_rect(HUD_BAR.grow(1.0), Color(HEAL_COLOR, 0.5 * _heal_sweep), false, 1.0)
 
 
-## 挂在马灯上：怪走进灯光时的反应、回血时往外扩的像素光环和往上飘的光点、头顶飘字
+## 挂在马灯上：怪走进灯光时的反应、回血时往外扩的像素光环和往上飘的光点、头顶飘字、
+## 放下 / 捡起时闪一圈、过载时冒红火星加红边
 ## （原来还画一圈照亮范围的虚线，作者 10-17 说"不像素画又不明确"，去掉了）
 class LanternAura:
 	extends Node2D
@@ -421,6 +517,11 @@ class LanternAura:
 	var healing := false
 	var _ring_t := 0.0
 	var _inside := {}
+	## 放下 / 捡起那一下闪的圈：剩余时间和颜色（放下冷白、捡起暖黄）
+	var _swap_t := 0.0
+	var _swap_col := Color.WHITE
+	var _was_carried := true
+	var _ember_t := 0.0
 	var _t := 0.0
 	var _heal: CPUParticles2D
 
@@ -455,6 +556,20 @@ class LanternAura:
 		_heal.emitting = healing
 		_ring_t = _ring_t + delta if healing else 0.0
 		var crystal := get_parent() as Crystal
+		if crystal:
+			var carried := crystal.carrier != null
+			if carried != _was_carried:
+				_was_carried = carried
+				_swap_t = 0.3
+				_swap_col = Color(1.0, 0.85, 0.55) if carried else Color(0.8, 0.88, 1.0)
+			_swap_t = maxf(_swap_t - delta, 0.0)
+			# 过载：灯往上冒红火星
+			if Run.emotion >= 100.0:
+				_ember_t -= delta
+				if _ember_t <= 0.0:
+					_ember_t = 0.22
+					Game.sparks(crystal.get_parent(), crystal.global_position + Vector2(randf_range(-2, 2), -8),
+							EmotionFx.ZONE_COLORS[3].lightened(0.3), 2, 40.0, Vector2.UP)
 		if crystal == null:
 			return
 		# 怪走进光圈：白闪一下、冒一点暖色火花
@@ -496,6 +611,22 @@ class LanternAura:
 		if Upgrades.mutation == "slave" and crystal.carrier == null and int(_t * 3.0) % 2 == 0:
 			draw_rect(Rect2(-1, -13, 3, 1), Mutations.SLAVE_COLOR)
 			draw_rect(Rect2(0, -14, 1, 1), Color.WHITE)
+		# 放下 / 捡起：灯外面闪一圈往外扩的像素圆环
+		if _swap_t > 0.0:
+			var k := 1.0 - _swap_t / 0.3
+			UiStyle.pixel_ring(self, Vector2(0, -5), int(5.0 + k * 9.0), Color(_swap_col, 0.9 if k < 0.6 else 0.45))
+		# 过载：灯罩两边一闪一闪的红边
+		if Run.emotion >= 100.0:
+			if int(_t * 8.0) % 2 == 0:
+				draw_rect(Rect2(-4, -7, 1, 5), EmotionFx.ZONE_COLORS[3].lightened(0.3))
+				draw_rect(Rect2(4, -7, 1, 5), EmotionFx.ZONE_COLORS[3].lightened(0.3))
+			# 灯芯一下一下暗掉，像快灭了（红滤镜下红边不显眼，明暗变化一眼看得出）：每 0.5 秒暗两次
+			var ph := fmod(_t, 0.5)
+			if ph < 0.08 or (ph > 0.16 and ph < 0.22):
+				var sw: float = crystal.get("_swing")
+				for y in range(-6, -2):
+					var shift := roundf(sin(sw) * (y + 10) * 0.45) if crystal.carrier else roundf(sin(sw) * (y + 1) * -0.3)
+					draw_rect(Rect2(-1 + shift, y, 3, 1), Color8(70, 30, 22))
 		# 回血中：灯外面一圈圈往外扩的暖金色光环（两圈错开），配合往上飘的光点
 		if healing:
 			for k in 2:

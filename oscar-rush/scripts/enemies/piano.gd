@@ -16,7 +16,7 @@ enum State { IDLE, SHUFFLE, WAVE_WARN, WAVE, CHORD_WARN, CHORD, ARP_WARN, ARP, R
 
 ## 2026-10-17 第二次试玩嫌太难，整体降了一档：歇得更久、预警更长、琴键更少更慢、伤害更低
 ## 第三次试玩：好躲可以，但死太快、三招放不全。血翻倍；招与招之间歇得更久，而且不跟着情绪值变快
-const IDLE_TIME := Vector2(2.6, 3.2)
+const IDLE_TIME := Vector2(0.4, 0.7)  # 10-18 作者：招和招之间停太久
 const ROLL_FRAME_TIME := 0.16
 ## 偶尔挪一下：每隔几轮招式挪 0.5 秒
 const SHUFFLE_EVERY := 3
@@ -40,7 +40,7 @@ const CHORD_HEIGHT := 26.0
 const CHORD_UP := 0.5
 const CHORD_WIDTH := 10.0
 const CHORD_DAMAGE := 9.0
-const RECOVER_TIME := 1.1
+const RECOVER_TIME := 0.6
 ## 琶音
 const ARP_WARN := 0.9
 const ARP_NOTES := 5
@@ -64,14 +64,18 @@ func _setup() -> void:
 	elite_name = "PLAYER PIANO"
 	intro_title = "ENCORE"
 	intro_frame = 5
+	fill_alpha = 0.35
+	death_time = 1.1
+	death_frame = 5
+	warn_tint = false
 	texture_path = "res://art/enemies/piano.png"
 	hframes = 7
 	frame_size = Vector2i(42, 30)
 	body_rect = Rect2(-19, -28, 38, 28)
 	led_pixel = Vector2i(20, 7)
-	max_hp = 1500.0
+	max_hp = 2600.0  # 10-18 作者：血不够，三把武器 20～35 秒
 	contact_damage = 8.0
-	_idle_time = 1.0
+	_idle_time = 0.6
 
 
 func _tick(delta: float) -> void:
@@ -147,6 +151,7 @@ func _enter(s: State) -> void:
 
 
 func _start_attack() -> void:
+	pick_focus()
 	_face_player()
 	_attack_dir = dir
 	match _next_attack:
@@ -178,7 +183,7 @@ func _shuffle() -> void:
 ## 琴键浪：一根根往主角那边排过去。地面断了、撞墙就停。
 ## head_start：在顶起之前多等多久（这段时间琴键的位置在地上淡淡标出来）
 func _wave(head_start := 0.0) -> void:
-	var p := nearest_player()
+	var p := focus_player()
 	var reach := 120.0
 	if p:
 		reach = absf(p.global_position.x - global_position.x) - FOOT_X + 24.0
@@ -214,7 +219,7 @@ func _wave(head_start := 0.0) -> void:
 
 ## 和弦：主角脚下和左右各 30 像素，落点先标出来
 func _chord() -> void:
-	var p := nearest_player()
+	var p := focus_player()
 	if p == null:
 		return
 	var i := 0
@@ -261,7 +266,7 @@ func _ground_at(side: float, dist: float) -> bool:
 
 ## 琶音的第 i 个音：朝主角抛一颗音符，落点散开一点，音一个比一个高
 func _play_note(i: int) -> void:
-	var p := nearest_player()
+	var p := focus_player()
 	var from := global_position + Vector2(_attack_dir * 10.0, -frame_size.y + 4.0)
 	var target := p.global_position + Vector2(0, -6) if p else from + Vector2(_attack_dir * 100.0, 20.0)
 	target.x += (i - ARP_NOTES / 2) * 9.0 + randf_range(-5, 5)
@@ -295,7 +300,7 @@ func _update_visual() -> void:
 
 
 func _face_player() -> void:
-	var p := nearest_player()
+	var p := focus_player()
 	if p and absf(p.global_position.x - global_position.x) > 2.0:
 		dir = 1 if p.global_position.x > global_position.x else -1
 

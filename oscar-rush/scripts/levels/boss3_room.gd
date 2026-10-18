@@ -17,8 +17,11 @@ uniform float noise = 0.2;
 uniform float fade = 1.0;
 uniform vec2 size = vec2(444.0, 245.0);
 
+// 2026-10-17 夜：原来的 fract(sin(dot(...))) 在显卡上精度不够，雪花成了一道道斜条纹；换成 Dave Hoskins 的 hash12
 float hash(vec2 p) {
-	return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+	p3 += dot(p3, p3.yzx + 33.33);
+	return fract((p3.x + p3.y) * p3.z);
 }
 
 void fragment() {
@@ -47,7 +50,11 @@ const LINES := [
 	["Snow. Almost all snow.", "For one frame: a lit window.", "That's enough. We know the way now."],
 ]
 
+## 墙上两盏壁灯灯罩的位置（room3_bg 里灯罩中心，减掉边距 M）
+const SCONCES := [Vector2(245, 101), Vector2(310, 101)]
+
 var _end_layer: CanvasLayer
+var _sconces: Array[CanvasItem] = []
 var _film: TextureRect
 var _film_mat: ShaderMaterial
 var _black: ColorRect
@@ -56,6 +63,8 @@ var _end_title: Label
 var _end_sub: Label
 var _hum: AudioStreamPlayer
 var _can_quit := false
+## 马灯 95% 以上通关
+var _perfect := false
 
 
 func _configure() -> void:
@@ -65,8 +74,10 @@ func _configure() -> void:
 	platforms = [Vector3(8, 52, 130), Vector3(268, 312, 130), Vector3(36, 92, 94), Vector3(228, 284, 94), Vector3(134, 186, 62)]
 	# 没有转灯：这间屋只有电视屏幕在亮
 	lamps = []
-	darkness = Color(0.24, 0.24, 0.28)
-	darkness_hot = Color(0.32, 0.22, 0.3)
+	# 夜间打磨：原来 0.24 太暗（第三关会话报告：中位亮度 16/255）
+	darkness = Color(0.34, 0.33, 0.38)
+	darkness_hot = Color(0.42, 0.3, 0.38)
+	boss_tip = "It charges along the floor: jump up onto the hanging TVs"
 	boss_name = "THE SET"
 	card_sub = "The last TV that still plays tapes."
 	defeat_line = "It stopped changing channels."
@@ -152,12 +163,20 @@ func _after_defeat() -> void:
 	await _show_card("", defeat_line)
 	_bar.visible = false
 	hud.visible = false
+	_hide_overlays()
 	_lock_players()
-	await get_tree().create_timer(1.2).timeout
+	# 0. 墙上两盏壁灯一盏接一盏亮起来：打的时候这间屋只有电视在亮，沙发、相框都看不见；
+	#    打完灯一开，才看出这是一间家里的客厅（2026-10-17 夜，Boss3 房美术巡检）
+	if is_inside_tree(): await get_tree().create_timer(0.5).timeout
+	for p in SCONCES:
+		_sconce_on(p)
+		if is_inside_tree(): await get_tree().create_timer(0.45).timeout
+	create_tween().tween_property(_dark, "color", Color(0.4, 0.37, 0.38), 0.6)
+	if is_inside_tree(): await get_tree().create_timer(1.0).timeout
 
 	# 1. 自己重新开机，放录像
 	tv.turn_on("home")
-	await get_tree().create_timer(2.0).timeout
+	if is_inside_tree(): await get_tree().create_timer(2.0).timeout
 
 	# 2. 镜头推进屏幕，录像铺满全屏
 	var screen_center := tv.global_position + TVBoss.SCREEN.get_center()
@@ -170,17 +189,30 @@ func _after_defeat() -> void:
 
 	var q := clampf(Run.crystal_hp / maxf(Run.crystal_max, 1.0), 0.0, 1.0)
 	var tier := 0 if q > 0.66 else (1 if q > 0.33 else 2)
-	# 血量满几乎没有雪花；见底几乎全是雪花
-	var noise: float = lerpf(0.92, 0.04, q)
+	# 雪花按旁白的三档分段，档和档之间有台阶（2026-10-17 夜，商店 / 马灯会话的建议）：
+	# 好档几乎干净，中档明显有雪花，差档几乎看不见画面。马灯 95% 以上算满血通关：一点雪花都没有
+	_perfect = q >= 0.95
+	var noise: float
+	if _perfect:
+		noise = 0.0
+	elif q > 0.66:
+		noise = lerpf(0.15, 0.03, (q - 0.66) / 0.34)
+	elif q > 0.33:
+		noise = lerpf(0.55, 0.35, (q - 0.33) / 0.33)
+	else:
+		noise = lerpf(0.92, 0.7, q / 0.33)
 	_film_mat.set_shader_parameter("noise", noise)
 	_hum.volume_db = lerpf(-34.0, -10.0, noise)
 	_hum.play()
-	await get_tree().create_timer(1.5).timeout
-	for line in LINES[tier]:
+	if is_inside_tree(): await get_tree().create_timer(1.5).timeout
+	var lines: Array = LINES[tier].duplicate()
+	if _perfect:
+		lines.insert(1, "Not a scratch on the tape.")
+	for line in lines:
 		await _type(_line, line, 0.04)
-		await get_tree().create_timer(2.2).timeout
+		if is_inside_tree(): await get_tree().create_timer(2.2).timeout
 	await _fade_label(_line)
-	await get_tree().create_timer(0.6).timeout
+	if is_inside_tree(): await get_tree().create_timer(0.6).timeout
 
 	# 3. 最后一个镜头：四个人围着电视坐
 	var out := create_tween()
@@ -189,16 +221,29 @@ func _after_defeat() -> void:
 	await out.finished
 	_hum.stop()
 	_final_shot(tv)
-	await get_tree().create_timer(0.8).timeout
+	if is_inside_tree(): await get_tree().create_timer(0.8).timeout
 	var back := create_tween()
 	back.tween_property(_black, "modulate:a", 0.0, 2.5)
 	await back.finished
-	await get_tree().create_timer(1.6).timeout
+	if is_inside_tree(): await get_tree().create_timer(1.6).timeout
+	# 字放高一点，别压到电视天线
+	_end_title.position.y = 14
+	_end_sub.position.y = 54
 	await _type(_end_title, "THE END", 0.12)
 	Game.add_shake(2.0)
-	await get_tree().create_timer(0.6).timeout
+	if is_inside_tree(): await get_tree().create_timer(0.6).timeout
 	await _type(_end_sub, "Scrap Rush  -  thanks for playing", 0.035)
-	await get_tree().create_timer(2.5).timeout
+	if _perfect:
+		# 满血通关的小奖励：THE END 下面一行暖黄小字
+		var lantern := Label.new()
+		lantern.label_settings = Hud.small_text(Color8(255, 211, 138))
+		lantern.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lantern.position = Vector2(0, 68)
+		lantern.size = Vector2(480, 12)
+		_end_layer.add_child(lantern)
+		if is_inside_tree(): await get_tree().create_timer(0.5).timeout
+		await _type(lantern, "LANTERN 100%", 0.05)
+	if is_inside_tree(): await get_tree().create_timer(2.5).timeout
 	_can_quit = true
 
 
@@ -208,18 +253,36 @@ func _final_shot(tv: TVBoss) -> void:
 	for n in get_children():
 		if n is Crystal:
 			n.queue_free()
+		# 最后一个镜头只留老电视和四个人：藏掉竞技场前景（吊着的搁板、旧电视），不然"剧终"压在它们上面
+		if n is Sprite2D and (n as Sprite2D).texture == fg_tex:
+			n.visible = false
 	_dark.color = Color(0.07, 0.07, 0.09)
+	# 壁灯只在满血通关时留着（家里有人给我们留了灯）；否则还是只有电视亮着的黑屋
+	if not _perfect:
+		for n in _sconces:
+			n.queue_free()
+		_sconces.clear()
 	tv.screen_mode = "home"
 	# 黑场里把电视挪回房间右边，跪着放录像
 	tv.position = Vector2(262, floor_y)
 	# 四个人坐在电视前的地上，面朝电视（脸朝右），只露上半身
-	var seats := [Vector2(150, floor_y), Vector2(166, floor_y), Vector2(184, floor_y), Vector2(200, floor_y)]
+	# 2026-10-17 夜：原来用走路帧，截掉下半身以后只剩几个钩子；现在都用站立帧截掉腿，坐在地上，
+	# 离电视近一点，屏幕前一盏冷白的光把他们照出来（不然暗场里只看得见亮边）
+	var seats := [Vector2(196, floor_y), Vector2(208, floor_y - 1), Vector2(221, floor_y), Vector2(233, floor_y - 1)]
+	var glow := PointLight2D.new()
+	glow.texture = Game.light_texture()
+	# 满血通关时屏幕光是暖色（录像一点没坏，像家里的灯），否则是显像管的冷白
+	glow.color = Color(1.0, 0.84, 0.62) if _perfect else Color(0.78, 0.84, 1.0)
+	glow.energy = 1.1
+	glow.texture_scale = 120.0 / 32.0
+	glow.position = Vector2(244, floor_y - 18)
+	add_child(glow)
 	for i in Run.SKINS.size():
 		for part in ["body", "strip"]:
 			var sp := Sprite2D.new()
 			sp.texture = load("res://art/chars/%s_%s.png" % [Run.SKINS[i], part])
 			sp.hframes = 7
-			sp.frame = i % 4
+			sp.frame = 0
 			sp.centered = false
 			sp.region_enabled = true
 			sp.region_rect = Rect2(0, 0, 16 * 7, Player.FRAME_SIZE.y - 6)
@@ -231,8 +294,41 @@ func _final_shot(tv: TVBoss) -> void:
 				unshaded.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
 				sp.material = unshaded
 			add_child(sp)
-	_cam.zoom = Vector2(2.4, 2.4)
+	# 7/3：窗口 3 倍时每格正好 7 个屏幕像素，像素不会一大一小（原来 2.4，美术巡检）
+	var z := GameCamera.pixel_zoom(get_viewport(), 7.0 / 3.0)
+	_cam.zoom = Vector2(z, z)
 	_cam.position = Vector2(216, floor_y - 40)
+
+
+## 开一盏壁灯："咔哒"一声，灯罩下面亮一个暖色灯泡，一盏暖光慢慢亮起来
+func _sconce_on(at: Vector2) -> void:
+	Game.sfx("tvclick", -10.0, 1.4)
+	var bulb := ColorRect.new()
+	bulb.color = Color(1.0, 0.86, 0.6)
+	bulb.position = at + Vector2(-2, 3)
+	bulb.size = Vector2(4, 2)
+	bulb.z_index = -10   # 在背景（-20）和吊着的旧电视（前景 -5）之间
+	var unshaded := CanvasItemMaterial.new()
+	unshaded.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+	bulb.material = unshaded
+	add_child(bulb)
+	var l := PointLight2D.new()
+	l.texture = Game.light_texture()
+	l.color = Color(1.0, 0.78, 0.52)
+	l.energy = 0.0
+	l.texture_scale = 2.6
+	l.position = at + Vector2(0, 6)
+	add_child(l)
+	create_tween().tween_property(l, "energy", 0.85, 0.35)
+	_sconces.append(bulb)
+	_sconces.append(l)
+
+
+## 情绪表和全屏老电视滤镜是 Hud 里另建的画布层（EmotionFx，里面还套着一层放表盘），
+## hud.visible = false 藏不掉嵌套的画布层，所以把 Hud 底下的画布层一层层都藏掉
+func _hide_overlays() -> void:
+	for n in hud.find_children("*", "CanvasLayer", true, false):
+		(n as CanvasLayer).visible = false
 
 
 func _lock_players() -> void:
@@ -251,7 +347,7 @@ func _type(label: Label, text: String, step: float) -> void:
 		label.text = text.substr(0, i + 1)
 		if text[i] != " " and step >= 0.1:
 			Game.sfx("ui_move", -8.0, 0.8)
-		await get_tree().create_timer(step).timeout
+		if is_inside_tree(): await get_tree().create_timer(step).timeout
 
 
 func _fade_label(label: Label) -> void:
@@ -263,8 +359,9 @@ func _fade_label(label: Label) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if _can_quit and event.is_pressed() and not event.is_echo():
 		_can_quit = false
-		Run.reset_run()
-		SceneFade.go(get_tree(), "res://scenes/title.tscn", 1.2)
+		# 先进一局结算（用时、马灯碎了几次、零件……，"游戏细节讨论"会话做的），
+		# 结算画面退出时再清掉这一局、回开始界面，所以这里不 reset_run
+		SceneFade.go(get_tree(), "res://scenes/results.tscn", 1.2)
 		return
 	# 结局里不许按 R 重打
 	if _state < 3:

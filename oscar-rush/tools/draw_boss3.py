@@ -8,9 +8,9 @@ Boss：一台长了四条细木腿、会满地乱跑的木壳老电视（腿由�
 
 房间：背景是第三关电视墙的一角，整面压暗、褪色（屏幕全关了，只有 Boss 一台亮着）；
 前景：木地板 + 中间一块旧地毯（家的感觉）、两边墙上的低搁板、三台用电线吊着的旧电视当平台、木头闸门。
-结局：从第三关终点那块"家乡"屏幕切出来的画面 hometown.png（444×245）。
+结局用的家乡画面 hometown.png 由 草图/第三关/export_level3.py 导出，不归这个脚本。
 
-输出 art/boss/：tv_body.png、room3_bg.png、room3_fg.png、gate3.png、hometown.png、preview_tv.png
+输出 art/boss/：tv_body.png、room3_bg.png、room3_fg.png、gate3.png、preview_tv.png
 """
 from pathlib import Path
 
@@ -19,6 +19,9 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "art/boss"
+## 预览图只给人看，不放进 art/（不然会被打进网页版包里）
+PREVIEW = Path(__file__).resolve().parent.parent.parent / "草图/boss预览"
+
 
 PAL = {
     # 木头（暗 → 亮），取自第三关电视框
@@ -139,7 +142,7 @@ def body():
 
 
 # —— 房间 ——
-M = 16
+M = 24
 AW, AH = 320, 180
 CW, CH = AW + 2 * M, AH + 2 * M
 FLOOR_Y, WALL, CEIL = 164, 8, 12
@@ -148,7 +151,7 @@ FLOOR_Y, WALL, CEIL = 164, 8, 12
 SHELVES = [(8, 52, 130), (268, 312, 130)]
 HANGING = [(36, 92, 94), (228, 284, 94), (134, 186, 62)]
 PLATFORMS = SHELVES + HANGING
-CROP = (2600, 420)
+CROP = (2592, 412)
 
 
 def px(img, x, y, c):
@@ -171,6 +174,12 @@ def l3_composite():
     return base
 
 
+def limit_colors(arr, n=40):
+    """收成 n 色、不抖动：暗角是连续渐变，不收的话一张背景有七百多种颜色，放大以后发糊、和前景的硬边像素对不上（美术巡检提的）"""
+    im = Image.fromarray(arr).convert("RGB").quantize(colors=n, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
+    return np.array(im.convert("RGBA"))
+
+
 def background(base):
     x, y = CROP
     bg = np.array(base.crop((x, y, x + CW, y + CH))).astype(float)
@@ -179,11 +188,12 @@ def background(base):
     bg[..., :3] = bg[..., :3] * 0.35 + gray * 0.65
     yy, xx = np.mgrid[0:CH, 0:CW]
     d = np.hypot((xx - CW * 0.6) / (CW / 2), (yy - CH * 0.55) / (CH * 0.7))
-    vign = np.clip(1.0 - 0.6 * d, 0.3, 1.0)
-    bg[..., :3] *= 0.32 * vign[..., None]
+    # 夜间打磨：原来 ×0.32、暗角最低 0.3，中位亮度只有 16/255，沙发、相框都看不见。提到 ×0.5、暗角最低 0.45，还是暗，但看得出是一间屋子
+    vign = np.clip(1.0 - 0.5 * d, 0.45, 1.0)
+    bg[..., :3] *= 0.5 * vign[..., None]
     bg[..., 2] *= 1.12
     bg[..., 3] = 255
-    return bg.clip(0, 255).astype(np.uint8)
+    return limit_colors(bg.clip(0, 255).astype(np.uint8))
 
 
 def foreground():
@@ -256,6 +266,7 @@ def gate():
 
 
 def main():
+    PREVIEW.mkdir(parents=True, exist_ok=True)
     OUT.mkdir(parents=True, exist_ok=True)
     tv = body().rgba()
     Image.fromarray(tv).save(OUT / "tv_body.png")
@@ -264,15 +275,14 @@ def main():
     Image.fromarray(bg).save(OUT / "room3_bg.png")
     Image.fromarray(fg).save(OUT / "room3_fg.png")
     Image.fromarray(gt).save(OUT / "gate3.png")
-    # 家乡画面：第三关终点那块屏幕（hometown，rect 4503,108 → 4946,352）
-    base.crop((4503, 108, 4947, 353)).save(OUT / "hometown.png")
+    # 家乡画面 hometown.png 不在这里生成了：第三关地图改过，改由 草图/第三关/export_level3.py 按当前家乡屏幕导出（剧情会话负责）
     prev = Image.fromarray(bg).convert("RGBA")
     prev.alpha_composite(Image.fromarray(fg))
     prev.alpha_composite(Image.fromarray(tv), (200 + M - W // 2, FLOOR_Y + M - H + 1))
     hero = Image.open(ROOT / "art/chars/red_body.png").convert("RGBA").crop((0, 0, 16, 20))
     prev.alpha_composite(hero, (40 + M - 8, FLOOR_Y + M - 20))
-    prev.resize((CW * 3, CH * 3), Image.NEAREST).save(OUT / "preview_tv.png")
-    print("wrote tv_body.png room3_bg.png room3_fg.png gate3.png hometown.png preview_tv.png")
+    prev.resize((CW * 3, CH * 3), Image.NEAREST).save(PREVIEW / "preview_tv.png")
+    print("wrote tv_body.png room3_bg.png room3_fg.png gate3.png preview_tv.png")
 
 
 if __name__ == "__main__":

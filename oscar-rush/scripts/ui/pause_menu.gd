@@ -25,6 +25,16 @@ var _selected := 0
 ## 等第二下确认的那一项（"RESTART" / "TITLE"），没有就是空
 var _confirming := ""
 var _settings: SettingsMenu
+var _frame: Control
+var _info: Label
+## 场景 → 显示的关卡名（text.csv 里有中文）
+const LEVEL_NAMES := {
+	"res://scenes/test_level.tscn": "LEVEL 1", "res://scenes/boss1.tscn": "LEVEL 1 BOSS",
+	"res://scenes/level2_tube.tscn": "LEVEL 2", "res://scenes/level2.tscn": "LEVEL 2", "res://scenes/boss2.tscn": "LEVEL 2 BOSS",
+	"res://scenes/level3.tscn": "LEVEL 3", "res://scenes/boss3.tscn": "LEVEL 3 BOSS", "res://scenes/shop.tscn": "SHOP",
+}
+const WEAPON_NAMES := {"flash": "FLASH LAMP", "rivet": "RIVET GUN", "hammer": "STEAM HAMMER"}
+const MUTATION_NAMES := {"rage": "RAGE", "slave": "SLAVE FLASH", "echo": "TAPE ECHO", "dynamo": "DYNAMO"}
 var _busy := false
 var _mouse_idle := 0.0
 
@@ -38,12 +48,24 @@ func _ready() -> void:
 	_root.visible = false
 	add_child(_root)
 	var back := ColorRect.new()
-	back.color = Color(0.02, 0.02, 0.035, 0.88)
+	back.color = Color(0.02, 0.02, 0.035, 0.93)
 	back.size = Vector2(480, 270)
 	back.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.add_child(back)
-	_label("PAUSED", 58.0, 22, WARM, 3)
+	# 选项外面一张 UiStyle 卡片（和设置、选武器、商店同一套外框）
+	_frame = Control.new()
+	_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_frame.size = Vector2(480, 270)
+	_frame.draw.connect(func() -> void:
+		var step := Lang.menu_step(STEP)
+		var h := (_options.size() - 1) * step + 42.0
+		UiStyle.panel(_frame, Rect2(240.0 - 140.0, TOP - 11.0, 280.0, roundf(h)), false, 0.0))
+	_root.add_child(_frame)
+	_label("PAUSED", 48.0, 22, WARM, 3)
+	# 现在的状态：哪一关、拿的什么家伙、变异、零件（监督会话 10-17 夜里提的）
+	_info = _label("", 76.0, 11, Color(0.75, 0.73, 0.72), 2)
 	_hint = _label("", 240.0, 11, DIM, 2)
+	Controls.device_changed.connect(_on_device_changed)
 	_hint.size.y = 30.0
 
 
@@ -69,6 +91,13 @@ func can_open() -> bool:
 	var cur := get_tree().current_scene
 	if cur == null or cur.scene_file_path == TITLE_SCENE or cur.scene_file_path == "":
 		return false
+	# 切场景的黑幕（SceneFade）还在的时候不开：不然菜单开着、底下换了场景，"重开本关"会重开到新场景去
+	for c in get_tree().root.get_children():
+		if c is SceneFade:
+			return false
+	# 关卡已经在走出口 / 气动管冲到终点、黑幕还没起来的那半秒也不开（level2.gd 的 _leaving、tube_run.gd 的 _ending）
+	if cur.get("_leaving") == true or cur.get("_ending") == true:
+		return false
 	return not get_tree().paused
 
 
@@ -76,6 +105,7 @@ func open() -> void:
 	if not can_open():
 		return
 	is_open = true
+	Settings.set_muffled(true)
 	get_tree().paused = true
 	Game.sfx("ui_back", -10.0)
 	for l in _labels:
@@ -90,9 +120,23 @@ func open() -> void:
 	_selected = 0
 	_confirming = ""
 	_refresh()
+	_frame.queue_redraw()
+	_info.text = _status_line()
 	_root.visible = true
 	_root.modulate.a = 0.0
 	_root.create_tween().set_ignore_time_scale(true).tween_property(_root, "modulate:a", 1.0, 0.12)
+
+
+func _status_line() -> String:
+	var parts: Array[String] = []
+	var scene := get_tree().current_scene.scene_file_path
+	if LEVEL_NAMES.has(scene):
+		parts.append(tr(LEVEL_NAMES[scene]))
+	parts.append(tr(WEAPON_NAMES.get(Upgrades.weapon, Upgrades.weapon.to_upper())))
+	if Upgrades.mutation != "":
+		parts.append(tr(MUTATION_NAMES.get(Upgrades.mutation, Upgrades.mutation.to_upper())))
+	parts.append(tr("PARTS %d") % Run.parts)
+	return "   ·   ".join(parts)
 
 
 func _text(option: String) -> String:
@@ -106,6 +150,11 @@ func _text(option: String) -> String:
 		"TITLE":
 			return "QUIT TO TITLE"
 	return option
+
+
+func _on_device_changed(_pad: bool) -> void:
+	if is_open:
+		_refresh()
 
 
 func _refresh() -> void:
@@ -123,9 +172,10 @@ func _refresh() -> void:
 			h = "Back to the start of this level. Lantern and parts reset to how you came in."
 		"TITLE":
 			h = "This run's progress will be lost."
-	var keys := tr("W/S select    Space / C / A confirm    Esc resume")
+	var keys := tr("%s select    %s confirm    %s resume") % [Controls.label("select"), Controls.label("confirm"), Controls.label("pause")]
 	_hint.text = keys if h == "" else tr(h) + "\n" + keys
-	_hint.position.y = 246.0 if h == "" else 234.0
+	# 两行时往上提，别和关卡底部那行按键提示（y≈258）叠在一起
+	_hint.position.y = 240.0 if h == "" else 226.0
 
 
 func _input(event: InputEvent) -> void:
@@ -228,6 +278,8 @@ func _confirm() -> void:
 			var cur := get_tree().current_scene
 			get_tree().paused = false
 			if cur and cur.has_method("_retry"):
+				# "重开本关"就是从本关开头来（按 R / 马灯碎了才回最近的存档点）
+				Run.forget_checkpoint()
 				cur.call("_retry")
 		"SETTINGS":
 			Game.sfx("ui_confirm", -8.0)
@@ -264,4 +316,5 @@ func _close() -> void:
 	await tw.finished
 	_root.visible = false
 	is_open = false
+	Settings.set_muffled(false)
 	_busy = false

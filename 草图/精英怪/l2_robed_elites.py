@@ -63,6 +63,11 @@ def lean(img, k, below=None):
 CO_W, CO_H = 46, 52
 CO_R = ramp((90, 76, 100), n=9, L_span=0.6, hue_shift=3)               # 深紫黑长袍
 CO_A = [(104, 80, 46), (164, 128, 70), (214, 176, 108)]                 # 黄铜：耳机、话筒、插头
+# 脸用黄铜那三档（受光的皮肤和黄铜同一个暖色相，不多开色相）；胡子用长袍最亮的两档（灰白）
+SKIN = None
+BEARD = None
+SKIN = CO_A
+BEARD = [CO_R[7], CO_R[8]]
 CO_DARK = CO_R[0]                                                       # 帽兜里：长袍最暗的一档（不另起一个色相）
 CO_OPEN = [".##.",
            "####",
@@ -83,7 +88,14 @@ def co_body():
     img = light_planes(m, CO_R, light=LIGHT, contrast=0.75, ambient=0.55, top_dark=0.5, rim=1,
                        folds=[((17, 18), (12, 50), 5), ((22, 16), (22, 50), 5), ((27, 20), (31, 50), 4),
                               ((14, 30), (9, 50), 3)])
-    img = face(img, 15, 9, CO_OPEN, CO_DARK, CO_R[6], (1, 2))
+    img = face(img, 15, 9, CO_OPEN, CO_DARK, CO_R[6], (0, 2))
+    # 活人的脸：帽兜里一个鹰钩鼻、颧骨受光，下巴垂出一把白胡子盖在胸前（眼睛由代码画，会眨、会看人）
+    put(img, 16, 12, SKIN[2])
+    put(img, 15, 12, SKIN[1])
+    put(img, 17, 12, SKIN[0])
+    for x, y, c in [(15, 13, BEARD[1]), (16, 13, BEARD[1]), (17, 13, BEARD[0]), (15, 14, BEARD[1]), (16, 14, BEARD[1]),
+                    (17, 14, BEARD[0]), (16, 15, BEARD[1]), (17, 15, BEARD[0]), (16, 16, BEARD[0])]:
+        put(img, x, y, c)
     # 黄铜耳机箍在帽兜上，前面伸出话筒
     for x, y in [(19, 7), (20, 6), (21, 6), (22, 6), (23, 6), (24, 7)]:
         put(img, x, y, CO_A[2] if x < 22 else CO_A[1])
@@ -166,6 +178,11 @@ def chief_frames():
     frames.append(over(over(pad(co_cords(sway=1), 3), lean(still, 2, below=30)), pad(co_arm(2), 3)))
     frames.append(over(over(pad(co_cords(splay=2), 3), still), pad(co_arm(3), 3)))
     frames.append(over(over(pad(co_cords(splay=1), 3), R.lift(still, 1)), pad(co_arm(4), 3)))
+    # 6 挨打后仰：上半身往后一仰，手护在胸前，背后的线甩乱
+    frames.append(over(over(pad(co_cords(sway=-1, splay=1), 3), lean(still, -3, below=34)), lean(pad(co_arm(0), 3), -3, below=34)))
+    # 7 倒下：整个人瘫下去，袍子堆在地上，线耷拉下来
+    heap = crouch(still, 16, at=0.75)
+    frames.append(over(_down(pad(co_cords(sway=1), 3), 14), heap))
     return frames
 
 
@@ -198,7 +215,12 @@ def fe_body():
     m = ragged_hem(m, depth=2, seed=21)
     img = light_planes(m, FE_R, light=LIGHT, contrast=0.75, ambient=0.55, top_dark=0.45, rim=1,
                        folds=[((20, 18), (16, 46), 4), ((26, 17), (26, 46), 5), ((33, 19), (37, 46), 4)])
-    img = face(img, 22, 10, FE_OPEN, FE_DARK, FE_R[6], (1, 1))
+    img = face(img, 22, 10, FE_OPEN, FE_DARK, FE_R[6], (0, 1))
+    # 活人的脸：长鼻子从帽兜里伸出来，下巴一点胡茬（眼睛由代码画）
+    put(img, 21, 12, SKIN[2])
+    put(img, 22, 12, SKIN[1])
+    put(img, 23, 12, SKIN[0])
+    put(img, 22, 13, SKIN[0])
     # 遮光帽檐：一条往前伸出去的暗檐，上沿亮一档
     for x in range(17, 28):
         put(img, x, 9, FE_R[1])
@@ -293,6 +315,14 @@ def editor_frames():
     frames.append(over(sprint, _down(_left(pad(fe_arm(2), 3), 4), 7)))
     frames.append(over(sprint, _down(_left(pad(fe_arm(3), 3), 4), 7)))
     frames.append(over(R.lift(feet(body, 0, (19 + FE_PADL, 33 + FE_PADL), FE_R[1], H - 1), 0), pad(fe_arm(4), 3)))
+    stand = feet(body, 0, (19 + FE_PADL, 33 + FE_PADL), FE_R[1], H - 1)
+    # 6 挨打后仰：往后一仰，剪刀垂下去
+    frames.append(over(lean(stand, -3, below=32), lean(pad(fe_arm(0), 3), -3, below=32)))
+    # 7 倒下：瘫成一堆，剪刀掉在身前的地上
+    heap = crouch(stand, 16, at=0.75)
+    import math
+    blade = shears(blank(FE_W + FE_PADL, H), (14 + FE_PADL, H - 2), math.radians(178), math.radians(186), length=18, handle=3)
+    frames.append(over(heap, blade))
     return frames
 
 
@@ -340,8 +370,8 @@ def center_trim(frames, anchor):
 
 
 # 身子中线（画布 x）：总接线长的长袍中线，剪辑师的大褂中线（加上左边补的 FE_PADL）
-MONSTERS = [("chief_operator", "总接线长（E3）", chief_frames, [(0, "飘"), (2, "拽线预警"), (3, "拽线"), (4, "转线"), (5, "叫班")]),
-            ("film_editor", "剪辑师（第一场换卷战）", editor_frames, [(0, "走"), (2, "冲刺预警"), (3, "冲刺"), (4, "剪"), (5, "跳剪落下")])]
+MONSTERS = [("chief_operator", "总接线长（E3）", chief_frames, [(0, "飘"), (2, "拽线预警"), (3, "拽线"), (4, "转线"), (5, "叫班"), (6, "挨打后仰"), (7, "倒下")]),
+            ("film_editor", "剪辑师（第一场换卷战）", editor_frames, [(0, "走"), (2, "冲刺预警"), (3, "冲刺"), (4, "剪"), (5, "跳剪落下"), (6, "挨打后仰"), (7, "倒下")])]
 
 
 ANCHOR = {"chief_operator": 21, "film_editor": 27 + FE_PADL}
@@ -376,9 +406,14 @@ def main():
     allf = {}
     for name, title, fn, show in MONSTERS:
         fr, origin = center_trim(fn(), ANCHOR[name])
+        eyes = eye_pixels(fr)
+        dark = CO_DARK if name == "chief_operator" else FE_DARK
+        for f in fr:
+            m = (f[..., 0] == R.EYE[0]) & (f[..., 1] == R.EYE[1]) & (f[..., 2] == R.EYE[2]) & (f[..., 3] > 0)
+            f[m] = rgba(dark)
         w, h = save_strip(name, fr)
         allf[name] = fr
-        print(f"{name}.png: {len(fr)} 帧，每帧 {w}x{h}；红灯每帧 {eye_pixels(fr)}")
+        print(f"{name}.png: {len(fr)} 帧，每帧 {w}x{h}；前面那只眼睛每帧 {eyes}")
     cell_h = 56 * S + 50
     img = Image.new("RGB", (1500, 60 + cell_h * len(MONSTERS)), BG)
     d = ImageDraw.Draw(img)

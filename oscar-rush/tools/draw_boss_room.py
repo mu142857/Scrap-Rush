@@ -17,10 +17,13 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "art/boss"
-M = 16                      # 画布四边多出来的边
+## 预览图只给人看，不放进 art/（不然会被打进网页版包里）
+PREVIEW = Path(__file__).resolve().parent.parent.parent / "草图/boss预览"
+
+M = 24                      # 画布四边多出来的边
 AW, AH = 320, 180           # 竞技场
 CW, CH = AW + 2 * M, AH + 2 * M
-CROP = (380, 0)             # 从场景1 取背景的位置（左上角）
+CROP = (372, -8)             # 从场景1 取背景的位置（左上角）
 
 # 竞技场坐标。改了这里，boss_room.gd 里的 FLOOR_Y / PLATFORMS / VENTS 也要改
 FLOOR_Y = 164
@@ -62,6 +65,12 @@ def hazard(img, x0, y0, x1, y1, phase=0, width=3):
             px(img, x, y0, "Y")
 
 
+def limit_colors(arr, n=40):
+    """收成 n 色、不抖动：暗角是连续渐变，不收的话一张背景有七百多种颜色，放大以后发糊、和前景的硬边像素对不上（美术巡检提的）"""
+    im = Image.fromarray(arr).convert("RGB").quantize(colors=n, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
+    return np.array(im.convert("RGBA"))
+
+
 def background():
     layers = None
     for name in ["far", "beams", "machines", "truss"]:
@@ -88,7 +97,7 @@ def background():
         for fy in range(30, FLOOR_Y + M, 34):        # 法兰盘
             rect(out, x0 - 1, fy, x0 + 9, fy + 2, "r3")
             rect(out, x0 - 1, fy, x0 + 9, fy, "r4")
-    return out
+    return limit_colors(out)
 
 
 def foreground():
@@ -155,6 +164,7 @@ def gate():
 
 
 def main():
+    PREVIEW.mkdir(parents=True, exist_ok=True)
     OUT.mkdir(parents=True, exist_ok=True)
     bg, fg, gt = background(), foreground(), gate()
     Image.fromarray(bg).save(OUT / "room_bg.png")
@@ -170,7 +180,7 @@ def main():
     prev.alpha_composite(Image.fromarray(gt), (M - 1, FLOOR_Y + M - 40))
     hero = Image.open(ROOT / "art/chars/red_body.png").convert("RGBA").crop((0, 0, 16, 20))
     prev.alpha_composite(hero, (40 + M - 8, FLOOR_Y + M - 20))
-    prev.resize((CW * 3, CH * 3), Image.NEAREST).save(OUT / "preview_room.png")
+    prev.resize((CW * 3, CH * 3), Image.NEAREST).save(PREVIEW / "preview_room.png")
     print("wrote room_bg.png room_fg.png gate.png preview_room.png")
 
 

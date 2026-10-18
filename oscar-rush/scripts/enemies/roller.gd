@@ -27,7 +27,7 @@ const MORTAR_GAP := 0.45
 const MORTAR_MIN_DIST := 90.0
 const STUN_TIME := 3.0
 const STUN_DAMAGE_MULT := 2.0
-const CHARGE_COOLDOWN := 3.2
+const CHARGE_COOLDOWN := 1.1  # 10-18 作者：招和招之间停太久
 const SEE_HEIGHT := 28.0
 const BLAST_WARN_TIME := 0.5
 const BLAST_TIME := 0.8
@@ -53,12 +53,16 @@ func _setup() -> void:
 	elite_name = "STEAM ROLLER"
 	intro_title = "FULL STEAM"
 	intro_frame = 2
+	fill_alpha = 0.35
+	death_time = 1.1
+	death_frame = 4
+	warn_tint = false
 	texture_path = "res://art/enemies/roller.png"
 	hframes = 5
 	frame_size = Vector2i(54, 38)
 	body_rect = Rect2(-24, -30, 48, 30)
 	led_pixel = Vector2i(7, 15)
-	max_hp = 2000.0
+	max_hp = 2450.0  # 10-18 作者：血不够，三把武器 20～35 秒
 	contact_damage = 8.0
 
 
@@ -118,9 +122,17 @@ func _tick(delta: float) -> void:
 				# 轮到碎石炮就放（贴脸也放，炮弹是抛过来的）；不轮到时，主角离得远或者不同高也用它
 				elif _cooldown <= 0.0 and (_next_is_mortar or (absf(dx) > MORTAR_MIN_DIST and absf(dy) >= SEE_HEIGHT)):
 					_next_is_mortar = false
+					pick_focus(p)      # 双人时轮着轰一个人，预警开始就定好
 					_enter(State.MORTAR_WARN)
 				elif _cooldown <= 0.0 and absf(dy) < SEE_HEIGHT and absf(dx) < 300.0:
 					_next_is_mortar = true
+					# 双人时轮着冲一个人：同一层的那个才冲，不然冲最近的
+					var t := pick_focus(p)
+					if absf(t.global_position.y - global_position.y) >= SEE_HEIGHT:
+						t = p
+						focus = p
+					if absf(t.global_position.x - global_position.x) > 6.0:
+						dir = 1 if t.global_position.x > global_position.x else -1
 					_enter(State.WINDUP)
 			velocity.x = dir * DRIVE_SPEED * speed_mult()
 			set_frame(int(_time / 0.15) % 2)
@@ -167,7 +179,7 @@ func _tick(delta: float) -> void:
 			set_frame(3 if fmod(_state_t, MORTAR_GAP) < 0.1 else 2)
 			if _mortar_left > 0 and _state_t >= (MORTAR_SHOTS - _mortar_left) * MORTAR_GAP:
 				_mortar_left -= 1
-				_fire_mortar(p)
+				_fire_mortar(focus_player())
 			if _mortar_left == 0 and _state_t >= MORTAR_SHOTS * MORTAR_GAP + 0.3:
 				_enter(State.DRIVE)
 		State.BLAST_WARN:

@@ -8,11 +8,14 @@
 输出
   oscar-rush/art/levels/level2_far.png       0.55  远处：交换台墙、投在黑暗里的画面、放映厅后墙
   oscar-rush/art/levels/level2_mid.png       0.75  吊杆、配重球、线圈、继电器架、远处下垂的胶片
-  oscar-rush/art/levels/level2_back.png      1.0   房间里的墙（插线板墙、放映室、观众厅墙和银幕）
-  oscar-rush/art/levels/level2_props.png     1.0   接线台、电话、大片盘、放映机（人从前面走过）
-  oscar-rush/art/levels/level2_solid.png     1.0   能站的东西：楼层、墙、胶片天桥、台阶座位、舞台
-  oscar-rush/art/levels/level2_film.png      1.0   胶片天桥（游戏里不吃压暗）
-  oscar-rush/art/levels/level2_near.png      1.0   前景：垂下来的线缆、座椅靠背
+  （far / mid / main 这三张都切成 2048 宽的竖条 level2_<层>_<序号>.png，网页版贴图不能太宽）
+  oscar-rush/art/levels/level2_main.png      1.0   下面四层合成的一张（游戏用这张，省显存）：
+      back   房间里的墙（插线板墙、放映室、观众厅墙和银幕）
+      props  接线台、电话、大片盘、放映机（人从前面走过）
+      solid  能站的东西：机房外壳、平台、台阶座位、舞台
+      near   前景：垂下来的线缆、座椅靠背
+    拆开的四层另存在 草图/第二关/地图/分层/，给美术看，不进游戏工程
+  oscar-rush/art/levels/level2_film.png      胶片天桥那一条，裁到内容大小 1840×90（游戏里放在 (A_X1, FILM_TOP)，不吃压暗）
   oscar-rush/scripts/levels/level2_data.gd         上面这份 JSON 的 GDScript 版本（关卡直接 preload）
   oscar-rush/art/levels/level2_collision.json      碰撞矩形、出生点、出口、遭遇战、电话、换卷点
   草图/第二关/地图/level2_overview.png              不做视差换算、全部叠起来的总览（1 倍）
@@ -48,6 +51,7 @@ MAPDIR = HERE / "地图"
 MAPDIR.mkdir(exist_ok=True)
 
 MW, MH = 3700, 600
+TILE = 2048                  # 网页版贴图宽度上限：大图层切成这么宽的竖条
 CX, CY = MW / 2, MH / 2
 
 # ---------------------------------------------------------------- 地形（地图坐标）
@@ -114,6 +118,19 @@ ENCOUNTERS = [
     {"name": "E3 电话簿仓库", "x0": 72, "x1": 410, "floor_y": 250, "ceil": 150, "dir": "←"},
     {"name": "E4 乐池", "x0": 3470, "x1": 3684, "floor_y": ORCH_Y, "ceil": 330, "dir": "→"},
 ]
+# 机房里的单向平台（10-18 夜间打磨）：电缆托架、架子顶，一级一级往上（每级 ≤ 36 像素，空手不用喷气也跳得上），
+# 最高那块放藏起来的零件或灯油。能站的一律画成黄铜托架（和背景里的书架、片盒架分开，一眼看出哪块能站）。(x0, x1, 顶面 y, 样式)
+PLATFORMS = [
+    (190, 236, 504, "brass"), (276, 340, 474, "brass"),                       # R1 接线员大厅
+    (636, 700, 394, "brass"), (744, 800, 364, "brass"),                       # R2 继电器机房
+    (80, 170, 224, "brass"), (210, 300, 200, "brass"), (346, 420, 176, "brass"),  # R3 电话簿仓库（书架）
+    (600, 690, 264, "brass"), (712, 790, 236, "brass"),                         # R4 片库（片盒架）
+]
+# 藏起来的小奖励：part 零件（商店的钱）、oil 灯油（给马灯回血，不会消失）
+PICKUPS = [
+    ("part", 320, 474), ("oil", 780, 364), ("part", 400, 176), ("oil", 735, 236), ("part", 770, 236),
+    ("oil", 1980, BRIDGE_Y), ("oil", 2620, BRIDGE_Y),                        # 天桥上两滴，补烧穿边扣的血
+]
 PHONES = [(250, 500), (720, 392), (250, 212), (3520, 470)]           # 墙上的电话：铃响预告来波
 REEL_CHANGES = [1640, 2280]                                         # 天桥上的换卷点（镜头停下，打精英怪）
 SPAWN = (70, 540)
@@ -130,6 +147,12 @@ VELVET = [(34, 11, 13), (52, 16, 18), (74, 23, 25), (100, 34, 34), (132, 52, 48)
 LAMP = (236, 178, 86)
 LAMP_OFF = (96, 66, 44)
 SEPIA = LB.SEPIA
+RELAY_RED = (200, 90, 60)
+
+# 会自己亮灭的小灯（插线板插孔灯、继电器指示灯）：画 back 层时记下位置，游戏里盖一个像素让它亮或灭。
+# (x, y, kind)：0 插孔空位（灭着，会亮）1 插孔亮着（会灭）2 继电器琥珀灯 3 继电器红灯 4 继电器空位（会亮）
+BLINKS = []
+RECORD = [False]
 
 
 # ================================================================ 基础画法（直接切片，大画布上也快）
@@ -338,7 +361,10 @@ def switch_panel(c, x0, y0, w, h, seed):
         if rng.random() < 0.6:
             for gx in range(x0 + 6, x0 + w - 4, 5):
                 if rng.random() < 0.3:
-                    c.put(gx, gy - 2, LAMP if rng.random() < 0.4 else LAMP_OFF)
+                    lit = rng.random() < 0.4
+                    c.put(gx, gy - 2, LAMP if lit else LAMP_OFF)
+                    if RECORD[0]:
+                        BLINKS.append((gx, gy - 2, 1 if lit else 0))
     fill(c, x0 + 6, y0 + h - 11, x0 + w - 6, y0 + h - 8, BRASS[2])
     fill(c, x0 + 6, y0 + h - 11, x0 + w - 6, y0 + h - 11, BRASS[4])
     for _ in range(3):
@@ -451,7 +477,12 @@ def relay_rack(c, x0, y0, x1, y1, lit=0.0, seed=0, dim=False):
             c.put(x, y + 1, top)
             c.put(x + 1, y + 5, g[2])
             if lit and rng.random() < lit:
-                c.put(x + 1, y + 7, LAMP if rng.random() < 0.6 else (200, 90, 60))
+                amber = rng.random() < 0.6
+                c.put(x + 1, y + 7, LAMP if amber else RELAY_RED)
+                if RECORD[0] and not dim:
+                    BLINKS.append((x + 1, y + 7, 2 if amber else 3))
+            elif RECORD[0] and lit and not dim and (x + y) % 3 == 0:
+                BLINKS.append((x + 1, y + 7, 4))
 
 
 FAR_WIRE = [(30, 25, 21), (36, 30, 24), (44, 36, 28), (52, 42, 32)]
@@ -596,6 +627,35 @@ def room_interior(c, r, seed=0):
             fill(c, x, fl - 18, x + 24, fl - 16, WOOD[4])
             fill(c, x + 2, fl - 16, x + 3, fl - 1, WOOD[2])
             fill(c, x + 21, fl - 16, x + 22, fl - 1, WOOD[2])
+        # 墙上一小块幕布，倒片台上的小放映机打着：那盘录像里的家（亮着窗的房子）。
+        # 不写字，路过就看见，提一句"最后一盘录像带"这条主线（10-18 夜间打磨）
+        sx0, sy0, sx1, sy1 = x0 + 272, top + 14, x0 + 342, top + 56
+        fill(c, sx0 - 2, sy0 - 2, sx1 + 2, sy1 + 2, DARK[0])
+        vgrad(c, sx0, sy0, sx1, sy1, SEPIA[3:7], 0.85, 0.35)
+        g = sy1 - 9
+        fill(c, sx0, g, sx1, sy1, SEPIA[2])
+        hx = (sx0 + sx1) // 2
+        spoly(c, [(hx - 16, g + 1), (hx - 16, g - 12), (hx, g - 24), (hx + 16, g - 12), (hx + 16, g + 1)], SEPIA[1])
+        fill(c, hx - 10, g - 9, hx - 6, g - 5, SEPIA[7])                       # 亮着的窗
+        fill(c, hx + 4, g - 8, hx + 8, g - 1, SEPIA[0])                       # 门
+        fill(c, hx + 9, g - 22, hx + 11, g - 15, SEPIA[1])                    # 烟囱
+        for k in range(4):                                                   # 门口四个小人（四个船员）
+            px = hx - 30 + k * 4
+            fill(c, px, g - 4 - (k % 2), px + 1, g, SEPIA[0])
+        fill(c, sx0 - 2, sy0 - 4, sx1 + 2, sy0 - 3, GREY[4])                  # 幕布卷轴
+        # 小放映机：倒片台上，镜头朝左上打向幕布，光锥把墙提亮一档
+        px0, py0 = x0 + 330, fl - 28
+        fill(c, px0, py0, px0 + 14, py0 + 9, GREY[4])
+        fill(c, px0, py0, px0 + 14, py0, GREY[6])
+        sellipse(c, px0 + 4, py0 - 3, 4, 4, GREY[3])
+        sellipse(c, px0 + 11, py0 - 3, 4, 4, GREY[3])
+        fill(c, px0 - 3, py0 + 2, px0, py0 + 5, BRASS[3])
+        beam = Canvas(c.w, c.h)
+        beam.poly([(px0 - 3, py0 + 2), (px0 - 3, py0 + 5), (sx1, sy1), (sx0 + 30, sy1)], (1, 1, 1))
+        ys, xs = np.nonzero(beam.mask & (c.a[..., 3] > 0))
+        for y, x in zip(ys, xs):
+            if not (sx0 <= x <= sx1 and sy0 <= y <= sy1):
+                nudge(c, x, y, 1)
 
 
 def hanging_bulb(c, x, y0, y1):
@@ -932,6 +992,19 @@ def draw_props(design):
     return L
 
 
+def platform_art(c, x0, x1, y, style):
+    """单向平台：顶面一条亮边（一眼看出能站），4 像素厚，底下每隔 20 像素一根斜撑到墙上。"""
+    ramp = {"brass": BRASS, "wood": WOOD[2:], "grey": GREY[2:7]}[style]
+    fill(c, x0, y, x1 - 1, y, ramp[-1])
+    fill(c, x0, y + 1, x1 - 1, y + 2, ramp[len(ramp) // 2])
+    fill(c, x0, y + 3, x1 - 1, y + 3, ramp[0])
+    for x in range(x0 + 4, x1 - 2, 20):
+        for t in range(8):
+            c.put(x - t // 2, y + 4 + t, ramp[1])
+    for x in range(x0 + 3, x1 - 2, 7):
+        c.put(x, y + 1, ramp[-1])
+
+
 def cable_vault(c, spans, y0, y1):
     """底层地板下面的地下线缆室：几扇装着格栅的大窗，里面垂着粗电缆、亮着几盏暗灯。纯背景，人进不去。"""
     rng = np.random.default_rng(12)
@@ -985,6 +1058,8 @@ def draw_solid(design):
         # 墙外侧的铭牌（房间名用色块代替，不写字）
         fill(c, x0 + 20, top - WALL + 3, x0 + 44, top - WALL + 7, BRASS[2])
         fill(c, x0 + 20, top - WALL + 3, x0 + 44, top - WALL + 3, BRASS[4])
+    for x0, x1, y, style in PLATFORMS:
+        platform_art(c, x0, x1, y, style)
     # 胶片天桥单独一层（draw_film），游戏里不吃场景压暗、自己发光
     # 吊杆夹住上齿孔边
     for x in range(A_X1 + 260, B_X0 - 60, 300):
@@ -1013,18 +1088,37 @@ def draw_solid(design):
     fill(c, 3150, 286, 3169, 287, BRASS[2])                  # 包厢栏杆
     for x in range(3150, 3170, 5):
         fill(c, x, 287, x, BRIDGE_Y - 1, BRASS[1])
-    # 观众席台阶
+    # 观众席台阶（10-18 夜间打磨）：每级只画一截立面（地毯边 + 木板 + 一盏过道台阶灯），
+    # 下面连成一整块看台底座、顺着台阶斜度走的斜撑，不再是一根根灰柱子
+    for i, (rx, ry) in enumerate(ROWS):
+        vgrad(c, rx, ry + 22, rx + 39, MH - 1, DARK, 0.6, 0.1)                 # 底座
+    for k in range(4):                                                         # 斜撑（和台阶同一个斜度）
+        for x in range(ROWS[0][0], ROWS[-1][0] + 40):
+            y = int(ROWS[0][1] + 22 + (x - ROWS[0][0]) * 22 / 40) + 26 + k * 34
+            if y < MH - 1:
+                nudge(c, x, y, 1)
+                nudge(c, x, y + 1, -1)
+    for x in range(ROWS[0][0] + 20, ROWS[-1][0] + 40, 80):                     # 立柱
+        top = int(ROWS[0][1] + 22 + (x - ROWS[0][0]) * 22 / 40)
+        for y in range(top, MH - 1):
+            nudge(c, x, y, 1)
+            nudge(c, x + 1, y, -1)
     for i, (rx, ry) in enumerate(ROWS):
         fill(c, rx, ry, rx + 39, ry, VELVET[4])
-        fill(c, rx, ry + 1, rx + 39, ry + 3, VELVET[2])           # 台阶边的地毯
+        fill(c, rx, ry + 1, rx + 39, ry + 3, VELVET[2])                        # 台阶边的地毯
         for x in range(rx + 1, rx + 39, 3):
             nudge(c, x, ry + 2, 1)
-        vgrad(c, rx, ry + 4, rx + 39, MH - 1, DARK + [GREY[0]], 0.95, 0.2)
-        fill(c, rx, ry + 1, rx, MH - 1, GREY[1])
-        for y in range(ry + 10, MH - 1, 22):                       # 台阶立面上的木板缝
-            for x in range(rx + 1, rx + 39):
-                nudge(c, x, y, -1)
-        metal_texture(c, rx + 1, ry + 6, rx + 38, MH - 2, seed=i, density=0.5)
+        vgrad(c, rx, ry + 4, rx + 39, ry + 21, WOOD[1:5], 0.55, 0.15)          # 台阶立面：木板
+        fill(c, rx, ry + 12, rx + 39, ry + 12, WOOD[0])
+        fill(c, rx, ry + 21, rx + 39, ry + 21, DARK[0])
+        # 过道台阶灯：立面左边一小盏暖灯，旁边亮一圈，顺着往下就是去乐池的路
+        lx, ly = rx + 5, ry + 8
+        for dy in range(-3, 4):
+            for dx in range(-4, 5):
+                if dx * dx + dy * dy * 2 <= 16:
+                    nudge(c, lx + dx, ly + dy, 1)
+        fill(c, lx - 1, ly, lx + 1, ly, LAMP)
+        c.put(lx, ly - 1, (255, 236, 190))
     # 乐池和舞台
     fill(c, ROWS[-1][0] + 40, ORCH_Y, MW - 1, ORCH_Y, GREY[5])
     vgrad(c, ROWS[-1][0] + 40, ORCH_Y + 1, MW - 1, MH - 1, DARK, 0.8, 0.2)
@@ -1033,6 +1127,16 @@ def draw_solid(design):
     vgrad(c, sx, sy + 1, MW - 1, ORCH_Y - 1, WOOD, 0.6, 0.2)
     for x in range(sx + 4, MW, 10):
         fill(c, x, sy + 2, x, ORCH_Y - 1, WOOD[1])
+    for x in range(sx + 6, MW - 18, 12):                                       # 舞台前沿一排脚灯
+        fill(c, x, sy + 2, x + 2, sy + 3, BRASS[1])
+        fill(c, x, sy + 2, x + 2, sy + 2, LAMP)
+        for dx in range(-3, 6):
+            nudge(c, x + dx, sy - 1, 1)
+            nudge(c, x + dx, sy - 2, 1)
+    fill(c, ROWS[-1][0] + 40, ORCH_Y - 6, STAGE[0] - 1, ORCH_Y - 5, BRASS[2])  # 乐池栏杆
+    fill(c, ROWS[-1][0] + 40, ORCH_Y - 6, STAGE[0] - 1, ORCH_Y - 6, BRASS[4])
+    for x in range(ROWS[-1][0] + 42, STAGE[0], 8):
+        fill(c, x, ORCH_Y - 4, x, ORCH_Y - 1, BRASS[1])
     block(c, 3116, 0, MW - 1, 39, seam=44)
     fill(c, 3116, 39, MW - 1, 39, BRASS[2])
     block(c, MW - 16, 40, MW - 1, MH - 1, seam=200)
@@ -1063,7 +1167,8 @@ def draw_near(design):
     # 前半段：每间机房天花板垂下来一两捆线缆
     rng = np.random.default_rng(7)
     for r in ROOMS:
-        for x in (r["x0"] + 70, r["x1"] - 120):
+        # 片库右边那捆往右挪，别挡住墙上放"家"的小幕布
+        for x in (r["x0"] + 70, r["x1"] - (60 if r["theme"] == "film" else 120)):
             for k in range(4):
                 ax = x + k * 3
                 n = int(rng.integers(14, 30))
@@ -1139,6 +1244,16 @@ def route_overlay(base):
                 c.put(x + 1, yy, WHITE)
         for d in (0, 9):
             sellipse(c, x + 40 + d, FILM_TOP - 40, 3, 3, WHITE)
+    for kind, px, py in PICKUPS:                                  # 藏起来的奖励：金色方块零件、橙色方块灯油
+        col = (255, 215, 90) if kind == "part" else (255, 140, 40)
+        fill(c, px - 3, py - 12, px + 3, py - 6, col)
+        fill(c, px - 4, py - 13, px + 4, py - 13, WHITE)
+    for t in TUBES:                                               # 气动管：白色虚线（坐管子走的那段路）
+        for (ax, ay), (bx, by) in zip(t["path"], t["path"][1:]):
+            n = int(max(abs(bx - ax), abs(by - ay)))
+            for i in range(0, n, 6):
+                f = i / max(1, n)
+                c.put(int(ax + (bx - ax) * f), int(ay + (by - ay) * f), WHITE)
     sellipse(c, SPAWN[0], SPAWN[1] - 8, 5, 5, GREEN)
     sellipse(c, EXIT[0], EXIT[1] - 34, 5, 5, GREEN)
     return c
@@ -1176,6 +1291,9 @@ def write_gd_data():
          "## 坐标都是地图像素：3700×600，前半交换台 x 0~%d，胶片天桥 %d~%d，后半放映厅 %d~%d。" % (A_X1, A_X1, B_X0, B_X0, MW),
          "",
          "const BOUNDS := Rect2(0, 0, %d, %d)" % (MW, MH),
+         "## 大图层（far / mid / main）切成几条、每条多宽（网页版贴图不能超过 2048 宽）",
+         "const TILE_W := %d" % TILE,
+         "const TILES := %d" % ((MW + TILE - 1) // TILE),
          "const SPAWN := Vector2(%d, %d)" % SPAWN,
          "## 出口：舞台上的小门，从门左边一直延到右墙（乐池那场打的时候人常挤在墙角，打完站着就能走）",
          "const EXIT := Rect2(%d, %d, %d, 34)" % (EXIT[0] - 12, EXIT[1] - 30, MW - 16 - (EXIT[0] - 12)),
@@ -1212,6 +1330,19 @@ def write_gd_data():
         L.append('\t{"mouth": Rect2(%d, %d, %d, %d), "path": [%s], "out": Vector2(%d, %d), "vel": Vector2(%d, %d), "needs": %d},'
                  % (*t["mouth"], ", ".join("Vector2(%d, %d)" % p for p in t["path"]), *t["out"], *t["vel"], t["needs"]))
     L.append("]")
+    L.append("## 单向平台（顶面 y，4 像素厚，可以从下面跳上去、按下键跳下来）")
+    L.append("const PLATFORMS: Array[Rect2] = [%s]" % ", ".join("Rect2(%d, %d, %d, 4)" % (x0, y, x1 - x0) for x0, x1, y, _ in PLATFORMS))
+    L.append("## 藏起来的小奖励：kind = part（零件）/ oil（灯油），pos 是脚下的位置")
+    L.append("const PICKUPS := [%s]" % ", ".join('{"kind": "%s", "pos": Vector2(%d, %d)}' % p for p in PICKUPS))
+    pal = Canvas(4, 1)
+    for i, col in enumerate((LAMP_OFF, LAMP, RELAY_RED, (255, 236, 190))):
+        pal.put(i, 0, col)
+    fade(pal)
+    L.append("## 会自己亮灭的小灯：(x, y, kind)，kind 0 插孔空位 1 插孔亮着 2 继电器琥珀 3 继电器红 4 继电器空位")
+    L.append("const BLINKS: Array[Vector3i] = [%s]" % ", ".join("Vector3i(%d, %d, %d)" % b for b in BLINKS))
+    L.append("## 灯的颜色（褪过色的）：灭、琥珀、红、最亮的芯")
+    L.append("const BLINK_COLORS: Array[Color] = [%s]" % ", ".join(
+        "Color8(%d, %d, %d)" % tuple(int(v) for v in pal.a[0, i, :3]) for i in range(4)))
     L.append("## 机房（室内范围），提示牌和调试用")
     L.append("const ROOMS := [")
     for r in ROOMS:
@@ -1226,10 +1357,16 @@ def main():
                 ("solid", draw_solid, 1.0, (1, 1, 1)), ("film", draw_film, 1.0, (1, 1, 1)),
                 ("near", draw_near, 1.0, (1, 1, 1))]
     game_layers, design_layers = [], []
+    LAYERDIR = MAPDIR / "分层"
+    LAYERDIR.mkdir(exist_ok=True)
+    full = {}
     for name, fn, s, mod in builders:
+        RECORD[0] = name == "back"
         g = fn(False)
+        RECORD[0] = False
         fade(g.c, **FADE.get(name, {}))
-        g.c.save(ART / f"level2_{name}.png")
+        g.c.save(LAYERDIR / f"level2_{name}.png")           # 拆开的分层留给美术看，不进游戏工程
+        full[name] = g.c
         game_layers.append((g.c.a, s, mod))
         if s == 1.0:
             design_layers.append(g)
@@ -1238,6 +1375,21 @@ def main():
             fade(d.c, **FADE.get(name, {}))
             design_layers.append(d)
         print("layer", name)
+    # 游戏用的（10-18 夜间打磨，省显存）：far、mid 两张视差层照旧整张；
+    # back / props / solid / near 都是 1.0 倍速、叠放顺序固定、中间不夹别的，合成一张 level2_main.png；
+    # 胶片层只有天桥那一条，裁到内容大小（游戏里放在 (A_X1, FILM_TOP)）
+    main_c = Canvas(MW, MH)
+    for n in ("back", "props", "solid", "near"):
+        m = full[n].a[..., 3] > 0
+        main_c.a[m] = full[n].a[m]
+    # 闪灯只留没被前面的桌子、平台、电话挡住的
+    BLINKS[:] = [b for b in dict.fromkeys(BLINKS) if (main_c.a[b[1], b[0]] == full["back"].a[b[1], b[0]]).all()]
+    # 网页版：WebGL2 只保证 2048 宽的贴图，很多手机、集显上限是 4096，3700 宽的整张可能画不出来。
+    # 所以 far / mid / main 都切成 TILE 宽的竖条 level2_<层>_<序号>.png，level2.gd 拼起来显示（和第三关一样）
+    for n, cv in (("far", full["far"]), ("mid", full["mid"]), ("main", main_c)):
+        for i, x in enumerate(range(0, MW, TILE)):
+            Canvas(min(TILE, MW - x), MH, arr=cv.a[:, x:min(MW, x + TILE)]).save(ART / f"level2_{n}_{i}.png")
+    Canvas(B_X0 - A_X1, FILM_BOT - FILM_TOP, arr=full["film"].a[FILM_TOP:FILM_BOT, A_X1:B_X0]).save(ART / "level2_film.png")
     overview = compose(design_layers)
     overview.save(MAPDIR / "level2_overview.png")
     route_overlay(overview).save(MAPDIR / "level2_route.png")
@@ -1248,7 +1400,7 @@ def main():
         view(game_layers, cx, cy, zoom=z).save(MAPDIR / f"level2_view_{name}.png")
     data = {
         "size": [MW, MH],
-        "parallax": {name: s for name, _, s, _ in builders},
+        "parallax": {"far": 0.55, "mid": 0.75, "main": 1.0, "film": 1.0},
         "solids": SOLIDS,
         "spawn": SPAWN,
         "exit": EXIT,

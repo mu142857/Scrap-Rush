@@ -3,7 +3,7 @@ extends EliteBase
 ## 放映机（第二关精英怪，放在胶片天桥的两场换卷战里）：老式 35mm 电影放映机，上下两个片盘一直在转，
 ## 左边伸出镜头筒，红灯在镜头上方，铸铁底座下面长了腿。慢慢走，和主角保持一段距离。
 ## 两招轮着放，都先冒红色"!"：
-## - 光柱扫射：镜头往地上打一道暖白光柱，光斑贴着地面从近往远扫过去。光斑那一块烫（地面往上 14 格），
+## - 光柱扫射：预警时光斑要扫的整条路在地上点成虚线；然后镜头往地上打一道暖白光柱，光斑贴着地面从近往远扫过去。光斑那一块烫（地面往上 14 格），
 ##   碰到伤 10；光柱半空那一段只是光，不伤人。跳过去或者飞过去就躲开了。
 ## - 放映：镜头往前方投出一个光框（像银幕上的画面），1 秒后从光框里"走出"两只小怪（胶片盘，没有就用爬虫）。
 ##   小怪算进所在遭遇战的这一波里，要打完才清场。身边已经有 3 只它放出来的小怪时，改放光柱。
@@ -14,7 +14,7 @@ extends EliteBase
 enum State { IDLE, WALK, BEAM_WARN, BEAM, SCREEN_WARN, SCREEN, RECOVER }
 
 ## 招与招之间歇多久。精英怪的出招间隔不乘 interval_mult()（照钢琴：情绪高时间隔太短，招看不清）
-const IDLE_TIME := Vector2(2.2, 2.8)
+const IDLE_TIME := Vector2(0.6, 1.0)   # 10-18 作者嫌停顿太长：2.2~2.8 → 0.6~1.0，连收招一共空 1.1~1.5 秒
 const WALK_SPEED := 16.0
 const WALK_FRAME_TIME := 0.25
 ## 离主角远于这个就往前走，近于 NEAR 就往后退（脸一直朝着主角）
@@ -40,10 +40,17 @@ const SCREEN_TIME := 1.0
 const SCREEN_FADE := 0.4
 const SCREEN_MINIONS := 2
 const MAX_MINIONS := 3
-const RECOVER_TIME := 0.9
+const RECOVER_TIME := 0.5
 ## 镜头在原图（朝左）里相对脚底中点的位置：镜片中心
 const LENS := Vector2(-21.0, -31.5)
 const BEAM_COLOR := Color(1.0, 0.93, 0.78)
+## —— 夜间打磨（总机台/留声机会话加的，10-17）——
+## 血打空以后先演这么久：灯泡一闪一闪、片盘越转越慢、片子"啪"地断掉，然后炸成废铁
+const DIE_TIME := 1.0
+## 挨打时贴图往后顿 1 格多久（精英怪不吃击退，没有这一下打上去像打在墙上）
+const JOLT_TIME := 0.07
+## 不吃光照的那层叠图多不透明（暗处也看得出机身的样子，和总机台、留声机一样）
+const FILL_ALPHA := 0.4
 
 var state := State.IDLE
 var _state_t := 0.0
@@ -65,6 +72,12 @@ var _fade_beam := false
 
 var _beam: Node2D
 var _spot_light: PointLight2D
+var _fill: Sprite2D
+## 死亡演出进行了多久，-1 = 没在死
+var _dying := -1.0
+var _jolt := 0.0
+var _reel_phase := 0.0
+var _snapped := false
 
 
 func _setup() -> void:
@@ -76,7 +89,7 @@ func _setup() -> void:
 	frame_size = Vector2i(44, 55)
 	body_rect = Rect2(-15, -52, 30, 52)
 	led_pixel = Vector2i(9, 19)
-	max_hp = 1200.0
+	max_hp = 2400.0   # 10-18：1200 → 2400，出招变密以后每招都能放 3 轮以上
 	contact_damage = 10.0
 
 
@@ -99,6 +112,16 @@ func _after_ready() -> void:
 	_spot_light.texture_scale = 0.8
 	_spot_light.top_level = true
 	add_child(_spot_light)
+	# 暗处亮层：叠一层不吃光照的同一张图，半透明
+	_fill = Sprite2D.new()
+	_fill.texture = _sprite.texture
+	_fill.hframes = hframes
+	_fill.centered = false
+	var fill_mat := CanvasItemMaterial.new()
+	fill_mat.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+	_fill.material = fill_mat
+	add_child(_fill)
+	move_child(_fill, _sprite.get_index() + 1)
 
 
 ## 遭遇战把精英怪放在天花板下面 14 格，放映机有 52 格高，场子矮的话身子会插进天花板，
@@ -109,14 +132,39 @@ func _unstick() -> void:
 	q.collision_mask = 1
 	q.exclude = [get_rid()]
 	var space := get_world_2d().direct_space_state
-	for i in 41:
-		q.transform = Transform2D(0.0, global_position + _shape.position)
+	# 往下最多挪到原来脚底下那块地面（不能穿过地板，碰撞会话 10-18 报过整只掉出地图）
+	var floor_d := 80.0
+	var ray := PhysicsRayQueryParameters2D.create(global_position + Vector2(0, -1), global_position + Vector2(0, 82), 1)
+	var hit := space.intersect_ray(ray)
+	if not hit.is_empty():
+		floor_d = (hit.position as Vector2).y - global_position.y
+	# 先原地、往上一点（脚压进了地面、斜坡），再左右挪（身子侧面插进柱子、墙），最后往下（头顶卡进天花板）
+	var tries: Array[Vector2] = []
+	for dy in [0.0, -1.0, -2.0, -3.0, -4.0, -6.0, -8.0]:
+		tries.append(Vector2(0, dy))
+	for dx in [2.0, 4.0, 6.0, 8.0, 12.0, 16.0]:
+		for dy in [0.0, -2.0, -4.0]:
+			tries.append(Vector2(dx, dy))
+			tries.append(Vector2(-dx, dy))
+	var d := 2.0
+	while d <= floor_d:
+		tries.append(Vector2(0, d))
+		d += 2.0
+	for t in tries:
+		q.transform = Transform2D(0.0, global_position + t + _shape.position)
 		if space.intersect_shape(q, 1).is_empty():
+			global_position += t
 			return
-		global_position.y += 2.0
+	# 都不行：留在原地，交给物理把它挤出来
 
 
 func _tick(delta: float) -> void:
+	if _dying >= 0.0:
+		_tick_dying(delta)
+		move_and_slide()
+		_update_light()
+		_beam.queue_redraw()
+		return
 	_state_t += delta
 	if not is_knocked():
 		velocity.x = move_toward(velocity.x, 0.0, 600.0 * delta)
@@ -273,7 +321,11 @@ func _spawn_minions() -> void:
 		var e: Node2D = (load(path) as GDScript).new()
 		e.set("respawn_time", 0.0)
 		e.set("dir", _attack_dir)
-		e.position = Vector2(roundf(_screen_x + (i * 2 - 1) * 6.0), _floor - 2.0)
+		var x := _screen_x + (i * 2 - 1) * 6.0
+		# 夹在场子里面（闸门只有 8 像素宽，光框贴着门时出怪点可能落到门外，打不到、清不了场）
+		if enc:
+			x = clampf(x, float(enc.get("left")) + 16.0, float(enc.get("right")) - 16.0)
+		e.position = Vector2(roundf(x), _floor - 2.0)
 		get_parent().add_child(e)
 		_minions.append(e)
 		if enc:
@@ -288,20 +340,23 @@ func _spawn_minions() -> void:
 
 ## 父节点里正在打的那场遭遇战（自己站在它的场子里）
 func _encounter() -> Node:
+	# 先找 _alive 里有自己的那一场；找不到再按 x、y 范围找开打了没打完的（第二关 E1 和 E3 上下叠着，
+	# x 范围重合，只按 x 会找到楼下那一场，碰撞会话 10-18 报的）
 	var parent := get_parent()
 	if parent == null:
 		return null
-	var best: Node = null
+	var fallback: Encounter = null
 	for c in parent.get_children():
-		if c is Encounter:
-			var e := c as Encounter
-			if e.cleared:
-				continue
-			if global_position.x >= e.left - 8.0 and global_position.x <= e.right + 8.0:
-				return e
-			if best == null:
-				best = e
-	return best
+		var e := c as Encounter
+		if e == null or e.cleared:
+			continue
+		if e._alive.has(self):
+			return e
+		var floor_y := maxf(e.floor_left, e.floor_right)
+		if e.started and global_position.x >= e.left - 8.0 and global_position.x <= e.right + 8.0 \
+				and global_position.y >= e.ceil_y - 8.0 and global_position.y <= floor_y + 8.0:
+			fallback = e
+	return fallback
 
 
 ## 面朝 _attack_dir 往前 max_dist 以内有没有墙（闸门、墙），返回距离（从镜头算），没有就 INF
@@ -352,6 +407,79 @@ func _update_visual() -> void:
 		var k := _state_t / (BEAM_WARN if state == State.BEAM_WARN else SCREEN_WARN)
 		var amp := 1.0 if k > 0.5 else 0.0
 		_sprite.position.x += amp if int(_state_t * 30.0) % 2 == 0 else -amp
+	# 挨打：往背离主角的方向顿 1 格
+	_jolt = maxf(_jolt - get_physics_process_delta_time(), 0.0)
+	if _jolt > 0.0:
+		_sprite.position.x -= dir
+	_sprite.modulate = Color.WHITE
+	if _dying >= 0.0:
+		# 越抖越厉害，开头闪白；红灯一跳一跳地灭
+		var k := _dying / DIE_TIME
+		var amp := 1.0 + 2.0 * k
+		_sprite.position.x += amp if int(_dying * 32.0) % 2 == 0 else -amp
+		_sprite.modulate = Color.WHITE.lerp(Color(2.0, 2.0, 2.0), clampf(1.0 - k * 4.0, 0.0, 1.0))
+		_led.visible = _led.visible and k < 0.6 and int(_dying * (8.0 + 16.0 * k)) % 2 == 0
+
+
+## 叠图跟着贴图走（放在 _process 里：出场动画会在 _update_visual 之后再改帧和位置）
+func _process(_delta: float) -> void:
+	if _fill == null:
+		return
+	_fill.frame = _sprite.frame
+	_fill.flip_h = _sprite.flip_h
+	_fill.offset = _sprite.offset
+	_fill.position = _sprite.position
+	# 死前那一段亮层加厚，灯一闪一灭在暗处也看得清
+	_fill.modulate = Color(_sprite.modulate.lerp(Color(3, 3, 3), _flash), 0.75 if _dying >= 0.0 else FILL_ALPHA)
+
+
+func is_targetable() -> bool:
+	return super.is_targetable() and _dying < 0.0
+
+
+func _on_hurt(_damage: float, full: bool) -> void:
+	_jolt = JOLT_TIME
+	if full:
+		Game.sfx("clang", -14.0, 1.5, 0.1)
+
+
+## 血打空了：先演一段（DIE_TIME），然后才真的死（EliteBase 的大爆炸、顿帧、扣情绪都在那一刻）。
+## 期间不动、不伤人、不再挨打；光柱、银幕马上收掉（放出来的小怪留着，算在这一波里）。
+func _die() -> void:
+	if _dying >= 0.0:
+		return
+	_dying = 0.0
+	_snapped = false
+	_reel_phase = 0.0
+	velocity.x = 0.0
+	_contact.set_deferred("monitoring", false)
+	if state == State.BEAM or state == State.SCREEN or state == State.BEAM_WARN or state == State.SCREEN_WARN:
+		_enter(State.RECOVER)
+	Game.sfx("tvoff", -6.0, 0.7)
+	Game.hitstop(0.08)
+	Game.add_shake(2.0)
+
+
+func _tick_dying(delta: float) -> void:
+	_dying += delta
+	_state_t += delta
+	velocity.x = move_toward(velocity.x, 0.0, 600.0 * delta)
+	var k := _dying / DIE_TIME
+	# 片盘越转越慢；灯箱前半段一闪一闪（姿势 4 是放光）
+	_reel_phase += delta / lerpf(REEL_FRAME_TIME, REEL_FRAME_TIME * 6.0, k)
+	var pose := 4 if k < 0.55 and int(_dying / lerpf(0.04, 0.12, k)) % 2 == 0 else 0
+	set_frame(pose * 4 + int(_reel_phase) % 4)
+	# 片子"啪"地断掉
+	if not _snapped and k >= 0.5:
+		_snapped = true
+		Game.sfx("crack", -6.0, 1.6)
+		Game.sparks(get_parent(), _lens(), BEAM_COLOR, 8, 70.0)
+	if randf() < 0.2:
+		Game.sparks(get_parent(), global_position + Vector2(randf_range(-12.0, 12.0), randf_range(-48.0, -24.0)),
+				Color(1.0, 0.85, 0.6), 2, 35.0)
+	if _dying >= DIE_TIME:
+		EliteFx.scrap_burst(get_parent(), Rect2(global_position + body_rect.position, body_rect.size), 20)
+		super._die()
 
 
 func _draw_beam() -> void:
@@ -364,6 +492,14 @@ func _draw_beam() -> void:
 			# 起点的地面一闪一闪：光斑从这里开始扫
 			if int(_state_t / 0.1) % 2 == 0:
 				_beam.draw_rect(Rect2(roundf(_spot_x - HOT_HALF), _floor - 1.0, HOT_HALF * 2.0, 1), Color(BEAM_COLOR, 0.5))
+			# 夜间打磨加的：光斑要扫过的整条路先在地上淡淡点出来（虚线），一个亮点顺着扫的方向跑，看得出往哪边扫、扫多远
+			var x_from := minf(_spot_x, _spot_end)
+			var x_to := maxf(_spot_x, _spot_end)
+			var run := fmod(_state_t * 260.0, maxf(x_to - x_from, 1.0))
+			var head := _spot_x + _attack_dir * run
+			for x in range(int(x_from), int(x_to), 6):
+				var near_head := absf(x - head) < 8.0
+				_beam.draw_rect(Rect2(x, _floor - 1.0, 3, 1), Color(BEAM_COLOR, 0.55 if near_head else 0.18))
 		State.BEAM:
 			_draw_cone(lens, _spot_x, 1.0)
 		State.RECOVER:
@@ -481,4 +617,5 @@ func _on_die() -> void:
 
 
 func _on_respawn() -> void:
+	_dying = -1.0
 	_enter(State.IDLE)

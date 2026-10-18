@@ -34,18 +34,26 @@ var _cord: Node2D
 
 func _setup() -> void:
 	texture_path = "res://art/enemies/hooded_operator.png"
-	hframes = 6
+	hframes = 8
 	frame_size = Vector2i(22, 27)
 	body_rect = Rect2(-7, -24, 14, 24)
-	led_pixel = Vector2i(9, 6)
-	led_by_frame = {1: Vector2i(9, 5), 2: Vector2i(9, 5), 4: Vector2i(10, 6), 5: Vector2i(8, 6)}
+	# led_pixel 是前面那只眼睛：LivingFx 把红灯换成两只会眨、会看人的暖白眼睛（是活人，不是机器）
+	led_pixel = Vector2i(8, 6)
+	led_by_frame = {1: Vector2i(8, 5), 2: Vector2i(8, 5), 4: Vector2i(9, 6), 5: Vector2i(7, 6), 6: Vector2i(9, 6),
+			7: Vector2i(8, 18)}
 	max_hp = 200.0
 	contact_damage = 10.0
 	knockback = Vector2(60.0, 25.0)
+	# 活人：死的时候是倒地的闷响，溅出来的是灰紫的袍子碎片和灰（不是金属碎屑）
+	death_sfx = "land"
+	death_sfx_pitch = 0.6
+	death_spark_colors = [Color8(132, 120, 136), Color8(104, 96, 92)]
 
 
 func _after_ready() -> void:
 	_unstick()
+	# 活物感：会眨的眼睛、挨打后仰（帧 6）、死了瘫倒（帧 7）、暗处亮层
+	LivingFx.attach(self, 6, 7)
 	_cord = Node2D.new()
 	_cord.z_index = 3
 	var unshaded := CanvasItemMaterial.new()
@@ -62,11 +70,30 @@ func _unstick() -> void:
 	q.collision_mask = 1
 	q.exclude = [get_rid()]
 	var space := get_world_2d().direct_space_state
-	for i in 30:
-		q.transform = Transform2D(0.0, global_position + _shape.position)
+	# 往下最多挪到原来脚底下那块地面（不能穿过地板，碰撞会话 10-18 报过整只掉出地图）
+	var floor_d := 80.0
+	var ray := PhysicsRayQueryParameters2D.create(global_position + Vector2(0, -1), global_position + Vector2(0, 82), 1)
+	var hit := space.intersect_ray(ray)
+	if not hit.is_empty():
+		floor_d = (hit.position as Vector2).y - global_position.y
+	# 先原地、往上一点（脚压进了地面、斜坡），再左右挪（身子侧面插进柱子、墙），最后往下（头顶卡进天花板）
+	var tries: Array[Vector2] = []
+	for dy in [0.0, -1.0, -2.0, -3.0, -4.0, -6.0, -8.0]:
+		tries.append(Vector2(0, dy))
+	for dx in [2.0, 4.0, 6.0, 8.0, 12.0, 16.0]:
+		for dy in [0.0, -2.0, -4.0]:
+			tries.append(Vector2(dx, dy))
+			tries.append(Vector2(-dx, dy))
+	var d := 2.0
+	while d <= floor_d:
+		tries.append(Vector2(0, d))
+		d += 2.0
+	for t in tries:
+		q.transform = Transform2D(0.0, global_position + t + _shape.position)
 		if space.intersect_shape(q, 1).is_empty():
+			global_position += t
 			return
-		global_position.y += 2.0
+	# 都不行：留在原地，交给物理把它挤出来
 
 
 func _tick(delta: float) -> void:

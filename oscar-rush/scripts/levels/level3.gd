@@ -41,6 +41,12 @@ var _debug := false
 var _retrying := false
 var _leaving := false
 var _lights: Array[PointLight2D] = []
+## 洞口的绿灯（每帧推一下时间重画）
+var _beacons: Array[Node2D] = []
+var _far: Node2D
+## 第一次走进家乡那块屏幕时打一句话（到家的感觉）
+var _home_seen := false
+const FAR_FOLLOW := 0.6
 ## 平时摆的小怪和它所在的屏幕：{node, rect}（rect 到地面为止）
 var _screen_mobs: Array = []
 var _wake_t := 0.0
@@ -62,27 +68,12 @@ func _ready() -> void:
 	Run.start_level()
 	Run.crystal_broken.connect(_on_crystal_broken)
 
-	var bg := ParallaxScene.new()
-	bg.layers = [
-		[preload("res://art/levels/l3_far.png"), 0.6, Color(0.78, 0.78, 0.86)],
-		[preload("res://art/levels/l3_mid.png"), 1.0, Color.WHITE],
-	]
-	bg.bounds = D.BOUNDS
-	add_child(bg)
-	# 屏幕层：自己发光，不吃压暗
-	var screens := Sprite2D.new()
-	screens.texture = preload("res://art/levels/l3_screens.png")
-	screens.centered = false
-	screens.z_index = -17
-	var unshaded := CanvasItemMaterial.new()
-	unshaded.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
-	screens.material = unshaded
-	add_child(screens)
-	var near := Sprite2D.new()
-	near.texture = preload("res://art/levels/l3_near.png")
-	near.centered = false
-	near.z_index = -16
-	add_child(near)
+	# 四层图都切成 2048 宽的竖条拼起来（网页版贴图不能太宽，见 export_level3.py）。
+	# 远景跟镜头 0.6 倍走（和 ParallaxScene 同一个算法：竖直方向视差减半）
+	_far = _tiled_layer("far", -20, Color(0.78, 0.78, 0.86), false)
+	_tiled_layer("mid", -19, Color.WHITE, false)
+	_tiled_layer("screens", -17, Color.WHITE, true)       # 屏幕层：自己发光，不吃压暗
+	_tiled_layer("near", -16, Color.WHITE, false)
 
 	var dark := CanvasModulate.new()
 	dark.color = DARKNESS
@@ -113,6 +104,7 @@ func _ready() -> void:
 	_add_mob_walls()
 	_place_enemies()
 	_place_hints()
+	_place_beacons()
 
 	var first: Player = null
 	for i in Run.players.size():
@@ -141,6 +133,11 @@ func _ready() -> void:
 
 	hud = Hud.new()
 	add_child(hud)
+	# 开场说清目标（新玩家报告第 1 条：不知道往哪走）。从存档点重来就不再出
+	if Run.checkpoint.is_empty():
+		get_tree().create_timer(1.2).timeout.connect(func() -> void:
+			if is_instance_valid(hud) and not _leaving:
+				hud.show_banner(tr("Find the house from the tape. Up and to the right."), 3.0))
 
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--tour="):
@@ -150,7 +147,22 @@ func _ready() -> void:
 		if arg.begins_with("--l3scene="):
 			var sc: Node = load("res://scripts/debug/l3_scene_check.gd").new()
 			sc.set("scene_name", arg.trim_prefix("--l3scene="))
+			for a2 in OS.get_cmdline_user_args():
+				if a2.begins_with("--l3shots="):
+					sc.set("shots_dir", a2.trim_prefix("--l3shots="))
+				if a2.begins_with("--l3at="):
+					var xy := a2.trim_prefix("--l3at=").split(",")
+					sc.set("at", Vector2(xy[0].to_float(), xy[1].to_float()))
 			add_child(sc)
+		if arg.begins_with("--l3auto="):
+			var ap: Node = load("res://scripts/debug/l3_autopilot.gd").new()
+			ap.set("route_i", arg.trim_prefix("--l3auto=").to_int())
+			for a2 in OS.get_cmdline_user_args():
+				if a2.begins_with("--l3watch="):
+					ap.set("watch", a2.trim_prefix("--l3watch=").to_float())
+				if a2.begins_with("--l3shots="):
+					ap.set("shots_dir", a2.trim_prefix("--l3shots="))
+			add_child(ap)
 		if arg == "--l3fix":
 			add_child(load("res://scripts/debug/l3_fix_check.gd").new())
 		if arg == "--l3enc":
@@ -161,6 +173,26 @@ func _ready() -> void:
 			var t: Node = load("res://scripts/debug/autotest.gd").new()
 			t.set("out_dir", arg.trim_prefix("--autotest="))
 			add_child(t)
+
+
+func _tiled_layer(layer: String, z: int, tint: Color, unshaded: bool) -> Node2D:
+	var root := Node2D.new()
+	root.z_index = z
+	root.modulate = tint
+	var mat: CanvasItemMaterial = null
+	if unshaded:
+		mat = CanvasItemMaterial.new()
+		mat.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+	for i in D.TILES:
+		var sp := Sprite2D.new()
+		sp.texture = load("res://art/levels/l3_%s_%d.png" % [layer, i])
+		sp.centered = false
+		sp.position = Vector2(i * D.TILE_W, 0)
+		if mat:
+			sp.material = mat
+		root.add_child(sp)
+	add_child(root)
+	return root
 
 
 func _add_box(r: Rect2, one_way: bool) -> void:
@@ -191,6 +223,8 @@ func _has_hole(s: Dictionary) -> bool:
 ## - 别的屏幕按玻璃宽度摆这个场景的小怪：不到 MID_SCREEN 1 只，到 WIDE_SCREEN 2 只，再宽 3 只；
 ##   射击怪只放进宽度够 SHOOTER_SCREEN 的屏幕；离左右入口至少 ENTRY_CLEAR，人一进来不会贴脸。
 ## - 只有主角所在那块屏幕里的怪会动，别的屏幕里的怪定住（像暂停的电视画面），见 _wake_mobs。
+## 遭遇战清场回血：每只小怪回这么多（见 _place_enemies）
+const HEAL_PER_MOB := 1.4
 const MID_SCREEN := 200.0
 const WIDE_SCREEN := 330.0
 const SHOOTER_SCREEN := 260.0
@@ -221,7 +255,16 @@ func _place_enemies() -> void:
 			enc.ceil_y = rect[1]
 			enc.floor_left = fy
 			enc.floor_right = fy
-			enc.waves = [[bag[0], bag[1 % bag.size()]], [bag[2 % bag.size()], bag[3 % bag.size()]], [elite]]
+			# 2026-10-18 作者试玩"没有压迫感"：每波 2 只 → 宽屏 3 只（两波小怪 + 精英，波数不变）；
+			# 清场回血按小怪数量给（每只 1.4，6 只回 8；原来不管多少只都回 12，第三关是净回血）
+			var per := 3 if w >= WIDE_SCREEN else 2
+			var w1: Array = []
+			var w2: Array = []
+			for k in per:
+				w1.append(bag[k % bag.size()])
+				w2.append(bag[(k + per) % bag.size()])
+			enc.waves = [w1, w2, [elite]]
+			enc.clear_heal = roundf(HEAL_PER_MOB * per * 2)
 			enc.spawn_hook = _spawn_in_encounter.bind(tint, rect[1], rect[0] + 10, rect[2] - 10)
 			add_child(enc)
 			continue
@@ -329,11 +372,31 @@ func _spawn_in_encounter(kind: String, x: float, tint: String, ceil_y: float, le
 			px = (players[0] as Node2D).global_position.x
 		var half: float = cfg["frame_size"].x * 0.5 + 6.0
 		x = right - half if px < (left + right) * 0.5 else left + half
+	else:
+		x = _flank_x(x, left, right)
 	var e := L3Mob.make(kind, tint)
 	# 脚底离天花板至少一个身高，不然高的精英怪一生出来上半截就卡在外壳里
 	e.position = Vector2(x, ceil_y + cfg["frame_size"].y + 4.0)
 	add_child(e)
 	return e
+
+
+## 遭遇战的小怪轮流落在主角左边、右边，离人 60～110：两边一起围上来，而不是全堆在一头
+## （2026-10-18 作者试玩"没有压迫感"）。一边放不下就放另一边
+var _flank_side := 1
+
+
+func _flank_x(x: float, left: float, right: float) -> float:
+	var players := get_tree().get_nodes_in_group("player")
+	if players.is_empty():
+		return x
+	var px := (players[0] as Node2D).global_position.x
+	_flank_side = -_flank_side
+	for side in [_flank_side, -_flank_side]:
+		var fx: float = px + side * randf_range(60.0, 110.0)
+		if fx > left + 18.0 and fx < right - 18.0:
+			return fx
+	return x
 
 
 func _place_hints() -> void:
@@ -344,20 +407,90 @@ func _place_hints() -> void:
 		 "text": "Walk into the screens", "arrow": "right"},
 		{"zone": Rect2(D.END.x - 60, D.END.y - 60, 120, 60), "at": D.END + Vector2(0, -36), "text": "Home", "arrow": "down"},
 	]
-	if D.SHAFTS.size() > 0:
-		var sh: Rect2 = D.SHAFTS[0]
+	# 每个洞底下都放一块"按住跳顺着电线爬"（2026-10-17 夜：原来只有第一个洞有，走别的路线的人看不到）
+	for sh in D.SHAFTS:
 		signs.append({"zone": Rect2(sh.position.x - 40, sh.end.y - 60, sh.size.x + 80, 60),
 			"at": Vector2(sh.get_center().x, sh.end.y - 34), "text": tr("Hold %s on the cable to climb") % jump_key, "arrow": "up"})
+	# 一段走到头是实心外壳：墙前提示"此路不通，找电线往上爬"，箭头指回头
+	for i in range(1, D.SCREENS.size()):
+		var s: Dictionary = D.SCREENS[i]
+		if not s.get("wall_left", false):
+			continue
+		var prev: Dictionary = D.SCREENS[i - 1]
+		var pr: Array = prev["rect"]
+		var r: Array = s["rect"]
+		signs.append({"zone": Rect2(pr[2] - 70, prev["floor"] - 60, 70, 60), "at": Vector2(pr[2] - 34, prev["floor"] - 30),
+			"text": "Dead end - find a cable up", "arrow": "left"})
+		signs.append({"zone": Rect2(r[0], s["floor"] - 60, 70, 60), "at": Vector2(r[0] + 34, s["floor"] - 30),
+			"text": "Dead end - find a cable up", "arrow": "right"})
 	for h in signs:
 		var sign := HintSign.new()
-		sign.zone = h["zone"]
+		# 区域下边都正好在地面上，Rect2.has_point 不算下边线：人站着不动时 y 正好等于地面，牌子会时有时无。
+		# 往下多算 4 像素（2026-10-17 夜，第二关会话发现同样的问题）
+		sign.zone = (h["zone"] as Rect2).grow_individual(0, 0, 0, 4)
 		sign.position = h["at"]
 		sign.text = h["text"]
 		sign.arrow = h["arrow"]
+		sign.level_width = D.BOUNDS.size.x
 		add_child(sign)
 
 
+## 往上爬的洞口：开口正下方、顺着电线有三个小"^"，从下往上一个接一个亮，开口里一小团绿光慢慢一明一暗。
+## 一进这块屏幕就看得出"从这里上去"（新玩家报告第 1 条）。箭头带一圈暗边，哪种色调的屏幕上都看得清；
+## 死胡同那头没有洞，也就没有箭头
+const BEACON := Color(0.55, 1.0, 0.6)
+const CHEVRON := [Vector2i(0, 0), Vector2i(-1, 1), Vector2i(1, 1), Vector2i(-2, 2), Vector2i(2, 2)]
+
+
+func _place_beacons() -> void:
+	for h in D.HOLES:
+		var top := float(h[2])
+		# 洞下面那块屏幕的玻璃顶：箭头画在玻璃上，紧贴开口下面
+		for s in D.SCREENS:
+			var r: Array = s["rect"]
+			if h[0] >= r[0] and h[1] <= r[2] and float(h[3]) == float(s["floor"]):
+				top = r[1]
+		var lamps := Node2D.new()
+		lamps.z_index = -15
+		var unshaded := CanvasItemMaterial.new()
+		unshaded.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+		lamps.material = unshaded
+		lamps.position = Vector2(float(h[0]) + 11.0, top + 8.0)
+		lamps.set_meta("t", 0.0)
+		lamps.draw.connect(func() -> void:
+			var t: float = lamps.get_meta("t")
+			for i in 3:
+				# 最下面的先亮，往上走，每 1.5 秒一轮；没轮到的是暗绿，看得出是一串
+				var k := fposmod(t / 1.5 - (2 - i) / 3.0, 1.0)
+				var on := clampf(1.0 - k * 2.0, 0.0, 1.0)
+				var c := BEACON.darkened(0.55).lerp(BEACON.lightened(0.4), on)
+				var y := float(i) * 6.0
+				for d in CHEVRON:
+					lamps.draw_rect(Rect2(d.x - 1, y + d.y - 1, 3, 3), Color(0.05, 0.08, 0.06, 0.9))
+				for d in CHEVRON:
+					lamps.draw_rect(Rect2(d.x, y + d.y, 1, 1), c))
+		add_child(lamps)
+		_beacons.append(lamps)
+		var l := PointLight2D.new()
+		l.texture = Game.light_texture()
+		l.color = BEACON
+		l.energy = 0.5
+		l.texture_scale = 1.4
+		l.position = Vector2((h[0] + h[1]) * 0.5, top + 6.0)
+		l.range_item_cull_mask = 1 | 2
+		l.enabled = false
+		add_child(l)
+		_lights.append(l)
+		var tw := create_tween().set_loops()
+		tw.tween_property(l, "energy", 0.9, 0.8).set_trans(Tween.TRANS_SINE)
+		tw.tween_property(l, "energy", 0.4, 0.8).set_trans(Tween.TRANS_SINE)
+
+
 func _process(delta: float) -> void:
+	_follow_far()
+	for b in _beacons:
+		b.set_meta("t", float(b.get_meta("t")) + delta)
+		b.queue_redraw()
 	_wake_t -= delta
 	if _wake_t <= 0.0:
 		_wake_t = 0.15
@@ -370,6 +503,15 @@ func _process(delta: float) -> void:
 		l.enabled = l.position.distance_to(c) < LIGHT_RANGE
 
 
+func _follow_far() -> void:
+	var cam := get_viewport().get_camera_2d()
+	if cam == null or _far == null:
+		return
+	var off := cam.get_screen_center_position() - D.BOUNDS.get_center()
+	var lag := 1.0 - FAR_FOLLOW
+	_far.position = Vector2(off.x * lag, off.y * lag * 0.5).round()
+
+
 func _physics_process(_delta: float) -> void:
 	if _leaving or _retrying:
 		return
@@ -380,6 +522,10 @@ func _physics_process(_delta: float) -> void:
 		if _exit.has_point(p.global_position):
 			_leave()
 			return
+		if not _home_seen and _in_home(p.global_position):
+			_home_seen = true
+			Game.sfx("tvon", -8.0, 0.9)
+			hud.show_banner(tr("It looks just like the tape."), 2.6)
 
 		# 洞里的电线：按住跳往上爬（关卡的 _physics_process 先于玩家跑，玩家那边再加重力也还是往上）
 		if Input.is_action_pressed(p.input_prefix + "_jump"):
@@ -409,8 +555,17 @@ func _on_crystal_broken() -> void:
 	_retry()
 
 
+func _in_home(feet: Vector2) -> bool:
+	var s: Dictionary = D.SCREENS[D.SCREENS.size() - 1]
+	var r: Array = s["rect"]
+	return feet.x > r[0] + 24 and feet.x < r[2] and feet.y > r[1] and feet.y <= float(s["floor"]) + 1.0
+
+
 func _leave() -> void:
 	_leaving = true
+	# 到家门口：一下暖光、一声"叮"，再出通关横幅
+	Game.flash(Color(1.0, 0.86, 0.62), 0.35, 1.2)
+	Game.sfx("ding", -6.0, 0.9)
 	hud.show_banner("SCREENS CLEARED")
 	await get_tree().create_timer(1.6, true, false, true).timeout
 	# 最后一次商店就在老电视门口，出去就是最终 Boss（boss3），打完进结局
@@ -424,7 +579,9 @@ func _retry() -> void:
 	_retrying = true
 	Engine.time_scale = 1.0
 	Run.retry_level()
-	get_tree().reload_current_scene()
+	# 重来也用统一的渐黑渐开（比过关快一点）；先暂停，免得黑下去的那 0.3 秒里马灯又挨打。SceneFade 切场时会解除暂停
+	get_tree().paused = true
+	SceneFade.go(get_tree(), get_tree().current_scene.scene_file_path, 0.3, 0.1, 0.45)
 
 
 func _draw() -> void:

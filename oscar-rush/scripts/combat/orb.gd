@@ -81,6 +81,9 @@ func _physics_process(delta: float) -> void:
 func _on_body_entered(body: Node) -> void:
 	if _done:
 		return
+	# 单向平台挡不住光球（从下往上、斜着往下瞄准时都能穿过去）
+	if Player.is_one_way_body(body):
+		return
 	if body.is_in_group("enemy") and body.has_method("hurt"):
 		if _hit.has(body):
 			return

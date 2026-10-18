@@ -8,7 +8,8 @@ extends RefCounted
 ## 磁带回声 echo：出招 0.3 秒后，在人现在的位置按原来的方向再出一次，伤害 50%，颜色是磁带的青紫色。
 ##   铆钉枪每 3 颗才回一次。回声自己不再触发回声和从闪。
 ## 从闪 slave：马灯放在地上时，你每出一招，灯朝它 150 像素内最近的怪补一发小光球（伤害 40，暖黄色）。
-##   提着灯时不触发。铆钉枪每 4 颗补一发、两发至少隔 0.6 秒、每发 25（实测三把武器都是 +40~50%）。
+##   提着灯时不触发。铆钉枪每 4 颗补一发、两发至少隔 0.6 秒、每发 25；蒸汽锤每发 55。间隔按游戏时间算。
+##   武器第三版后实测 5 秒单体伤害：闪光灯 500→700、铆钉枪 663→813、蒸汽锤 510→675 左右。
 ## 发电机 dynamo：每杀 10 只怪，马灯 +5（走 Run.heal_crystal，有回血特效），灯上冒一圈电火花。
 ##   左上角马灯血条下面有 10 格进度（EmotionFx 画）。
 ## 注意：这个文件不直接写 Player / Orb / Rivet / SteamBlast / Crystal 这些类名（player.gd 会调这里，
@@ -29,6 +30,8 @@ const SLAVE_MIN_GAP := 0.3
 ## 铆钉枪射得快：从闪补的光球伤害低一些、间隔长一些（不然 +100% 以上）
 const SLAVE_RIVET_DAMAGE := 25.0
 const SLAVE_RIVET_GAP := 0.6
+## 蒸汽锤出招慢（5 秒 3 下），每下补的光球伤害高一点，和另外两把差不多（10-18 武器第三版后复核）
+const SLAVE_HAMMER_DAMAGE := 55.0
 const SLAVE_COLOR := Color8(255, 211, 138)
 
 const DYNAMO_KILLS := 10
@@ -36,6 +39,9 @@ const DYNAMO_HEAL := 5.0
 const DYNAMO_COLOR := Color8(170, 230, 255)
 
 static var dynamo_kills := 0
+## 变异最近一次真的起作用（怒火加成、回声出招、从闪补射、发电机回血）是哪个物理帧：
+## HUD 上的变异图标看到它变了就跳一下（EmotionFx 读）
+static var proc_frame := -1
 const ORB_PATH := "res://scripts/combat/orb.gd"
 const RIVET_PATH := "res://scripts/combat/rivet.gd"
 const BLAST_PATH := "res://scripts/combat/steam_blast.gd"
@@ -70,6 +76,7 @@ static func on_kill(_enemy: Node) -> void:
 		return
 	dynamo_kills = 0
 	Run.heal_crystal(DYNAMO_HEAL)
+	proc_frame = Engine.get_physics_frames()
 	var tree := (_enemy as Node).get_tree() if _enemy else null
 	if tree == null:
 		return
@@ -92,6 +99,7 @@ static func _rage(shot: Node2D) -> void:
 	if "color" in shot:
 		shot.set("color", (shot.get("color") as Color).lerp(RAGE_COLOR, clampf((m - 1.0) * 1.2, 0.0, 1.0)))
 	if m >= 1.2:
+		proc_frame = Engine.get_physics_frames()
 		var at := shot.global_position
 		var par: Node = shot.get_parent() if shot.get_parent() else (Engine.get_main_loop() as SceneTree).current_scene
 		Game.sparks(par, at, RAGE_COLOR, 2 + int((m - 1.0) * 6.0), 70.0)
@@ -135,6 +143,7 @@ static func _echo(p: Node2D, shot: Node2D) -> void:
 		if copy == null:
 			return
 		copy.set_meta("mutation_copy", true)
+		proc_frame = Engine.get_physics_frames()
 		if kind != "blast":
 			_badge(copy, ECHO_COLOR, true)
 		parent.add_child(copy)
@@ -156,7 +165,8 @@ static func _slave(p: Node2D, shot: Node2D) -> void:
 		if _rivet_slave_n % SLAVE_RIVET_EVERY != 0:
 			return
 	var rivet := _kind(shot) == "rivet"
-	var now := Time.get_ticks_msec() / 1000.0
+	# 按物理帧数算间隔，不用现实时间：卡顿掉帧时不会少补
+	var now := Engine.get_physics_frames() / float(Engine.physics_ticks_per_second)
 	if now - _slave_last < (SLAVE_RIVET_GAP if rivet else SLAVE_MIN_GAP):
 		return
 	var from := lamp.global_position + Vector2(0, -6)
@@ -174,11 +184,17 @@ static func _slave(p: Node2D, shot: Node2D) -> void:
 	if best == null:
 		return
 	_slave_last = now
+	proc_frame = Engine.get_physics_frames()
 	var aim: Vector2 = best.call("aim_point") if best.has_method("aim_point") else best.global_position
 	var o: Node2D = (load(ORB_PATH) as GDScript).new()
 	# 0.99：不算蓄满（没有顿帧、不穿透），几乎直飞
 	o.call("setup", p, from, (aim - from).normalized(), 0.99, null, SLAVE_COLOR)
-	o.set("damage", SLAVE_RIVET_DAMAGE if rivet else SLAVE_DAMAGE)
+	var dmg := SLAVE_DAMAGE
+	if rivet:
+		dmg = SLAVE_RIVET_DAMAGE
+	elif _kind(shot) == "blast":
+		dmg = SLAVE_HAMMER_DAMAGE
+	o.set("damage", dmg)
 	o.set_meta("mutation_copy", true)
 	_badge(o, SLAVE_COLOR, false)
 	lamp.get_parent().add_child(o)

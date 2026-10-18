@@ -29,6 +29,11 @@ var _black: ColorRect
 var _index := 0
 var _time := 0.0
 var _done := false
+## 网页版：先停在和加载页一样的画面上，写"点击或按任意键"，玩家按了才开始播。
+## 浏览器要等玩家第一次点击 / 按键才放声音，不等的话开场的蒸汽声会被吞掉；这一下也让后面的全屏切换能用
+var _waiting := false
+var _prompt: Label
+var _splash: Sprite2D
 
 
 func _ready() -> void:
@@ -45,10 +50,45 @@ func _ready() -> void:
 	_sprite.centered = false
 	_sprite.texture = _frames[0]
 	add_child(_sprite)
+	# SCRAP_WEB_PROMPT=1：桌面版也走这一步（测试、截图用）
+	if OS.has_feature("web") or OS.get_environment("SCRAP_WEB_PROMPT") == "1":
+		_waiting = true
+		_sprite.visible = false
+		_splash = Sprite2D.new()
+		_splash.texture = load("res://art/ui/boot_splash.png")
+		_splash.centered = false
+		_splash.scale = Vector2(0.5, 0.5)
+		add_child(_splash)
+		# 中文模式：图里画死的副标题 "LUDUM DARE 60 / OLD TECH" 用底色盖掉，换成会翻译的字，和开始界面那行一样
+		if Lang.is_zh():
+			var cover := ColorRect.new()
+			cover.color = Color8(8, 8, 10)
+			cover.position = Vector2(164, 125)
+			cover.size = Vector2(152, 13)
+			add_child(cover)
+			var sub := Label.new()
+			sub.label_settings = Hud.small_text(Color(0.55, 0.55, 0.6))
+			sub.text = "LUDUM DARE 60  /  OLD TECH"
+			sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			sub.position = Vector2(0, 124)
+			sub.size = Vector2(480, 14)
+			add_child(sub)
+		_prompt = Label.new()
+		var st := Hud.small_text(Hud.WARM)
+		_prompt.label_settings = st
+		_prompt.text = "CLICK OR PRESS ANY KEY"
+		_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_prompt.position = Vector2(0, 196)
+		_prompt.size = Vector2(480, 17)
+		add_child(_prompt)
 
 
 func _process(delta: float) -> void:
 	if _done:
+		return
+	if _waiting:
+		_time += delta
+		_prompt.visible = fmod(_time, 1.0) < 0.65
 		return
 	_time += delta
 	while _time >= DURATIONS[_index]:
@@ -71,7 +111,19 @@ func _input(event: InputEvent) -> void:
 	if pressed:
 		# 跳过的这一下不能顺手把菜单的 START 也按了
 		get_viewport().set_input_as_handled()
+		if _waiting:
+			_start()
+			return
 		_finish()
+
+
+func _start() -> void:
+	_waiting = false
+	_time = 0.0
+	_splash.queue_free()
+	_prompt.queue_free()
+	_sprite.visible = true
+	Game.sfx("ui_confirm", -10.0)
 
 
 func _finish() -> void:

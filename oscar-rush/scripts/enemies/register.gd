@@ -31,7 +31,7 @@ const BITE_DAMAGE := 12.0
 ## 弹抽屉时整台机器往前一窜，不然站在 30~40 像素的主角永远咬不到
 const BITE_LUNGE := 12.0
 # —— 找零 ——
-const TOSS_INTERVAL := 4.0
+const TOSS_INTERVAL := 1.6  # 10-18 作者：招和招之间停太久
 const TOSS_WARN_TIME := 0.35
 const COIN_DAMAGE := 8.0
 ## 三枚硬币：落点相对主角的水平偏移（往收银机这边为负）和飞行时间
@@ -50,12 +50,15 @@ func _setup() -> void:
 	elite_name = "CASH REGISTER"
 	intro_title = "NO REFUNDS"
 	intro_frame = 4
+	fill_alpha = 0.35
+	death_time = 1.1
+	death_frame = 4
 	texture_path = "res://art/enemies/register.png"
 	hframes = 6
 	frame_size = Vector2i(53, 32)
 	body_rect = Rect2(-12, -30, 25, 30)
 	led_pixel = Vector2i(27, 4)
-	max_hp = 800.0
+	max_hp = 2500.0  # 10-18 作者：血不够，三把武器 20～35 秒
 	contact_damage = 10.0
 
 
@@ -79,6 +82,7 @@ func _tick(delta: float) -> void:
 					_timer = TOSS_WARN_TIME
 					velocity.x = 0.0
 					warn(TOSS_WARN_TIME)
+					pick_focus(p)      # 双人时每次抛硬币轮着冲一个人
 		BITE_WARN:
 			_brake(delta)
 			set_frame(2 if int(_timer / 0.05) % 2 == 0 else 0)
@@ -103,7 +107,7 @@ func _tick(delta: float) -> void:
 			_brake(delta)
 			set_frame(5)
 			if _timer <= 0.0:
-				_toss(p)
+				_toss(focus_player())
 				_state = RECOVER
 				_timer = 0.3
 		RECOVER:

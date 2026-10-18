@@ -20,7 +20,7 @@ signal hp_changed(hp: float, max_hp: float)
 signal phase_changed(phase: int)
 signal defeated
 
-const BASE_HP := 3200.0
+const BASE_HP := 5600.0  # 夜间打磨：武器加强后站桩 26～30 秒就能打死，+20%；10-18 作者嫌太简单：3800 → 5200（站桩 45～55 秒，真人 60～90 秒）；吊低 10 像素后闪光灯快了 12%，再补到 5600
 const CONTACT_DAMAGE := 10.0
 const CANVAS_ORIGIN := Vector2(48, 111)
 const DIAL := Vector2(48, 40) - CANVAS_ORIGIN
@@ -36,10 +36,12 @@ const HOT_TINT := Color(1.35, 1.0, 0.75)
 const HOOKS := [Vector2(30, 7) - CANVAS_ORIGIN, Vector2(66, 7) - CANVAS_ORIGIN]
 ## 插孔板的底边（相对原点）：砸下来时就是这条边落地
 const HEAD_BOTTOM := 63.0 - 111.0
-## 吊着时原点的高度（插孔板底边离地约 80）
-const HOVER_Y := 130.0
+## 吊着时原点的高度（插孔板底边离地约 70）。10-18 作者选的：130 → 140，吊低 10 像素，站长凳上的蒸汽锤更好够到
+const HOVER_Y := 140.0
 const TRACK_SPEED := [38.0, 50.0, 64.0]
 const SLAM_DAMAGE := 14.0
+## 砸线落地后在地上停多久（见 _drop）
+const SLAM_REST := 1.2
 
 var arena := Rect2(0, 0, 320, 180)
 var floor_y := 164.0
@@ -59,12 +61,27 @@ var dead := false
 var _time := 0.0
 var _flash := 0.0
 var _hot := 0.0
+## 受击时插孔板往后顿一格（夜间打磨，照第二关精英的手感）
+var _recoil := 0.0
+var _recoil_dir := 1.0
+## 换阶段后先停一下再出下一招
+var _pause_t := 0.0
+## 铃声招预警时，第一圈缺口方向的淡色弧
+var _gap_hint_t := 0.0
+var _gap_hint_a := 0.0
+## 双人以上：这一招盯的玩家（每招轮换）
+var _focus: Player = null
+var _focus_i := -1
 var _dial_angle := 0.0
 var _dial_spin := 0.0
 var _bell_shake := [0.0, 0.0]
 var _lights_on := 1.0
 var _breathe := 0
 var _last_pattern := ""
+## 正在放的招（"" = 招和招之间；三阶段叠招时是后一招）。只给 tools/qa/elite_regression.gd 量节奏用
+var _pattern := ""
+## 二阶段隔一招叠一次（数到单数时叠）
+var _combo := 0
 var _bag: Array[String] = []
 var _bag_phase := 0
 var _warn_t := 0.0
@@ -90,6 +107,7 @@ var _warn: Node2D
 
 func _ready() -> void:
 	add_to_group("enemy")
+	Bestiary.watch(self, "boss_operator", Rect2(-48, -96, 96, 96))   # 怪物图鉴：第一次出现在画面里就记一笔
 	collision_layer = 4
 	collision_mask = 0
 	max_hp = BASE_HP * (1.0 + 0.5 * (Run.players.size() - 1))
@@ -174,17 +192,19 @@ func is_targetable() -> bool:
 
 func wake() -> void:
 	for i in 3:
+		if not is_inside_tree():
+			return
 		_led_light.energy = 1.0
-		await get_tree().create_timer(0.08, false).timeout
+		if is_inside_tree(): await get_tree().create_timer(0.08, false).timeout
 		_led_light.energy = 0.0
-		await get_tree().create_timer(0.06, false).timeout
+		if is_inside_tree(): await get_tree().create_timer(0.06, false).timeout
 	_led_light.energy = 1.0
 	_ring_bell(0)
 	_ring_bell(1)
 	Game.sfx("bell", -2.0)
 	_dial_spin = 14.0
 	Game.add_shake(4.0)
-	await get_tree().create_timer(0.5, false).timeout
+	if is_inside_tree(): await get_tree().create_timer(0.5, false).timeout
 	# 上半截离开桌子，顺着缆绳被拉上天车
 	Game.sfx("scrape", -4.0, 0.7)
 	Game.sfx("clang", -8.0, 1.3)
@@ -204,12 +224,18 @@ func start_fight() -> void:
 	_fight_loop()
 
 
-func hurt(damage: float, _from_dir: Vector2, _full: bool) -> void:
+func hurt(damage: float, from_dir: Vector2, full: bool) -> void:
 	if dead:
 		return
 	_flash = 1.0
 	if not active:
 		return
+	# 挨打有分量：插孔板往后顿一格、缆绳抖一下；蓄满的再加一声金属响
+	_recoil = 0.06
+	_recoil_dir = signf(from_dir.x) if from_dir.x != 0.0 else 1.0
+	_cable_shake = maxf(_cable_shake, 0.1)
+	if full:
+		Game.sfx("clang", -12.0, 1.7, 0.1)
 	hp = maxf(hp - damage, 0.0)
 	hp_changed.emit(hp, max_hp)
 	if hp <= 0.0:
@@ -222,6 +248,13 @@ func hurt(damage: float, _from_dir: Vector2, _full: bool) -> void:
 		_phase_roar()
 
 
+
+## 离开场景树（重来、切场景、整关重载）：标成"已结束"，所有出招循环都会看 dead 自己停下；
+## 每个 await get_tree() 前面也先看还在不在树里。不然 get_tree() 变成空值，协程空转、无限刷错（夜间质检，网页版会卡死）
+func _exit_tree() -> void:
+	dead = true
+	active = false
+
 # —— 每帧 ——
 
 func _physics_process(delta: float) -> void:
@@ -231,6 +264,10 @@ func _physics_process(delta: float) -> void:
 	_warn_t -= delta
 	_shadow_t -= delta
 	_cable_shake = maxf(_cable_shake - delta, 0.0)
+	_recoil -= delta
+	_pause_t -= delta
+	_gap_hint_t -= delta
+	_parts.position.x = _recoil_dir if _recoil > 0.0 else 0.0
 	_warn.queue_redraw()
 	if active and not dead and _mode == "hover":
 		var tx := clampf(_target().x, arena.position.x + 56.0, arena.end.x - 56.0)
@@ -260,11 +297,12 @@ func _physics_process(delta: float) -> void:
 # —— 出招 ——
 
 func _wait(t: float) -> void:
-	await get_tree().create_timer(t, false).timeout
+	if is_inside_tree(): await get_tree().create_timer(t, false).timeout
 
 
+## 招和招之间空多久（10-18 作者嫌太简单：1.0/0.8/0.55 → 0.8/0.6/0.45）
 func _gap() -> float:
-	return [1.0, 0.8, 0.55][phase - 1]
+	return [0.8, 0.6, 0.45][phase - 1]
 
 
 func _pool() -> Array[String]:
@@ -296,9 +334,14 @@ func _next_pattern() -> String:
 func _fight_loop() -> void:
 	await _wait(0.6)
 	while active and not dead:
+		# 刚换阶段：停一下，让玩家看清它变了
+		while _pause_t > 0.0 and not dead:
+			if is_inside_tree(): await get_tree().physics_frame
 		var pick := _next_pattern()
-		if phase == 3:
-			# 三阶段：两招叠着出（第二招不等第一招放完）
+		_pick_focus()
+		_combo += 1
+		if phase == 3 or (phase == 2 and _combo % 2 == 1):
+			# 三阶段：两招叠着出（第二招不等第一招放完）；二阶段隔一招叠一次（10-18 加）
 			var second := _next_pattern()
 			if second == "drop" or pick == "drop":
 				# 砸线不和别的招叠：另一招先放，砸线接着来
@@ -309,12 +352,14 @@ func _fight_loop() -> void:
 			await _run(pick)
 		else:
 			await _run(pick)
+		_pattern = ""
 		if dead:
 			return
 		await _wait(_gap())
 
 
 func _run(pick: String) -> void:
+	_pattern = pick
 	match pick:
 		"ring":
 			await _ring()
@@ -340,7 +385,12 @@ func _ring_bell(i: int) -> void:
 
 ## 铃声：铃铛轮流响，每响一下放一圈声波，留 3 个缺口位置
 func _ring() -> void:
-	var rings: int = [2, 3, 4][phase - 1]
+	var rings: int = [3, 3, 4][phase - 1]   # 10-18：一阶段 2 → 3 圈
+	var count := 24
+	# 第一圈的缺口先定好，预警时在缺口方向画一小段淡弧，第一圈不全靠反应
+	var first_gap := randi() % count
+	_gap_hint_a = TAU * first_gap / count
+	_gap_hint_t = 0.5
 	_warn_at(BELLS[0] + Vector2(0, -12), 0.5)
 	await _wait(0.5)
 	for r in rings:
@@ -351,8 +401,7 @@ func _ring() -> void:
 		Game.sfx("bell", -4.0, 1.0 + 0.05 * r)
 		Game.add_shake(1.5)
 		var center: Vector2 = global_position + BELLS[side] + _parts.position
-		var count := 24
-		var gap_at := randi() % count
+		var gap_at := first_gap if r == 0 else randi() % count
 		for i in count:
 			if absi(i - gap_at) <= 1 or absi(i - gap_at) >= count - 1:
 				continue
@@ -364,7 +413,7 @@ func _ring() -> void:
 
 ## 接线：几根插线从插孔板甩到左墙，先画虚线预警，然后整根带电
 func _patch() -> void:
-	var n: int = [2, 3, 4][phase - 1]
+	var n: int = [3, 3, 4][phase - 1]   # 10-18：一阶段 2 → 3 根
 	var lines: Array[CordLine] = []
 	var tp := _target()
 	for i in n:
@@ -391,9 +440,9 @@ func _patch() -> void:
 
 ## 拨号：转盘一格一格回转，每一格放一颗慢慢追人的"声音"
 func _dial() -> void:
-	var n: int = [3, 4, 5][phase - 1]
-	_warn_at(DIAL + Vector2(0, -18), 0.4)
-	await _wait(0.4)
+	var n: int = [4, 4, 5][phase - 1]   # 10-18：一阶段 3 → 4 颗
+	_warn_at(DIAL + Vector2(0, -18), 0.5)
+	await _wait(0.5)
 	for i in n:
 		if dead:
 			return
@@ -414,6 +463,13 @@ func _busy() -> void:
 	Game.sfx("busy", -6.0)
 	var order := plates.duplicate()
 	order.shuffle()
+	# 先电主角脚下那块（站在地上不动的人躲不掉）
+	var px := _target().x
+	for pl in plates:
+		if px >= float(pl.get("x0")) and px <= float(pl.get("x1")):
+			order.erase(pl)
+			order.push_front(pl)
+			break
 	var n := 1 if phase == 2 else 2
 	for i in n:
 		order[i].call("charge", 1.0 + i * 0.25)
@@ -447,8 +503,11 @@ func _drop() -> void:
 		tw.tween_property(self, "position:y", _shadow_y - HEAD_BOTTOM, 0.2).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 		await tw.finished
 		_slam_impact(_shadow_y)
-		await _wait([0.9, 0.7, 0.5][phase - 1])
+		# 砸完在地上停一会儿：拿蒸汽锤的人平时够不着吊着的它，这是锤子的输出窗口。
+		# 10-18 试用：0.9/0.7/0.5 → 每阶段都 1.2 秒（等作者试玩再定要不要留）。砸的那一下才是重伤，停着的时候只算普通碰撞
+		await _wait(0.15)
 		_contact_damage = CONTACT_DAMAGE
+		await _wait(SLAM_REST - 0.15)
 		if dead:
 			return
 		Game.sfx("scrape", -8.0, 0.8)
@@ -477,18 +536,23 @@ func _slam_impact(y: float) -> void:
 	Game.sparks(get_parent(), Vector2(position.x + 26, y), BRASS, 8, 90.0, Vector2.RIGHT)
 	_ring_bell(0)
 	_ring_bell(1)
-	if absf(y - floor_y) < 1.0:
-		# 砸在地上：顺着地板往两边炸出声波，要跳过去
-		Game.dust(get_parent(), Vector2(position.x, floor_y), 8)
-		for dir in [-1.0, 1.0]:
-			for k in (2 if phase == 3 else 1):
-				var b := BossBullet.spawn(bullet_parent, BossBullet.Kind.WAVE,
-					Vector2(position.x + dir * 30.0, floor_y - 5.0 - k * 7.0), Vector2(dir * 95.0, 0))
-				b.arena = arena
+	# 砸在地上，或者砸在长凳、桌子上（震动顺着凳腿传到地面）：顺着地板往两边炸出声波，要跳过去。
+	# 夜间打磨：子弹能从长凳底下往上打了，长凳底下不能再是"站着就能赢"的安全区
+	Game.dust(get_parent(), Vector2(position.x, floor_y), 8)
+	# 砸在地上时声波从插孔板两边出发；砸在凳子上时从正下方出发（躲在凳子底下正中也逃不掉）
+	var start := 30.0 if absf(y - floor_y) < 1.0 else 2.0
+	for dir in [-1.0, 1.0]:
+		for k in (2 if phase == 3 else 1):
+			var b := BossBullet.spawn(bullet_parent, BossBullet.Kind.WAVE,
+				Vector2(position.x + dir * start, floor_y - 5.0 - k * 7.0), Vector2(dir * 95.0, 0))
+			b.arena = arena
 
 
-## 离 Boss 最近的那个玩家的位置
+## 这一招盯的那个玩家的位置。单人就是他；双人以上每招轮着换人（_pick_focus），
+## 不然它吊在谁头上谁就一直是"最近的"，另一个人整场没压力（夜间打磨，双人测试发现）。盯的人没了就退回最近的。
 func _target() -> Vector2:
+	if is_instance_valid(_focus) and _focus.is_inside_tree():
+		return _focus.global_position
 	var best := INF
 	var out := Vector2(arena.position.x + 60.0, floor_y)
 	for n in get_tree().get_nodes_in_group("player"):
@@ -500,6 +564,16 @@ func _target() -> Vector2:
 	return out
 
 
+## 下一招盯谁：按玩家顺序轮着来（单人永远是他）
+func _pick_focus() -> void:
+	var ps := get_tree().get_nodes_in_group("player")
+	if ps.size() <= 1:
+		_focus = null
+		return
+	_focus_i = (_focus_i + 1) % ps.size()
+	_focus = ps[_focus_i] as Player
+
+
 func _phase_roar() -> void:
 	_ring_bell(0)
 	_ring_bell(1)
@@ -508,6 +582,20 @@ func _phase_roar() -> void:
 	Game.add_shake(6.0)
 	Game.flash(Color(1.0, 0.85, 0.5), 0.25, 0.5)
 	_dial_spin = 20.0
+	# 换阶段：清掉它场上的子弹，下一招推迟 0.8 秒。
+	# 10-18 作者"子弹会中途消失"：不再直接删，迸一点火花再没（BossBullet.fizzle，声音小球是 _pop）
+	_clear_bullets()
+	_pause_t = 0.8
+
+
+func _clear_bullets() -> void:
+	for b in get_tree().get_nodes_in_group("boss_bullet"):
+		if b.has_method("fizzle"):
+			b.fizzle()
+		elif b.has_method("_pop"):
+			b.call("_pop")
+		else:
+			b.queue_free()
 
 
 func _die() -> void:
@@ -517,13 +605,18 @@ func _die() -> void:
 	_shadow_t = 0.0
 	_contact_damage = CONTACT_DAMAGE
 	remove_from_group("enemy")
-	for b in get_tree().get_nodes_in_group("boss_bullet"):
-		b.queue_free()
+	_clear_bullets()
+	# 夜间打磨：死的时候正在通电、正在预警的铜地板也一起断电（不然打赢以后还会被电一下）
+	for pl in plates:
+		if is_instance_valid(pl) and pl.has_method("shut_off"):
+			pl.call("shut_off")
 	defeated.emit()
 	Game.hitstop(0.25)
-	await get_tree().create_timer(0.3, true, false, true).timeout
+	if is_inside_tree(): await get_tree().create_timer(0.3, true, false, true).timeout
 	Engine.time_scale = 0.35
 	for i in 9:
+		if not is_inside_tree():
+			return
 		var p := global_position + Vector2(randf_range(-30, 30), randf_range(-100, -50))
 		Game.sparks(get_parent(), p, [SPARK, BRASS, Color(1, 0.9, 0.7)][i % 3], 16, 140.0)
 		Game.sfx("buzz", -4.0, randf_range(0.8, 1.3))
@@ -533,7 +626,7 @@ func _die() -> void:
 		_flash = 1.0
 		_dial_spin = 18.0
 		_ring_bell(i % 2)
-		await get_tree().create_timer(0.18, true, false, true).timeout
+		if is_inside_tree(): await get_tree().create_timer(0.18, true, false, true).timeout
 	Engine.time_scale = 1.0
 	# 缆绳崩断，整台砸到地上
 	_cables_cut = true
@@ -546,6 +639,8 @@ func _die() -> void:
 	Game.sfx("boom", -2.0, 0.8)
 	Game.add_shake(8.0)
 	Game.dust(get_parent(), Vector2(position.x, land), 10)
+	EliteFx.scrap_burst(get_parent(), Rect2(global_position + Vector2(-30.0, HEAD_BOTTOM - 40.0), Vector2(60.0, 40.0)), 14,
+		[Color8(181, 142, 96), Color8(117, 88, 53), Color8(81, 25, 9)])
 	# 信号小灯一盏盏灭掉，红灯熄，最后一声铃
 	_led_light.energy = 0.0
 	var tw := create_tween()
@@ -620,6 +715,13 @@ func _draw_deco() -> void:
 
 
 func _draw_warn() -> void:
+	if _gap_hint_t > 0.0:
+		# 第一圈声波的缺口方向：从左铃铛往外一小段淡色弧
+		var c: Vector2 = BELLS[0] + _parts.position
+		for k in range(-2, 3):
+			var a := _gap_hint_a + k * 0.05
+			for rr in [10.0, 13.0, 16.0]:
+				_warn.draw_rect(Rect2((c + Vector2.from_angle(a) * rr).round(), Vector2.ONE), Color(1.0, 0.9, 0.6, 0.5))
 	if _shadow_t > 0.0 and int(_shadow_t * 16.0) % 2 == 0:
 		# 砸线落点：落地那一面上一道闪烁的红影，宽度就是插孔板的宽度
 		var y := _shadow_y - global_position.y
@@ -704,7 +806,9 @@ class Voice:
 	extends StaticBody2D
 
 	const SPEED := 46.0
-	const LIFE := 4.5
+	## 10-18：4.5 → 6 秒，最后 0.6 秒一闪一闪再碎（之前到点就在半空没了，看着像子弹消失）
+	const LIFE := 6.0
+	const FADE := 0.6
 	const DAMAGE := 8.0
 	var arena := Rect2(0, 0, 320, 180)
 	var velocity := Vector2.ZERO
@@ -776,7 +880,9 @@ class Voice:
 		queue_redraw()
 
 	func _draw() -> void:
-		# 一颗发光小球，外面一圈一圈的声纹
+		# 一颗发光小球，外面一圈一圈的声纹；快散的时候一闪一闪
+		if _t > LIFE - FADE and int(_t / 0.07) % 2 == 0:
+			return
 		var pulse := 0.5 + 0.5 * sin(_t * 12.0)
 		draw_rect(Rect2(-2, -3, 5, 7), Color(0.1, 0.06, 0.04, 0.85))
 		draw_rect(Rect2(-3, -2, 7, 5), Color(0.1, 0.06, 0.04, 0.85))
@@ -809,6 +915,11 @@ class ElectricPlate:
 
 	func charge(delay := 0.0) -> void:
 		_t = -delay
+
+	## 立刻断电（Boss 死了）
+	func shut_off() -> void:
+		_t = -100.0
+		queue_redraw()
 
 	func _physics_process(delta: float) -> void:
 		if _t < -50.0:

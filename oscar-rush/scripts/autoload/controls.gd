@@ -48,7 +48,25 @@ const KEY_NAMES := {
 }
 
 
+## 按键提示跟着输入设备变（2026-10-17 夜间，游戏细节讨论会话）：
+## 记住玩家最后用的是键盘还是手柄。单人方案（solo）的 key_name 用手柄时返回手柄键名，
+## HUD、新手提示、商店、马灯提示这些调 key_name 的地方自动跟着变；菜单用 label()。
+## 换设备时发 device_changed，缓存了提示文字的地方接一下这个信号重画。
+signal device_changed(using_pad: bool)
+
+var using_pad := false
+
+const PAD_NAMES := {"move": "Stick", "jump": "A", "attack": "X", "crystal": "Y", "down": "Down"}
+## 菜单里的键：键盘一套、手柄一套
+const MENU_KB := {"confirm": "Space / C", "back": "Esc", "pause": "Esc", "select": "W/S", "change": "A/D",
+	"scroll": "W/S", "page": "A/D"}
+const MENU_PAD := {"confirm": "A", "back": "B", "pause": "Start", "select": "D-pad", "change": "Left/Right",
+	"scroll": "Up/Down", "page": "Left/Right"}
+
+
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
+	get_tree().root.window_input.connect(_on_window_input)
 	_bind_keys("solo", KB_SOLO)
 	_bind_pad("solo", -1)
 	_bind_keys("kb_left", KB_LEFT)
@@ -65,9 +83,33 @@ func all_schemes() -> Array[String]:
 
 
 func key_name(scheme: String, what: String) -> String:
+	if scheme == "solo" and using_pad:
+		return tr(PAD_NAMES[what])
 	if KEY_NAMES.has(scheme):
 		return KEY_NAMES[scheme][what]
-	return {"move": tr("Stick"), "jump": "A", "attack": "X", "crystal": "Y", "down": tr("Down")}[what]
+	return tr(PAD_NAMES[what])
+
+
+## 菜单和单人提示用的键名，跟着最后用的设备走：
+## confirm / back / pause / select / change / scroll / page，以及 move / jump / attack / crystal / down
+func label(what: String) -> String:
+	if MENU_KB.has(what):
+		return tr((MENU_PAD if using_pad else MENU_KB)[what])
+	return key_name("solo", what)
+
+
+## 用根窗口的 window_input：每个输入在分发给节点之前都先到这里，菜单把事件标成"已处理"也不影响
+func _on_window_input(event: InputEvent) -> void:
+	var pad := using_pad
+	if event is InputEventJoypadButton and event.pressed:
+		pad = true
+	elif event is InputEventJoypadMotion and absf(event.axis_value) > 0.5:
+		pad = true
+	elif (event is InputEventKey and event.pressed) or (event is InputEventMouseButton and event.pressed):
+		pad = false
+	if pad != using_pad:
+		using_pad = pad
+		device_changed.emit(using_pad)
 
 
 func _ensure(action: String) -> void:

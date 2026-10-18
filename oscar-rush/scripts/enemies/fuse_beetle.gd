@@ -27,14 +27,20 @@ func _setup() -> void:
 	contact_damage = 10.0
 
 
+func _after_ready() -> void:
+	# 夜间打磨：挨打顿一格、死时抖一下碎几块（见 elite_fx.gd）
+	EliteFx.attach_small(self, 5, 0.35)   # 0.35：第二关机房很暗，叠一层暗处亮层
+
+
 func _tick(delta: float) -> void:
 	if _burning:
 		_burn(delta)
 		return
-	if not is_knocked():
-		velocity.x = dir * SPEED * speed_mult()
 	if is_on_floor() and not is_knocked() and (is_on_wall() or not ground_ahead()):
 		dir = -dir
+	# 先掉头再定速度：反过来的话，掉头这一帧还按旧方向撞墙，is_on_wall 又是真，下一帧再掉回去，贴着墙每帧左右抖（夜间打磨怪物地形测试抓到的）
+	if not is_knocked():
+		velocity.x = dir * SPEED * speed_mult()
 	move_and_slide()
 	set_frame(int(_time / WALK_FRAME_TIME) % 2 if absf(velocity.x) > 2.0 else 0)
 
@@ -50,6 +56,8 @@ func _die() -> void:
 	_burning = true
 	_burn_t = FUSE_TIME
 	Game.sfx("buzz", -8.0, 1.3, 0.1)
+	# 要炸了：头顶红"!"（炸开那一片地会带电）
+	EliteFx.mark(self, FUSE_TIME)
 
 
 func _burn(delta: float) -> void:

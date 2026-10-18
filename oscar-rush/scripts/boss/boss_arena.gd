@@ -12,7 +12,8 @@ extends Node2D
 ##           属性 hp、max_hp、phase；方法 wake()、start_fight()。
 ## F3 显示碰撞框，R 从房间门口重来。
 
-const M := 16
+## 背景、前景画布四边比竞技场多出来的边（24：整数缩放后视野最宽 360×202，再留几像素给震屏）
+const M := 24
 
 # —— 子类在 _configure() 里改 ——
 var bg_tex: Texture2D
@@ -37,6 +38,8 @@ var darkness_hot := Color(0.45, 0.22, 0.2)
 var zoom_fight := 1.5
 var zoom_enter := 2.0
 var boss_name := "BOSS"
+## 开打 1.5 秒后弹一次的打法提示（一局只出一次；英文原文，显示时 tr()）
+var boss_tip := ""
 var card_sub := ""
 var defeat_line := ""
 var clear_banner := "CLEARED"
@@ -83,6 +86,10 @@ func _ready() -> void:
 	_quick = _retried_scene != "" and _retried_scene == scene_file_path
 	_retried_scene = ""
 	_configure()
+	# 镜头缩放对齐到整数个屏幕像素（窗口 3 倍时 1.5 → 4/3，每格正好 4 个像素，像素不会一大一小）；
+	# 打的时候往小取，保证整个竞技场装得下
+	zoom_enter = GameCamera.pixel_zoom(get_viewport(), zoom_enter)
+	zoom_fight = GameCamera.pixel_zoom(get_viewport(), zoom_fight, true)
 	Run.start_level()
 	Run.crystal_broken.connect(_on_crystal_broken)
 	_build_room()
@@ -211,9 +218,16 @@ func _build_card() -> void:
 	_card.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_card.position = Vector2(0, 92)
 	_card.size = Vector2(480, 40)
+	# 字后面垫一条全宽深色底（往下盖住副标题），跟着名字一起淡入淡出：暗房间里也读得清（新玩家体验报告，10-18）
+	var bg := StyleBoxFlat.new()
+	bg.bg_color = Color(0.03, 0.02, 0.02, 0.72)
+	bg.expand_margin_top = 4.0
+	bg.expand_margin_bottom = 18.0
+	_card.add_theme_stylebox_override("normal", bg)
+	_card.modulate.a = 0.0          # 没字的时候底条也会画，先藏起来（_show_card 里再显出来）
 	layer.add_child(_card)
 	_card_sub = Label.new()
-	_card_sub.label_settings = Hud.small_text(Color(0.75, 0.72, 0.7))
+	_card_sub.label_settings = Hud.small_text(Color(0.93, 0.89, 0.83))
 	_card_sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_card_sub.position = Vector2(0, 134)
 	_card_sub.size = Vector2(480, 12)
@@ -279,18 +293,28 @@ func _begin_intro() -> void:
 	if _quick:
 		# 重来：Boss 直接醒，名字不再打一遍
 		boss.call("wake")
-		await get_tree().create_timer(1.2).timeout
+		if is_inside_tree(): await get_tree().create_timer(1.2).timeout
 		_bar.appear()
 		_state = 2
 		boss.call("start_fight")
+		_show_boss_tip()
 		return
-	await get_tree().create_timer(0.7).timeout
+	if is_inside_tree(): await get_tree().create_timer(0.7).timeout
 	boss.call("wake")
-	await get_tree().create_timer(0.6).timeout
+	if is_inside_tree(): await get_tree().create_timer(0.6).timeout
 	await _show_card(boss_name, card_sub)
 	_bar.appear()
 	_state = 2
 	boss.call("start_fight")
+	_show_boss_tip()
+
+
+func _show_boss_tip() -> void:
+	if boss_tip == "" or hud == null or hud.get("_coach") == null:
+		return
+	if is_inside_tree(): await get_tree().create_timer(1.5).timeout
+	if _state == 2:
+		hud.get("_coach").call("want_text", "boss:" + scene_file_path, tr(boss_tip))
 
 
 ## 屏幕中间的名字：一个字一个字打出来，停一会儿淡掉
@@ -306,14 +330,14 @@ func _show_card(title: String, sub: String) -> void:
 		_card.text = title.substr(0, i + 1)
 		if title[i] != " ":
 			Game.sfx("ui_move", -8.0, 0.8)
-		await get_tree().create_timer(0.07).timeout
+		if is_inside_tree(): await get_tree().create_timer(0.07).timeout
 	if title != "":
 		Game.add_shake(3.0)
-	await get_tree().create_timer(0.3).timeout
+	if is_inside_tree(): await get_tree().create_timer(0.3).timeout
 	for i in sub.length():
 		_card_sub.text = sub.substr(0, i + 1)
-		await get_tree().create_timer(0.03).timeout
-	await get_tree().create_timer(1.2).timeout
+		if is_inside_tree(): await get_tree().create_timer(0.03).timeout
+	if is_inside_tree(): await get_tree().create_timer(1.2).timeout
 	var tw := create_tween().set_parallel(true)
 	tw.tween_property(_card, "modulate:a", 0.0, 0.5)
 	tw.tween_property(_card_sub, "modulate:a", 0.0, 0.5)
@@ -330,11 +354,12 @@ func _on_phase(p: int) -> void:
 
 func _on_defeated() -> void:
 	_state = 3
+	Run.crystal_locked = true
 	_lamp_speed = 0.6
 	create_tween().tween_property(_dark, "color", darkness, 2.0)
 	for l in _lamps:
 		create_tween().tween_property(l, "energy", 0.25, 2.0)
-	await get_tree().create_timer(defeat_wait, true, false, true).timeout
+	if is_inside_tree(): await get_tree().create_timer(defeat_wait, true, false, true).timeout
 	await _after_defeat()
 
 
@@ -359,7 +384,7 @@ func _after_defeat() -> void:
 func _leave() -> void:
 	_state = 4
 	hud.show_banner(clear_banner)
-	await get_tree().create_timer(2.5).timeout
+	if is_inside_tree(): await get_tree().create_timer(2.5).timeout
 	if next_shop != "":
 		ShopRoom.next_scene = next_shop
 		SceneFade.go(get_tree(), "res://scenes/shop.tscn")
@@ -368,11 +393,13 @@ func _leave() -> void:
 
 
 func _on_crystal_broken() -> void:
+	if _state >= 3:
+		return
 	hud.show_banner("TAPE DESTROYED")
 	Game.flash(Color(0.9, 0.9, 0.95), 0.5, 1.2)
 	Game.add_shake(5.0)
 	get_tree().paused = true
-	await get_tree().create_timer(1.6, true, false, true).timeout
+	if is_inside_tree(): await get_tree().create_timer(1.6, true, false, true).timeout
 	get_tree().paused = false
 	_retry()
 
@@ -384,7 +411,9 @@ func _retry() -> void:
 	_retried_scene = scene_file_path
 	Engine.time_scale = 1.0
 	Run.retry_level()
-	get_tree().reload_current_scene()
+	# 重来也用统一的渐黑渐开（比过关快一点）；先暂停，免得黑下去的那 0.3 秒里马灯又挨打。SceneFade 切场时会解除暂停
+	get_tree().paused = true
+	SceneFade.go(get_tree(), get_tree().current_scene.scene_file_path, 0.3, 0.1, 0.45)
 
 
 func _unhandled_input(event: InputEvent) -> void:

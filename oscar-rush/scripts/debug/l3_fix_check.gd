@@ -54,6 +54,7 @@ func _physics_process(_delta: float) -> void:
 					bad += 1
 					print("   elite %s not on floor: y %.0f floor %d" % [item[2], e.global_position.y, item[1]])
 			print("3 elites on floor: %d / %d" % [_elites.size() - bad, _elites.size()])
+			get_tree().quit()   # 不靠 --quit-after：没加那个参数时会一直重测下去
 
 
 func _put(pos: Vector2) -> void:

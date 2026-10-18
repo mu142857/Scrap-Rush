@@ -18,6 +18,9 @@ import numpy as np
 from PIL import Image
 
 OUT = Path(__file__).resolve().parent.parent / "art/boss"
+## 预览图只给人看，不放进 art/（不然会被打进网页版包里）
+PREVIEW = Path(__file__).resolve().parent.parent.parent / "草图/boss预览"
+
 
 # 调色板：和精英怪草图一样（0~9 取自 Oscar 的爬虫，暗 → 亮），加了几档锈色和煤火
 PAL = {
@@ -247,6 +250,7 @@ def save(arr, name):
 
 
 def main():
+    PREVIEW.mkdir(parents=True, exist_ok=True)
     lg, bd = legs().rgba(), body().rgba()
     dr = [door(False).rgba(), door(True).rgba()]
     am = [arm(p).rgba() for p in range(3)]
@@ -271,7 +275,7 @@ def main():
     for p in preview:
         sheet.alpha_composite(p, (x, 0))
         x += p.width + 8
-    sheet.resize((sheet.width * 4, sheet.height * 4), Image.NEAREST).save(OUT / "preview_stoker.png")
+    sheet.resize((sheet.width * 4, sheet.height * 4), Image.NEAREST).save(PREVIEW / "preview_stoker.png")
     print("wrote preview_stoker.png")
 
 

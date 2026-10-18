@@ -35,20 +35,27 @@ var _air := false
 
 func _setup() -> void:
 	texture_path = "res://art/enemies/audience.png"
-	hframes = 7
+	hframes = 9
 	frame_size = Vector2i(20, 22)
 	body_rect = SIT_RECT
-	led_pixel = Vector2i(9, 11)
-	led_by_frame = {1: Vector2i(9, 10), 2: Vector2i(11, 8), 3: Vector2i(10, 3), 4: Vector2i(12, 3),
-			5: Vector2i(11, 5), 6: Vector2i(7, 3)}
+	# led_pixel 是前面那只眼睛：LivingFx 把红灯换成两只会眨、会看人的暖白眼睛（裹着胶片的活人）
+	led_pixel = Vector2i(8, 11)
+	led_by_frame = {1: Vector2i(8, 10), 2: Vector2i(10, 8), 3: Vector2i(9, 3), 4: Vector2i(11, 3),
+			5: Vector2i(10, 5), 6: Vector2i(6, 3), 7: Vector2i(12, 3), 8: Vector2i(10, 13)}
 	max_hp = 100.0
 	contact_damage = 10.0
 	knockback = Vector2(70.0, 30.0)
+	# 活人：死的时候是倒地的闷响，溅出来的是琥珀色的胶片碎屑和灰（不是金属碎屑）
+	death_sfx = "land"
+	death_sfx_pitch = 0.6
+	death_spark_colors = [Color8(150, 112, 72), Color8(116, 88, 66)]
 
 
 func _after_ready() -> void:
 	add_to_group("audience")
 	_unstick()
+	# 活物感：会眨的眼睛、挨打后仰（帧 7）、死了瘫倒（帧 8）、暗处亮层
+	LivingFx.attach(self, 7, 8)
 	_sit_left = randf_range(SIT_MAX.x, SIT_MAX.y)
 	var p := nearest_player()
 	if p and absf(p.global_position.x - global_position.x) > 1.0:
@@ -62,11 +69,30 @@ func _unstick() -> void:
 	q.collision_mask = 1
 	q.exclude = [get_rid()]
 	var space := get_world_2d().direct_space_state
-	for i in 30:
-		q.transform = Transform2D(0.0, global_position + _shape.position)
+	# 往下最多挪到原来脚底下那块地面（不能穿过地板，碰撞会话 10-18 报过整只掉出地图）
+	var floor_d := 80.0
+	var ray := PhysicsRayQueryParameters2D.create(global_position + Vector2(0, -1), global_position + Vector2(0, 82), 1)
+	var hit := space.intersect_ray(ray)
+	if not hit.is_empty():
+		floor_d = (hit.position as Vector2).y - global_position.y
+	# 先原地、往上一点（脚压进了地面、斜坡），再左右挪（身子侧面插进柱子、墙），最后往下（头顶卡进天花板）
+	var tries: Array[Vector2] = []
+	for dy in [0.0, -1.0, -2.0, -3.0, -4.0, -6.0, -8.0]:
+		tries.append(Vector2(0, dy))
+	for dx in [2.0, 4.0, 6.0, 8.0, 12.0, 16.0]:
+		for dy in [0.0, -2.0, -4.0]:
+			tries.append(Vector2(dx, dy))
+			tries.append(Vector2(-dx, dy))
+	var d := 2.0
+	while d <= floor_d:
+		tries.append(Vector2(0, d))
+		d += 2.0
+	for t in tries:
+		q.transform = Transform2D(0.0, global_position + t + _shape.position)
 		if space.intersect_shape(q, 1).is_empty():
+			global_position += t
 			return
-		global_position.y += 2.0
+	# 都不行：留在原地，交给物理把它挤出来
 
 
 ## 坐着和站着的碰撞框（身体和碰到伤人的框一起换）

@@ -14,7 +14,7 @@ const WALK_SPEED := 18.0
 const STOP_DIST := 26.0
 const SEE_DIST := 260.0
 const WALK_FRAME_TIME := 0.2
-const ATTACK_INTERVAL := 2.4
+const ATTACK_INTERVAL := 0.8  # 10-18 作者：招和招之间停太久
 # —— 缝过来 ——
 ## 主角在水平这么近、高度差 24 内才缝，远了就抛线轴
 const STITCH_RANGE := 90.0
@@ -39,7 +39,9 @@ const SPOOL_RECOVER := 0.4
 ## 线轴在原图（朝左）里相对脚底中间的位置
 const SPOOL_POS := Vector2(0, -28)
 ## 地上的线：主角踩着时每个物理帧水平速度乘这个
-const THREAD_SLOW := 0.6
+## 实测（主角每帧自己会把速度往回加，所以不是线性的）：0.6 时提灯 90 → 34（太粘），0.75 → 55（约六成），
+## 0.8 → 69，0.85 就完全不减速了。10-17 夜间打磨从 0.6 调到 0.75
+const THREAD_SLOW := 0.75
 const THREAD_LIFE := 3.0
 
 var _state := WALK
@@ -56,13 +58,16 @@ func _setup() -> void:
 	elite_name = "SEWING MACHINE"
 	intro_title = "STITCHED UP"
 	intro_frame = 3
+	fill_alpha = 0.35
+	death_time = 1.1
+	death_frame = 3
 	texture_path = "res://art/enemies/sewing.png"
 	hframes = 6
 	frame_size = Vector2i(43, 28)
 	body_rect = Rect2(-18, -25, 36, 25)
 	contact_rect = Rect2(-16, -22, 32, 22)
 	led_pixel = Vector2i(6, 6)
-	max_hp = 1000.0
+	max_hp = 2400.0  # 10-18 作者：血不够，三把武器 20～35 秒
 	contact_damage = 10.0
 
 
@@ -75,8 +80,11 @@ func _tick(delta: float) -> void:
 			_walk(p)
 			if p and _attack_t <= 0.0 and is_on_floor():
 				_attack_t = ATTACK_INTERVAL * interval_mult()
+				p = pick_focus(p)      # 双人时轮着盯一个人，整招不换
+				if absf(p.global_position.x - global_position.x) > 2.0:
+					dir = 1 if p.global_position.x > global_position.x else -1
 				var d := p.global_position - global_position
-				if absf(d.x) <= STITCH_RANGE and absf(d.y) <= STITCH_HEIGHT and _stitch_runs < 2:
+				if absf(d.x) <= STITCH_RANGE and absf(d.y) <= STITCH_HEIGHT and _stitch_runs < 1:   # 10-18：缝一次抛一次轮着来（原来缝两次才抛一次，线轴一辈子抛不了几回）
 					_stitch_runs += 1
 					_state = STITCH_WARN
 					_timer = STITCH_WARN_TIME
@@ -220,7 +228,7 @@ func _on_respawn() -> void:
 
 
 ## 地上的一道线：按扎针的点连起来，最后一针以后留 3 秒（最后 0.6 秒淡掉）。
-## 主角站在上面（在地上）时，每个物理帧把他的水平速度乘 0.6；几道线叠在一起也只乘一次。
+## 主角站在上面（在地上）时，每个物理帧把他的水平速度乘 THREAD_SLOW；几道线叠在一起也只乘一次。
 class ThreadLine:
 	extends Node2D
 
@@ -324,6 +332,10 @@ class Spool:
 		add_child(cs)
 		body_entered.connect(_on_body)
 		visible = true
+		# 飞着的线轴也是要躲的东西：不吃场景压暗
+		var mat := CanvasItemMaterial.new()
+		mat.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+		material = mat
 		_v0 = (target - from - 0.5 * Vector2(0, GRAVITY) * flight * flight) / flight
 		# 落点标记：不吃场景压暗，挂在世界坐标上
 		_marker = Node2D.new()
@@ -386,8 +398,8 @@ class Spool:
 		# 线轴：锈色小轴，两头亮边，后面拖一小截线
 		var o := global_position.round() - global_position
 		var spin := int(_t * 14.0) % 2
-		draw_rect(Rect2(o + Vector2(-1, -1), Vector2(3, 3)), Color8(0x45, 0x36, 0x2e))
-		draw_rect(Rect2(o + Vector2(-1, -1 + spin * 2), Vector2(3, 1)), Color8(0x8a, 0x84, 0x7c))
+		draw_rect(Rect2(o + Vector2(-1, -1), Vector2(3, 3)), Color8(0x8a, 0x5e, 0x44))
+		draw_rect(Rect2(o + Vector2(-1, -1 + spin * 2), Vector2(3, 1)), Color8(0xc8, 0xbe, 0xae))
 		draw_rect(Rect2(o + Vector2(0, 0), Vector2(1, 1)), ThreadLine.COLOR)
 
 	func _draw_marker() -> void:

@@ -43,11 +43,15 @@ func _ready() -> void:
 	puff.initial_velocity_max = 190.0
 	puff.damping_min = 260.0
 	puff.damping_max = 340.0
-	puff.scale_amount_min = 2.0
-	puff.scale_amount_max = 4.0
+	# 整格方块（美术巡检）：一半 2 格、一半 4 格太散，统一 3 格；颜色三档跳，不做连续渐变
+	puff.scale_amount_min = 3.0
+	puff.scale_amount_max = 3.0
 	var ramp := Gradient.new()
 	ramp.set_color(0, Color(1, 1, 1, 0.95))
+	ramp.add_point(0.45, Color(0.9, 0.9, 0.93, 0.65))
+	ramp.add_point(0.8, Color(0.8, 0.8, 0.85, 0.3))
 	ramp.set_color(1, Color(0.8, 0.8, 0.85, 0.0))
+	ramp.interpolation_mode = Gradient.GRADIENT_INTERPOLATE_CONSTANT
 	puff.color_ramp = ramp
 	puff.material = unshaded
 	puff.emitting = true
@@ -88,8 +92,7 @@ func _strike() -> void:
 		var n := b as Node2D
 		if n and n.get_script() and (n.get_script() as Script).resource_path.ends_with("boss_bullet.gd") \
 				and n.global_position.distance_to(global_position) < RADIUS:
-			Game.sparks(get_parent(), n.global_position, Color(0.9, 0.9, 0.95), 2, 50.0)
-			n.queue_free()
+			n.call("fizzle", (n.global_position - global_position).normalized())
 
 
 func _process(delta: float) -> void:

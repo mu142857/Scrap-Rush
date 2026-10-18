@@ -19,6 +19,29 @@ var _flash_rect: ColorRect
 var _flash_tween: Tween
 var _hitstop_token := 0
 var _sounds := {}
+## 这一局的统计，结局后的结算画面（results_screen.gd）用。标题按 START / CO-OP 时 reset_stats()
+## time：在关卡和商店里、没暂停时累计的秒数；deaths：马灯碎了几次；spent：在商店花掉的零件
+var run_stats := {"time": 0.0, "deaths": 0, "spent": 0}
+var _stats_scene: Node = null
+var _stats_parts := 0
+const NO_CLOCK_SCENES := ["res://scenes/title.tscn", "res://scenes/weapon_select.tscn", "res://scenes/results.tscn"]
+
+## 每个音效正在响的播放器（限同时响几个，见 sfx）
+var _playing := {}
+var _last_start := {}
+
+## 音效文件的响度修正（dB）。按每个文件最响的 100 毫秒量出来：压到 -10 dB 以内，
+## 刺耳的（汽笛、电流、警报、电视雪花）再多压 2 dB。只降不升，各处调用时写的音量照旧叠在上面。
+## 2026-10-17 夜间打磨（游戏细节讨论会话）。换了音效文件要重新量一遍。
+const SFX_TRIM := {
+	"alarm": -8.4, "voice": -5.1, "charge": -3.0, "tvoff": -4.8, "busy": -2.0, "tvon": -2.0,
+	"ding": -1.4, "buzz": -3.1, "boom": -0.5, "whistle": -2.7, "static": -3.3,
+}
+## 同一个音效同时最多响几个（一群怪同时挨打时不叠成一团），多了就停掉最早的
+const SFX_MAX_VOICES := 4
+## 同一个音效隔这么短又响，后一个压低一点，免得两个一样的声音叠在一起发冲
+const SFX_STACK_MS := 40
+const SFX_STACK_DB := -5.0
 var _light_tex: Texture2D
 
 
@@ -33,8 +56,12 @@ func _ready() -> void:
 	_flash_rect.color = Color(1, 1, 1, 0)
 	layer.add_child(_flash_rect)
 	add_child(load("res://scripts/debug/dev_mode.gd").new())        # F8 开发者模式
+	Run.crystal_broken.connect(_on_lantern_broken)
+	Run.parts_changed.connect(_on_parts_changed)
+	_preload_sfx.call_deferred()
 	pause_menu = PauseMenu.new()                                     # Esc / 手柄 Start 暂停
 	add_child(pause_menu)
+	add_child(Ambience.new())                                        # 各区域的环境声
 
 
 ## F11 或 Alt+Enter 切换全屏（默认全屏），切完记进设置。
@@ -50,7 +77,43 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 
+## 选关：选武器以后进哪一关。开始菜单的"选择关卡"设，选武器界面出发时取走（取完恢复成第一关）
+var start_scene := ""
+
+
+func take_start_scene(default_scene: String) -> String:
+	var s := start_scene if start_scene != "" else default_scene
+	start_scene = ""
+	return s
+
+
+func reset_stats() -> void:
+	run_stats = {"time": 0.0, "deaths": 0, "spent": 0}
+	_stats_parts = Run.parts
+
+
+func _on_parts_changed(parts: int) -> void:
+	var cur := get_tree().current_scene
+	if cur and cur.scene_file_path == "res://scenes/shop.tscn" and parts < _stats_parts:
+		run_stats["spent"] += _stats_parts - parts
+	_stats_parts = parts
+
+
+func _tick_stats(delta: float) -> void:
+	var cur := get_tree().current_scene
+	if cur != _stats_scene:
+		# 换了场景：零件数可能被"重来"退回去了（那里不发 parts_changed），按现在的重新记
+		_stats_scene = cur
+		_stats_parts = Run.parts
+		# 走进第二关、第三关就记下来，开始菜单的"选择关卡"按这个解锁
+		if cur:
+			Progress.reach_scene(cur.scene_file_path)
+	if cur and not get_tree().paused and not cur.scene_file_path in NO_CLOCK_SCENES and cur.scene_file_path != "":
+		run_stats["time"] += delta
+
+
 func _process(delta: float) -> void:
+	_tick_stats(delta)
 	# delta 已经乘过 time_scale，顿帧时震屏停在原地
 	shake = move_toward(shake, 0.0, delta * 30.0)
 	_shake_t -= delta
@@ -105,12 +168,53 @@ func sfx(name: String, volume_db := 0.0, pitch := 1.0, pitch_jitter := 0.0) -> A
 		_sounds[name] = load("res://sfx/%s.wav" % name)
 	var p := AudioStreamPlayer.new()
 	p.stream = _sounds[name]
-	p.volume_db = volume_db
+	p.volume_db = volume_db + SFX_TRIM.get(name, 0.0)
+	var now := Time.get_ticks_msec()
+	if now - int(_last_start.get(name, -1000)) < SFX_STACK_MS:
+		p.volume_db += SFX_STACK_DB
+	_last_start[name] = now
 	p.pitch_scale = pitch * (1.0 + randf_range(-pitch_jitter, pitch_jitter))
+	# 菜单音效走 UI 总线（暂停时不被低通闷掉，见 Settings.set_muffled）
+	if name.begins_with("ui_"):
+		p.bus = &"UI"
+	var list: Array = _playing.get(name, [])
+	list = list.filter(func(q): return is_instance_valid(q))
+	while list.size() >= SFX_MAX_VOICES:
+		(list.pop_front() as AudioStreamPlayer).queue_free()
+	list.append(p)
+	_playing[name] = list
 	add_child(p)
 	p.play()
 	p.finished.connect(p.queue_free)
 	return p
+
+
+## 开场就在后台把 sfx/ 里的音效都载进来（一共约 1.3 MB），每帧载 3 个不卡画面。
+## 以前是第一次播某个声音时才 load，第一次开枪、第一次挨打会顿一下，网页版更明显
+func _preload_sfx() -> void:
+	var names: Array[String] = []
+	for f in DirAccess.get_files_at("res://sfx"):
+		# 导出以后目录里是 xxx.wav.import / xxx.wav.remap，编辑器里还有 xxx.wav 本身
+		var n := f.get_file().trim_suffix(".import").trim_suffix(".remap")
+		if n.ends_with(".wav"):
+			n = n.trim_suffix(".wav")
+			if not n in names:
+				names.append(n)
+	var i := 0
+	for n in names:
+		if not _sounds.has(n):
+			_sounds[n] = load("res://sfx/%s.wav" % n)
+		i += 1
+		if i % 3 == 0:
+			await get_tree().process_frame
+
+
+## 马灯碎了（这一关失败）：碎玻璃 + 关电视 + 一声闷响。各关自己只做闪屏和大字
+func _on_lantern_broken() -> void:
+	run_stats["deaths"] += 1
+	sfx("crack", -2.0, 0.55)
+	sfx("tvoff", -6.0, 0.8)
+	sfx("boom", -8.0, 0.6)
 
 
 func load_sound(name: String) -> AudioStream:

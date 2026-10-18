@@ -41,4 +41,6 @@ func _follow() -> void:
 	var off := cam.get_screen_center_position() - bounds.get_center()
 	for i in _sprites.size():
 		var lag := 1.0 - _scales[i]
-		_sprites[i].position = Vector2(off.x * lag, off.y * lag * 0.5).round()
+		# 不取整：镜头本身是平滑移动的（位置带小数），图层取整反而会相对镜头一格一格地跳，
+		# 远景跟着抖（2026-10-17 夜间实测：主角走路时远景每帧 -0.63 / +0.37 来回跳）
+		_sprites[i].position = Vector2(off.x * lag, off.y * lag * 0.5)

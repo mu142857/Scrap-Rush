@@ -15,3 +15,9 @@ func _setup() -> void:
 func _after_ready() -> void:
 	super._after_ready()
 	L3Mob.apply_look(self, tint)
+
+
+## 2026-10-18 作者试玩"没有压迫感"：跳蚤原来只看 180 以内，大屏幕里人站远了它就原地小跳。
+## 第三关的跳蚤看得更远，一跳一跳追过去（一跳最远还是 120，落点照旧先亮红标记）
+func nearest_player(max_dist := INF) -> Player:
+	return super.nearest_player(max_dist * 2.2)

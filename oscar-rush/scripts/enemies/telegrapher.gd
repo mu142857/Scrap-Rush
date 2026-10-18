@@ -24,7 +24,7 @@ const FAR := 120.0
 const NEAR := 70.0
 const SEE_DIST := 260.0
 ## 招与招之间歇多久（照放映机：精英的出招间隔不乘 interval_mult，情绪高时招太密看不清）
-const ATTACK_GAP := 1.5
+const ATTACK_GAP := 1.0  # 10-18 作者：招和招之间停太久
 # —— 摩斯连发 ——
 const CODES := ["...", "-.-", ".-.", "..-", "-..", ".--", "--.", ".-..", "..-.", "-.-."]
 ## 一个点、一个划占多长时间（预演和真打一样的节奏）
@@ -60,6 +60,9 @@ const RAM_RECOVER := 0.6
 const RAM_RECT := Rect2(-26, -14, 12, 14)
 const RAM_DAMAGE := 14.0
 
+## _unstick 往下最多探多远（照 chief_operator）
+const UNSTICK_REACH := 80.0
+
 var _state := WALK
 var _timer := 0.0
 var _cool := 1.0
@@ -78,13 +81,16 @@ func _setup() -> void:
 	elite_name = "TELEGRAPHER"
 	intro_title = "URGENT. STOP."
 	intro_frame = 5
+	fill_alpha = 0.35
+	death_time = 1.1
+	death_frame = 5
 	texture_path = "res://art/enemies/telegrapher.png"
 	hframes = 10
 	frame_size = Vector2i(45, 34)
 	body_rect = Rect2(-19, -31, 38, 31)
 	contact_rect = Rect2(-17, -26, 35, 26)
 	led_pixel = Vector2i(25, 10)
-	max_hp = 1200.0
+	max_hp = 2400.0  # 10-18 作者：血不够，三把武器 20～35 秒
 	contact_damage = 10.0
 
 
@@ -99,18 +105,37 @@ func _after_ready() -> void:
 	_unstick()
 
 
-## 出生时头顶卡在天花板里就往下挪（遭遇战有统一处理，这里再保险一下）
+## 出生时卡在实心里就挪出来（照 chief_operator.gd，碰撞会话 10-18：旧写法只会一路往下挪，脚压进斜坡、
+## 身子插进柱子时会穿过地板掉出地图）。先原地、往上一点（脚压进地面、斜坡），再左右挪（插进柱子、墙），
+## 最后才往下（头顶卡进天花板），往下最多挪到原来脚底下那块地面
 func _unstick() -> void:
 	var q := PhysicsShapeQueryParameters2D.new()
 	q.shape = _shape.shape
 	q.collision_mask = 1
 	q.exclude = [get_rid()]
 	var space := get_world_2d().direct_space_state
-	for i in 30:
-		q.transform = Transform2D(0.0, global_position + _shape.position)
+	var floor_d := UNSTICK_REACH
+	var ray := PhysicsRayQueryParameters2D.create(global_position + Vector2(0, -1), global_position + Vector2(0, UNSTICK_REACH + 2.0), 1)
+	var hit := space.intersect_ray(ray)
+	if not hit.is_empty():
+		floor_d = (hit.position as Vector2).y - global_position.y
+	var tries: Array[Vector2] = []
+	for dy in [0.0, -1.0, -2.0, -3.0, -4.0, -6.0, -8.0]:
+		tries.append(Vector2(0, dy))
+	for dx in [2.0, 4.0, 6.0, 8.0, 12.0, 16.0]:
+		for dy in [0.0, -2.0, -4.0]:
+			tries.append(Vector2(dx, dy))
+			tries.append(Vector2(-dx, dy))
+	var d := 2.0
+	while d <= floor_d:
+		tries.append(Vector2(0, d))
+		d += 2.0
+	for t in tries:
+		q.transform = Transform2D(0.0, global_position + t + _shape.position)
 		if space.intersect_shape(q, 1).is_empty():
+			global_position += t
 			return
-		global_position.y += 2.0
+	# 都不行：留在原地，交给物理把它挤出来
 
 
 func _tick(delta: float) -> void:
@@ -126,6 +151,7 @@ func _tick(delta: float) -> void:
 					_start(RAM_WARN, RAM_WARN_TIME)
 					warn(RAM_WARN_TIME)
 				elif _cool <= 0.0:
+					p = pick_focus(p)  # 双人时每招轮着盯一个人，整招不换
 					if _next_relay:
 						_start_relay(p)
 					else:
@@ -133,7 +159,7 @@ func _tick(delta: float) -> void:
 					_next_relay = not _next_relay
 		MORSE_WARN, MORSE:
 			_brake(delta)
-			_tick_morse(delta, p)
+			_tick_morse(delta, focus_player())
 		RELAY_WARN:
 			_brake(delta)
 			set_frame(6)

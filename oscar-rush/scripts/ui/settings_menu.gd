@@ -10,8 +10,9 @@ const WARM := Color8(255, 211, 138)
 const DIM := Color(0.55, 0.55, 0.6)
 const LIT := Color(1, 1, 1)
 const DARK := Color(0.2, 0.2, 0.24)
-const TOP := 64.0
-const STEP := 17.0
+## 十行（加了环境声）：行距 16，整体上移，底下给两行说明留地方
+const TOP := 58.0
+const STEP := 16.0
 const LABEL_X := 118.0
 const VALUE_X := 268.0
 const VALUE_W := 96.0
@@ -20,6 +21,7 @@ const VALUE_W := 96.0
 const ROWS := [
 	["MASTER VOLUME", "master", "volume"],
 	["MUSIC", "music", "volume"],
+	["AMBIENCE", "ambience", "volume"],
 	["SOUND FX", "sfx", "volume"],
 	["FULLSCREEN", "fullscreen", "toggle"],
 	["PIXEL PERFECT", "pixel_perfect", "toggle"],
@@ -30,15 +32,20 @@ const ROWS := [
 ]
 const SHAKE_NAMES: Array[String] = ["OFF", "LIGHT", "STRONG"]
 const ROW_HINTS := {
-	"pixel_perfect": "Scale by whole numbers only. Crisper pixels, black borders.",
+	"pixel_perfect": "Whole-number scaling for text and menus too. Black borders.",
 	"fullscreen": "Also F11.",
 	"shake_index": "How hard the screen shakes on hits.",
 	"language": "Text language. Switches right away.",
+	"ambience": "Machines, wind and fire in the background of each area.",
+}
+## 没有 Settings 字段的行（CONTROLS 这种）按种类找说明
+const KIND_HINTS := {
+	"page": "Every key and button.",
 }
 
 const CONTROLS_TEXT := """SOLO (keyboard)
 Move  A / D  or  Left / Right       Jump  W / Up / Space
-Attack  C  (hold to charge)         Lantern  V  (pick up / put down)
+Attack  C  (hold or tap, by tool)   Lantern  V  (pick up / put down)
 Drop through a platform  S / Down
 
 GAMEPAD
@@ -56,6 +63,12 @@ var _hint: Label
 var _page: Control
 var _on_page := false
 var _ready_for_input := false
+## 手柄按住连发：手柄的摇杆、十字键没有键盘那样的自动重复，调音量要一下一下拨。
+## 按住超过 REPEAT_DELAY 秒后每 REPEAT_STEP 秒再触发一次
+const REPEAT_DELAY := 0.35
+const REPEAT_STEP := 0.09
+var _pad_dir := Vector2i.ZERO
+var _pad_t := 0.0
 
 
 func _ready() -> void:
@@ -67,7 +80,17 @@ func _ready() -> void:
 	back.size = Vector2(480, 270)
 	back.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(back)
-	_label("SETTINGS", 0, 30.0, 480, 22, WARM, 3, HORIZONTAL_ALIGNMENT_CENTER)
+	# 选项外面一张 UiStyle 卡片（和选武器、商店同一套外框）
+	var frame := Control.new()
+	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	frame.size = Vector2(480, 270)
+	frame.draw.connect(func() -> void:
+		if _labels.is_empty():
+			return
+		var bottom := _labels[-1].position.y + 20.0
+		UiStyle.panel(frame, Rect2(LABEL_X - 14.0, TOP - 8.0, VALUE_X + VALUE_W + 28.0 - LABEL_X, bottom - TOP + 8.0), false, 0.0))
+	add_child(frame)
+	_label("SETTINGS", 0, 20.0, 480, 22, WARM, 3, HORIZONTAL_ALIGNMENT_CENTER)
 	for i in ROWS.size():
 		var y := TOP + i * STEP + (6.0 if i >= ROWS.size() - 2 else 0.0)
 		_labels.append(_label(ROWS[i][0], LABEL_X, y, 150, 11, DIM, 2))
@@ -81,6 +104,8 @@ func _ready() -> void:
 	_hint.size.y = 30.0
 	_build_page()
 	Settings.changed.connect(_refresh)
+	# 用成员方法，不用 lambda：这个界面关掉释放后连接会自动断开
+	Controls.device_changed.connect(_on_device_changed)
 	_refresh()
 	# 打开这一下的确认键别被当成第一下操作
 	await get_tree().process_frame
@@ -121,6 +146,10 @@ func _build_page() -> void:
 	_label("Esc / B / confirm: back", 0, 248.0, 480, 11, DIM, 2, HORIZONTAL_ALIGNMENT_CENTER, _page)
 
 
+func _on_device_changed(_pad: bool) -> void:
+	_refresh()
+
+
 func _refresh() -> void:
 	for i in ROWS.size():
 		var on := i == _selected
@@ -140,8 +169,8 @@ func _refresh() -> void:
 			v = "<  %s  >" % v
 		_values[i].text = v
 		_values[i].label_settings.font_color = (WARM if on else Color(0.75, 0.75, 0.8))
-	var keys := tr("W/S select    A/D change    Esc back")
-	var h: String = ROW_HINTS.get(ROWS[_selected][1], "")
+	var keys := tr("%s select    %s change    %s back") % [Controls.label("select"), Controls.label("change"), Controls.label("back")]
+	var h: String = ROW_HINTS.get(ROWS[_selected][1], KIND_HINTS.get(ROWS[_selected][2], ""))
 	_hint.text = keys if h == "" else tr(h) + "\n" + keys
 	_hint.position.y = 246.0 if h == "" else 234.0
 	_bars.queue_redraw()
@@ -173,6 +202,42 @@ func _tri(at: Vector2, dir: int, c: Color) -> void:
 		for k in w:
 			var x := at.x + (k if dir > 0 else 2 - k)
 			_bars.draw_rect(Rect2(x, at.y + row, 1, 1), c)
+
+
+func _process(delta: float) -> void:
+	if not _ready_for_input or _on_page or not is_visible_in_tree():
+		_pad_dir = Vector2i.ZERO
+		return
+	var dir := _pad_held()
+	if dir != _pad_dir:
+		_pad_dir = dir
+		_pad_t = 0.0
+		return
+	if dir == Vector2i.ZERO:
+		return
+	_pad_t += delta
+	if _pad_t >= REPEAT_DELAY:
+		_pad_t -= REPEAT_STEP
+		if dir.y != 0:
+			_move(dir.y)
+		elif dir.x != 0:
+			_change(dir.x)
+
+
+## 手柄现在按着哪个方向（只看手柄，键盘有自己的重复）
+func _pad_held() -> Vector2i:
+	for d in Input.get_connected_joypads():
+		var x := Input.get_joy_axis(d, JOY_AXIS_LEFT_X)
+		var y := Input.get_joy_axis(d, JOY_AXIS_LEFT_Y)
+		if Input.is_joy_button_pressed(d, JOY_BUTTON_DPAD_UP) or y < -0.6:
+			return Vector2i(0, -1)
+		if Input.is_joy_button_pressed(d, JOY_BUTTON_DPAD_DOWN) or y > 0.6:
+			return Vector2i(0, 1)
+		if Input.is_joy_button_pressed(d, JOY_BUTTON_DPAD_LEFT) or x < -0.6:
+			return Vector2i(-1, 0)
+		if Input.is_joy_button_pressed(d, JOY_BUTTON_DPAD_RIGHT) or x > 0.6:
+			return Vector2i(1, 0)
+	return Vector2i.ZERO
 
 
 func _input(event: InputEvent) -> void:

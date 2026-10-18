@@ -12,6 +12,7 @@
 
 跑："~/Desktop/程序programs/AI Oscar/.venv/bin/python" 草图/立绘/robot_portrait.py
 出：Art_Assets/yellow.png、oscar-rush/art/chars/robot_portrait.png、草图/立绘/robot_preview.png
+    加 --frame talk / --frame blink 出对话框用的说话帧、眨眼帧（robot_portrait_talk.png / _blink.png）
 """
 import sys
 from pathlib import Path
@@ -38,6 +39,9 @@ EYE = ["#e0954a", "#ffd38a", "#fff0cf"]
 # 脸的方案（见 face_1 ~ face_4）。带参数跑只出试稿：python robot_portrait.py --try 2
 TRY = len(sys.argv) > 2 and sys.argv[1] == "--try"
 FACE = int(sys.argv[2]) if TRY else 1
+# 表盘指针朝向：默认右上 45°；--frame talk 出说话帧（指针竖直朝上），--frame blink 出"眨眼"帧（指针甩到左上）
+FRAME = sys.argv[sys.argv.index("--frame") + 1] if "--frame" in sys.argv else ""
+NEEDLE = {"": (4, -4), "talk": (0, -5), "blink": (-4, -4)}[FRAME]
 
 EYE_Y = 28
 view = View(102, EYE_Y, dist=140)
@@ -243,8 +247,8 @@ def face_1():
     paint(bar, B[4])
     paint(bar & (ROWS == EYE_Y - 1), B[7])
     paint(bar & (ROWS == EYE_Y + 1), B[2])
-    gauge(36, EYE_Y, 8, (4, -4))
-    gauge(56, EYE_Y, 8, (4, -4))
+    gauge(36, EYE_Y, 8, NEEDLE)
+    gauge(56, EYE_Y, 8, NEEDLE)
     grille_mouth(41, 51, (39, 41))
 
 
@@ -324,6 +328,9 @@ paint(c.rect(bx - 4, ky - 1, bx - 4, ky + 1), B[5])
 
 # ---------------------------------------------------------------- 输出
 img = Image.fromarray(c.a, "RGBA")
+if FRAME:
+    img.save(ROOT / f"oscar-rush/art/chars/robot_portrait_{FRAME}.png")
+    sys.exit(0)
 if TRY:
     img.save(ROOT / f"草图/立绘/robot_face_{FACE}.png")
     sys.exit(0)

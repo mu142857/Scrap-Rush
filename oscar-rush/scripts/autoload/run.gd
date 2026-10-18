@@ -51,10 +51,24 @@ func reset_run() -> void:
 	level_start_parts = 0
 	checkpoint = {}
 	_resuming = false
+	# 上一局"重来"留下的静态标记（2026-10-17 夜间，游戏细节讨论会话）：不清的话，新一局第一次进 Boss 房
+	# 会被当成重来、跳过入场；气动管会从上一局的存档点开始
+	# 用 load 在运行时找脚本，不写成 BossArena / TubeRun：Run 是自动加载，直接引用会把第二关、Boss 房的
+	# 脚本和美术全拖进来，那边有一张图没导入，整个游戏就编译不过
+	_reset_static("res://scripts/boss/boss_arena.gd", "_retried_scene", "")
+	_reset_static("res://scripts/levels/tube_run.gd", "resume_d", 0.0)
+	_reset_static("res://scripts/ui/hud.gd", "fights_cleared", 0)
+
+
+func _reset_static(path: String, prop: String, value: Variant) -> void:
+	var script := load(path) as GDScript
+	if script:
+		script.set(prop, value)
 
 
 ## 每关 _ready 一开头调用。重来时（retry_level 之后的重载）保留存档点，等关卡建好再把人挪过去
 func start_level() -> void:
+	crystal_locked = false
 	var retrying := _resuming
 	if _resuming and checkpoint.get("scene", "") == _scene_path():
 		_drops = 0
@@ -90,6 +104,13 @@ func retry_level() -> void:
 		parts = level_start_parts
 	crystal_hp = maxf(crystal_hp, crystal_max * RETRY_MIN_HP)
 	crystal_changed.emit(crystal_hp, crystal_max)
+
+
+## 忘掉这一关的存档点：暂停菜单的"重开本关"用，接着 retry_level 就回到本关开头（马灯、零件回到进关时）。
+## 按 R 和马灯碎了不调它，回的是最近的存档点。
+func forget_checkpoint() -> void:
+	checkpoint = {}
+	_drops = 0
 
 
 ## 遭遇战打完时调用：key 是这场的编号，pos 是重来时站的地方（场子里出口那一侧）
@@ -141,8 +162,12 @@ func _apply_checkpoint() -> void:
 	resumed.emit()
 
 
+## Boss 打死以后锁住马灯（结局、开门的那几秒里，还在飞的子弹和场上的危险物不能再把灯打碎、把人踢回 Boss 开场）
+var crystal_locked := false
+
+
 func damage_crystal(amount: float) -> void:
-	if crystal_hp <= 0.0 or Game.invincible:
+	if crystal_hp <= 0.0 or Game.invincible or crystal_locked:
 		return
 	crystal_hp = maxf(crystal_hp - amount, 0.0)
 	crystal_changed.emit(crystal_hp, crystal_max)

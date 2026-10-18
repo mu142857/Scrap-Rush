@@ -44,6 +44,8 @@ func _after_ready() -> void:
 	add_child(_glow)
 	move_child(_glow, _sprite.get_index() + 1)
 	_pick_dir()
+	# 夜间打磨：挨打顿一格、死时抖一下碎几块（见 elite_fx.gd）
+	EliteFx.attach_small(self, 5)
 
 
 func _pick_dir() -> void:

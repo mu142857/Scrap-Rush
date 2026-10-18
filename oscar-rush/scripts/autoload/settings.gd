@@ -15,6 +15,8 @@ extends Node
 signal changed
 
 const PATH := "user://settings.cfg"
+## 测试脚本设环境变量 SCRAP_SETTINGS_PATH=别的文件，就不会改到玩家（作者）真正的设置
+var _path := PATH
 ## 音量 0~10 档
 const STEPS := 10
 ## 震屏强度可选的几档：关 / 轻 / 强。默认"轻"（作者 2026-10-17 嫌晃得厉害）
@@ -22,6 +24,9 @@ const SHAKE_LEVELS: Array[float] = [0.0, 0.6, 1.0]
 
 var master := 8
 var music := 8
+## 各区域的环境声（Ambience 总线，scripts/audio/ambience.gd）
+## 默认 4：作者 10-18 早上嫌环境声吵，从 8 降到 4
+var ambience := 4
 var sfx := 8
 var fullscreen := true
 var pixel_perfect := false
@@ -32,6 +37,8 @@ var language := ""
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	if OS.get_environment("SCRAP_SETTINGS_PATH") != "":
+		_path = OS.get_environment("SCRAP_SETTINGS_PATH")
 	get_tree().root.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	_make_buses()
 	_add_menu_keys()
@@ -55,7 +62,7 @@ func shake_scale() -> float:
 func set_value(key: String, value: Variant) -> void:
 	set(key, value)
 	match key:
-		"master", "music", "sfx":
+		"master", "music", "sfx", "ambience":
 			_apply_audio()
 		"fullscreen":
 			_apply_fullscreen()
@@ -76,18 +83,19 @@ func sync_fullscreen() -> void:
 
 func save() -> void:
 	var c := ConfigFile.new()
-	for key in ["master", "music", "sfx", "fullscreen", "pixel_perfect", "shake_index", "language"]:
+	for key in ["master", "music", "sfx", "ambience", "fullscreen", "pixel_perfect", "shake_index", "language"]:
 		c.set_value("settings", key, get(key))
-	c.save(PATH)
+	c.save(_path)
 
 
 func _load() -> bool:
 	var c := ConfigFile.new()
-	if c.load(PATH) != OK:
+	if c.load(_path) != OK:
 		return false
 	master = clampi(c.get_value("settings", "master", master), 0, STEPS)
 	music = clampi(c.get_value("settings", "music", music), 0, STEPS)
 	sfx = clampi(c.get_value("settings", "sfx", sfx), 0, STEPS)
+	ambience = clampi(c.get_value("settings", "ambience", ambience), 0, STEPS)
 	fullscreen = c.get_value("settings", "fullscreen", fullscreen)
 	pixel_perfect = c.get_value("settings", "pixel_perfect", pixel_perfect)
 	shake_index = clampi(c.get_value("settings", "shake_index", shake_index), 0, SHAKE_LEVELS.size() - 1)
@@ -95,13 +103,30 @@ func _load() -> bool:
 	return true
 
 
+## UI 总线：菜单的音效（ui_*）走这条，暂停时不被闷掉；音量跟"音效"那一档
 func _make_buses() -> void:
-	for bus_name in ["Music", "SFX"]:
+	for bus_name in ["Music", "SFX", "UI", "Ambience"]:
 		if AudioServer.get_bus_index(bus_name) < 0:
 			AudioServer.add_bus()
 			var i := AudioServer.bus_count - 1
 			AudioServer.set_bus_name(i, bus_name)
 			AudioServer.set_bus_send(i, "Master")
+	# 暂停时把游戏声和音乐"闷"一下（低通），一听就知道停了。平时关着
+	for bus_name in ["Music", "SFX", "Ambience"]:
+		var i := AudioServer.get_bus_index(bus_name)
+		if AudioServer.get_bus_effect_count(i) == 0:
+			var lp := AudioEffectLowPassFilter.new()
+			lp.cutoff_hz = 700.0
+			AudioServer.add_bus_effect(i, lp)
+			AudioServer.set_bus_effect_enabled(i, 0, false)
+
+
+## 暂停菜单开 / 关时调
+func set_muffled(on: bool) -> void:
+	for bus_name in ["Music", "SFX", "Ambience"]:
+		var i := AudioServer.get_bus_index(bus_name)
+		if i >= 0 and AudioServer.get_bus_effect_count(i) > 0:
+			AudioServer.set_bus_effect_enabled(i, 0, on)
 
 
 func _on_node_added(node: Node) -> void:
@@ -116,6 +141,8 @@ func _apply_audio() -> void:
 	_set_bus("Master", master)
 	_set_bus("Music", music)
 	_set_bus("SFX", sfx)
+	_set_bus("UI", sfx)
+	_set_bus("Ambience", ambience)
 
 
 func _set_bus(bus_name: String, step: int) -> void:

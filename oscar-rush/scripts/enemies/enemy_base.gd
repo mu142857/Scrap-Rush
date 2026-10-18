@@ -6,6 +6,8 @@ extends CharacterBody2D
 ## 子类在 _setup() 里改下面这些参数，在 _tick(delta) 里写自己的行为，用 set_frame() 换帧。
 
 const LED_COLOR := Color(1.0, 0.28, 0.18)
+const LED_HOT := Color(1.0, 0.45, 0.2)
+const LED_PANIC := Color(1.0, 0.9, 0.75)
 const FLASH_SHADER := """
 shader_type canvas_item;
 uniform float flash = 0.0;
@@ -40,6 +42,11 @@ var flying := false
 var gravity := 900.0
 ## 被打中时的击退速度（蓄满 / 没蓄满）
 var knockback := Vector2(90.0, 40.0)
+## 死的时候的声音和溅出来的碎屑（10-18 加）：机器默认金属"scrap"、灰色碎屑加橙色火星；
+## 活物（第二关人形怪、守夜巨人）在 _setup() 里换成倒地的闷响和灰尘、碎布的颜色
+var death_sfx := "scrap"
+var death_sfx_pitch := 1.0
+var death_spark_colors: Array = [Color8(150, 140, 125), Color8(255, 190, 120)]
 
 # ---- 运行时 ----
 var hp := 100.0
@@ -86,6 +93,7 @@ func _ready() -> void:
 	mat.shader = _shader
 	_sprite.material = mat
 	add_child(_sprite)
+	Bestiary.watch(self, Bestiary.id_for_texture(texture_path), body_rect)   # 怪物图鉴：第一次出现在画面里就记一笔
 
 	_led = Node2D.new()
 	var unshaded := CanvasItemMaterial.new()
@@ -159,9 +167,9 @@ func _die() -> void:
 	visible = false
 	_shape.set_deferred("disabled", true)
 	_contact.set_deferred("monitoring", false)
-	Game.sfx("scrap", -4.0, 0.85 if big else 1.0, 0.12)
-	Game.sparks(get_parent(), aim_point(), Color8(150, 140, 125), 20 if big else 14, 120.0 if big else 110.0)
-	Game.sparks(get_parent(), aim_point(), Color8(255, 190, 120), 6, 80.0)
+	Game.sfx(death_sfx, -4.0, (0.85 if big else 1.0) * death_sfx_pitch, 0.12)
+	Game.sparks(get_parent(), aim_point(), death_spark_colors[0], 20 if big else 14, 120.0 if big else 110.0)
+	Game.sparks(get_parent(), aim_point(), death_spark_colors[1], 6, 80.0)
 	Game.add_shake(3.0 if big else 2.0)
 	Run.add_emotion(-3.0 if big else -1.0)
 	LampOil.maybe_drop(self)
@@ -221,6 +229,9 @@ func _update_visual() -> void:
 	(_sprite.material as ShaderMaterial).set_shader_parameter("flash", _flash)
 	var px: Vector2i = led_by_frame.get(frame, led_pixel)
 	_led.visible = px.x >= 0
+	# 精英自己管红光的亮度（出招前红灯先亮），这里只管小怪
+	if not has_method("in_intro"):
+		led_glow(_led.get_child(0) as PointLight2D)
 	if _led.visible:
 		var col := px.x if dir < 0 else frame_size.x - 1 - px.x
 		_led.position = _sprite.position + Vector2(col - frame_size.x / 2, px.y - frame_size.y)
@@ -228,8 +239,30 @@ func _update_visual() -> void:
 
 
 func _draw_led() -> void:
-	var col := LED_COLOR if int(_time * 3.0) % 4 != 0 else LED_COLOR.darkened(0.5)
-	_led.draw_rect(Rect2(0, 0, 1, 1), col.lerp(Color.WHITE, _flash))
+	_led.draw_rect(Rect2(0, 0, 1, 1), led_color(_time, _flash))
+
+
+## 红灯跟着情绪档位变（10-18 加，玩家要看得出"机器被惹毛了"）：
+## 平静 一秒闪 3 下、暗红；烦躁 4 下；愤怒 6 下、偏橙更亮；失控 一秒 12 下，在白热和红之间狂闪。
+## 爬虫（crawler.gd）也用这一套
+static func led_color(time: float, flash := 0.0) -> Color:
+	var tier := emotion_tier()
+	var col: Color
+	match tier:
+		0, 1:
+			col = LED_COLOR if int(time * (3.0 + tier)) % 4 != 0 else LED_COLOR.darkened(0.5)
+		2:
+			col = LED_HOT if int(time * 6.0) % 4 != 0 else LED_COLOR.darkened(0.3)
+		_:
+			col = LED_PANIC if int(time * 12.0) % 2 == 0 else LED_COLOR
+	return col.lerp(Color.WHITE, flash)
+
+
+## 红灯那圈小红光：档位越高越亮、越大
+static func led_glow(glow: PointLight2D) -> void:
+	var tier := emotion_tier()
+	glow.energy = [0.9, 1.0, 1.3, 1.7][tier]
+	glow.texture_scale = [0.55, 0.6, 0.7, 0.85][tier]
 
 
 func _contact_damage() -> void:

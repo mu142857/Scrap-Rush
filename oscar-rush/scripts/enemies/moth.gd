@@ -37,6 +37,11 @@ func _setup() -> void:
 	knockback = Vector2(110.0, 60.0)
 
 
+func _after_ready() -> void:
+	# 夜间打磨：挨打顿一格、死时抖一下碎几块（见 elite_fx.gd，和第二关的小怪一样）
+	EliteFx.attach_small(self, 4)
+
+
 func _tick(delta: float) -> void:
 	_state_t += delta
 	var spd := speed_mult()

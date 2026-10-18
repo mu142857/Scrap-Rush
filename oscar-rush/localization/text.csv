@@ -16,7 +16,7 @@ Gamepad  stick  A jump  X attack  Y lantern","左半键盘  A D  W 跳  C 攻击
 手柄  摇杆  A 跳  X 攻击  Y 马灯"
 Esc back,Esc 返回
 Need one more player    (lantern key: leave),还差一个人    （马灯键：退出）
-"%d players ready  -  any player press ATTACK to start
+"%d players ready  -  any player: press ATTACK to start
 (lantern key: leave)","%d 人到齐  -  任何一人按「攻击」出发
 （马灯键：退出）"
 KB-L,左半
@@ -35,14 +35,14 @@ OFF,关
 LIGHT,轻
 STRONG,强
 ON,开
-"Scale by whole numbers only. Crisper pixels, black borders.",只按整数倍放大。像素更清楚，四周留黑边。
+Whole-number scaling for text and menus too. Black borders.,字和菜单也按整数倍放大，最清楚。四周会留黑边。
 Also F11.,也可以按 F11。
 How hard the screen shakes on hits.,挨打时屏幕晃得多厉害。
 Text language. Switches right away.,游戏文字的语言，马上生效。
-W/S select    A/D change    Esc back,W/S 选择    A/D 调整    Esc 返回
+W/S select    A/D change    Esc / B back,W/S 选择    A/D 调整    Esc / B 返回
 "SOLO (keyboard)
 Move  A / D  or  Left / Right       Jump  W / Up / Space
-Attack  C  (hold to charge)         Lantern  V  (pick up / put down)
+Attack  C  (hold or tap, by tool)   Lantern  V  (pick up / put down)
 Drop through a platform  S / Down
 
 GAMEPAD
@@ -52,7 +52,7 @@ CO-OP on one keyboard
 Left half   A D move   W jump   C attack   V lantern   S down
 Right half  J L move   I jump   M attack   N lantern   K down","单人（键盘）
 移动  A / D 或 ← / →        跳  W / ↑ / 空格
-攻击  C（按住蓄力）           马灯  V（拿起 / 放下）
+攻击  C（按住 / 点按，看家伙）   马灯  V（拿起 / 放下）
 从平台上跳下去  S / ↓
 
 手柄
@@ -72,7 +72,7 @@ QUIT TO TITLE,回到标题
 SURE? PRESS AGAIN,确定？再按一次
 Back to the start of this level. Lantern and parts reset to how you came in.,回到本关开头。马灯和零件回到进关时的样子。
 This run's progress will be lost.,这一趟的进度会丢掉。
-W/S select    Space / C / A confirm    Esc resume,W/S 选择    空格 / C / A 确认    Esc 继续
+W/S select    Space / C / A confirm    Esc / Start resume,W/S 选择    空格 / C / A 确认    Esc / Start 继续
 CHOOSE YOUR TOOL,挑一件趁手的家伙
 FLASH LAMP,闪光灯
 RIVET GUN,铆钉枪
@@ -96,7 +96,7 @@ POWER,威力
 RATE,射速
 REACH,射程
 A/D  choose      Space / C  start      Esc  back      You can swap tools in the shop,A/D 选择      空格 / C 出发      Esc 返回      商店里可以换家伙
-"Hold %s: charge, release: shoot",按住 %s 蓄力，松开射
+"Hold %s: charge, release: shoot",按住 %s 蓄力，松手发射
 Hold %s: fire,按住 %s 开火
 %s: steam blast,%s 喷蒸汽
 %s Move   %s Jump (hold in air: fly)   %s   %s Drop/pick lantern   R Restart,%s 移动   %s 跳（空中按住飞）   %s   %s 放/拿马灯   R 重来
@@ -107,9 +107,9 @@ Tap %s: steam blast all around you  (it needs to cool down),点一下 %s：朝�
 "Hold %s to charge,  release to shoot.  Watch the ring fill",按住 %s 蓄力，松开发射。看着那一圈亮满
 Hits crack the lantern. It's your light - and your life,挨打会震裂马灯。它是你的光，也是你的命
 "%s  Put the lantern down: you take the hits, but moths go for it",%s  放下马灯：伤害你来扛，可飞蛾会去扑它
-The lantern is almost out. The shop can mend it,马灯快灭了。商店能修
-Clearing a fight and lamp oil from wrecks mend the lantern,打完一场、捡起残骸里的灯油，都能修补马灯
-Back at the last cleared fight,回到上一场打完的地方
+The lantern is almost out. The shop can mend it,马灯快灭了。去商店修一修
+Clearing a fight and lamp oil from wrecks mend the lantern,清完一场、捡到灯油，马灯都会亮回来一点
+Back at the last cleared fight,回到上一场清完的地方
 %s Pick up,%s 拿起
 AMBUSH!,有埋伏！
 CLEAR   LANTERN +%d,清场   马灯 +%d
@@ -140,7 +140,7 @@ Hold %s on the cable to climb,在电缆上按住 %s 往上爬
 Onward,往前走
 Exit,出口
 THE FILM IS ROLLING,胶片转起来了
-THE TAPE IS RUINED,录像带坏了
+THE TAPE IS RUINED,录像带毁了
 TAPE DESTROYED,录像带毁了
 PICTURE HOUSE CLEARED,放映厅 通关
 SCREENS CLEARED,屏幕世界 通关
@@ -193,9 +193,9 @@ CLEAN SWEEP,一扫而空
 TOOL CHEST,工具箱
 SOME ASSEMBLY REQUIRED,需自行组装
 CHALKBOARD,黑板
-PAY ATTENTION,上课注意听
+PAY ATTENTION,注意听讲
 LAST TRAIN,末班车
-MIND THE GAP,小心站台空隙
+MIND THE GAP,注意站台间隙
 STREETLIGHT,路灯
 NO LOITERING,禁止逗留
 WATER TOWER,水塔
@@ -259,7 +259,7 @@ RAGE,怒火
 SLAVE FLASH,从闪
 the lantern on the ground shoots too,放在地上的马灯也跟着打
 TAPE ECHO,磁带回声
-each attack repeats at 50%,每一招都自动再来一次，伤害 50%
+each attack repeats at 50%,每招自动再放一次，伤害 50%
 DYNAMO,发电机
 every 10 kills: lantern +5,每杀 10 只：马灯 +5
 %s  MAX,%s  满级
@@ -267,7 +267,7 @@ every 10 kills: lantern +5,每杀 10 只：马灯 +5
 lantern is fine,马灯好好的
 lantern +25   (%d/%d),马灯 +25   （%d/%d）
 SOLD,已售
-COMING SOON,还没做好
+COMING SOON,敬请期待
   (drops %s),  （换掉%s）
 SPEND YOUR PARTS,花掉你的零件
 walk up to a glowing item,走到发光的货前面
@@ -285,3 +285,277 @@ LANTERN,马灯
 MAX,满级
 SOON,未上架
 FREE,免费
+CHIEF OPERATOR,总接线长
+HOLD THE LINE,请勿挂断
+FILM EDITOR,剪辑师
+FINAL CUT,最后一剪
+TELEGRAPHER,电报员
+URGENT. STOP.,急电。完。
+INTO THE TUBES,冲进气动管
+%s / %s  Switch tube,%s / %s  换管道
+%s / %s  Switch tube up / down,%s / %s  往上 / 往下换管道
+%s: BUY      EXIT: KEEP RIGHT,%s 买      出口在最右边
+WATCHMAN,守夜巨人
+CURFEW,宵禁
+Embers rain down: stand under a platform,火星落下来了：躲到平台底下
+Watch the red shadow: it drops on you. Benches give cover,盯住地上的红影：它要砸下来了。长凳底下能躲
+It charges along the floor: jump up onto the hanging TVs,它贴着地冲过来：跳上吊着的电视
+LEVEL 1,第一关
+LEVEL 1 BOSS,第一关 Boss
+LEVEL 2,第二关
+LEVEL 2 BOSS,第二关 Boss
+LEVEL 3,第三关
+LEVEL 3 BOSS,第三关 Boss
+SHOP,商店
+PARTS %d,零件 %d
+CLICK OR PRESS ANY KEY,点击或按任意键
+HOLD TO SKIP,按住跳过
+Every key and button.,所有按键说明。
+restock + new mutations,补货，换一批变异
+CREDITS,制作人员
+LICENSES,授权
+"Who made this, and the licenses.",谁做的，以及用到的授权。
+GAME BY,制作
+ART,美术
+"CODE, SOUND AND ADDITIONAL ART",程序、音效和部分美术
+"Oscar Li  -  characters, level 1, intro animation",Oscar Li  -  角色、第一关、开场动画
+made together with Claude (Anthropic),与 Claude（Anthropic）协作完成
+MADE FOR,参赛
+Ludum Dare 60  -  theme: Old Tech,Ludum Dare 60  -  主题：旧科技
+THIRD-PARTY,第三方资源
+"Pixel font: Uranus Pixel 11Px, based on WenQuanYi Bitmap Song 11px.",像素字体：天王星像素 11Px，基于文泉驿点阵宋体 11px。
+License: GNU GPL v2 with font embedding exception.,授权：GNU GPL v2，附字体嵌入例外。
+"Engine: Godot Engine, MIT License. Full text on the next page.",引擎：Godot Engine，MIT 授权，全文见下一页。
+Thanks for playing.,谢谢游玩。
+W/S scroll    A/D page    Esc / B back,W/S 滚动    A/D 翻页    Esc / B 返回
+"Godot also includes these third-party components, each under its own license:",Godot 还包含以下第三方组件，各自遵循自己的授权：
+"GNU General Public License v2, with the font embedding exception: embedding the font in a document or game does not by itself make that work covered by the GPL.",GNU 通用公共许可证 v2，附字体嵌入例外：把字体嵌入文档或游戏，并不会因此让这个作品本身受 GPL 约束。
+Not a scratch on the tape.,录像带上一道划痕都没有。
+LANTERN 100%,马灯 100%
+RUN SUMMARY,本局结算
+TIME,用时
+LANTERN BROKEN,马灯碎过
+PARTS COLLECTED,收集零件
+(spent %d),（花掉 %d）
+TOOL,家伙
+MUTATION,变异
+NONE,无
+LANTERN LEFT,马灯剩余
+Press any key,按任意键
+PRESSURE RISING,压力上升
+OVERPRESSURE!,超压！
+Space / C,空格 / C
+Esc,Esc
+Start,Start
+D-pad,十字键
+Left/Right,←/→
+Up/Down,↑/↓
+%s select    %s change    %s back,%s 选择    %s 调整    %s 返回
+%s select    %s confirm    %s resume,%s 选择    %s 确认    %s 继续
+%s select    %s confirm    F11 fullscreen,%s 选择    %s 确认    F11 全屏
+%s select    %s confirm,%s 选择    %s 确认
+%s scroll    %s page    %s back,%s 滚动    %s 翻页    %s 返回
+%s  choose      %s  start      %s  back      You can swap tools in the shop,%s  选择      %s  出发      %s  返回      商店里可以换家伙
+%s Move   %s Jump (hold in air: fly)   %s   %s Drop/pick lantern   %s,%s 移动   %s 跳（空中按住飞）   %s   %s 放/拿马灯   %s
+R Restart,R 重来
+%s Pause,%s 暂停
+PERFECT RUN  -  THE LANTERN NEVER DIMMED,满血通关  -  马灯一直亮着
+parts: one drops after every fight,零件：每打完一场掉一个
+WHAT'S WORTH IT,买什么划算
+"gear (1 part): small boost, up to Lv3",装备 1 个零件：小加成，最多 3 级
+mutation (2): changes every attack,变异 2 个零件：每一招都会变
+LEVER: REFRESH,拉杆：刷新
+first pull free: new mutations,第一次免费：换一批变异
+sold-out items come back too,卖完的货也会补回来
+Dead end - find a cable up,此路不通，找电缆往上爬
+It looks just like the tape.,和录像里一模一样。
+AMBIENCE,环境声
+"Machines, wind and fire in the background of each area.",每个区域背景里的机器、风和火的声音。
+Steam hammer: stand on a bench or the desk to reach it,蒸汽锤：站上长凳或桌子就打得到它
+Stand in the green,站进绿点
+FREE REROLL,免费刷新
+FREE REROLL      %s: PULL,免费刷新      %s 拉
+%s Drop/pick lantern   %s,%s 放/拿马灯   %s
+Find the house from the tape. Up and to the right.,去录像里那栋房子：往上，往右。
+LEVELS,选择关卡
+BESTIARY,怪物图鉴
+Start from a level you have already reached.,从已经打到过的关卡开始。
+Every machine you have met on the way.,一路上遇到过的机器。
+CHOOSE A LEVEL,选择关卡
+BOILER BAY,锅炉间
+PICTURE HOUSE,放映厅
+SCREENS,屏幕世界
+Start here,从这里开始
+Reach level %d to unlock,打到第 %d 关解锁
+%s choose    %s start    %s back,%s 选择    %s 开始    %s 返回
+Seen %d / %d,已遇见 %d / %d
+Not encountered yet.,还没遇到。
+Not in the game yet,未登场
+DEV: all revealed,开发者：全部点亮
+%s move    %s page    %s back,%s 选择    %s 翻页    %s 返回
+Crawled out of the %s screen.,从%s屏幕里爬出来的。
+Elite.,精英。
+Flutters toward light. Hit it before it dives.,会朝亮光扑过来，在它俯冲前打掉。
+Hops at you. Watch the red mark where it lands.,朝你跳过来，看地上的红色落点。
+"Flashes, then dashes. Hit it while it rests.",一闪就冲过来，趁它歇着的时候打。
+Keeps its distance and fires. Close in fast.,隔着距离开火，快点贴上去。
+"Watch for the red ""!"" before each move.",每招之前都会冒红色的“!”，看准了再躲。
+Workshop,工作间
+Classroom,教室
+Subway,地铁
+Rainy Street,雨夜街道
+Rooftop,屋顶
+Living Room,客厅
+Bedroom,卧室
+Kids' Room,儿童房
+Study,书房
+Bathroom,浴室
+Attic,阁楼
+Kitchen,厨房
+Beach,海滩
+Aquarium,水族馆
+Snowy Yard,雪院
+Harbor,港口
+Desert,沙漠
+Forest,森林
+Space,太空
+Fairground,游乐园
+Weather Report,天气预报
+Test Card,测试卡
+Static,雪花屏
+Gear Crawler,齿轮爬虫
+Lamp Moth,扑灯蛾
+Kettle,汽壶
+Shaver,剃须刀
+Spring Flea,弹簧跳蚤
+Wire Snake,电线蛇
+Fuse Beetle,保险丝甲虫
+Crank Phone,手摇电话
+Scavenger,拾荒者
+Slide Projector,幻灯机
+Film Reel,胶片盘
+Audience,观众
+Usher,引座员
+Line Operator,接线员
+A gear bug that crawls back and forth. One full shot breaks it.,沿地面来回爬的齿轮虫。蓄满一发就打碎。
+"Always flies at the brightest thing: your lantern, your charge. Hit it as it pulls up.",总往最亮的东西飞：马灯、你蓄的光。它拉起来的时候打。
+"Bolted down. Its steam won't hurt, but it pushes you off course.",钉死在地上。蒸汽不伤人，但会把你吹偏。
+Small and fast. After a slash it rests; that's your opening.,又小又快。砍完一刀会歇一下，那就是机会。
+Bounces at you. A red mark shows where it will land.,朝你弹过来，地上的红色标记是它的落点。
+"Counts down, then fires a tin bird. Hit it while the door is open for double damage.",倒数完会射出一只铁皮鸟。小门开着的时候打它，伤害翻倍。
+Stitches the floor toward you and throws spools. Stitched ground slows you.,一路缝到你脚下，还会扔线轴。踩到缝线会变慢。
+Snaps its drawer and tosses coins. Drops an extra part.,猛拉钱箱咬人，还撒硬币。打倒了多掉一个零件。
+"Plays the floor keys like a wave. Jump the wave, step off the chords.",把地板当琴键弹，一波一波压过来。跳过波浪，躲开和弦。
+"Sucks in you, your shots and your lantern. Hit it 3 times to get the lantern back.",把你、光球和马灯都往嘴里吸。打它三下，马灯就掉回来。
+"Charges until it hits a wall, then stays stunned. Punish it while it's dizzy.",一路冲到撞墙才停，撞完晕两秒，趁这时候狠狠打。
+Hangs from the ceiling and lunges down. Hit it while it reels back up.,挂在天花板上往下扑。趁它往回收的时候打。
+"Explodes when it dies, shocking the floor and other enemies. Lure the crowd together.",死的时候会炸，电到地面和旁边的怪。把怪引到一块再打它。
+"Plays dead, then rings for help. Take it out first.",先装死，再打铃叫帮手。先把它解决掉。
+Steals your lantern from the floor. Hit it twice to make it drop the lantern.,会捡走地上的马灯。打它两下，马灯就掉了。
+"Aims a red line, then fires. Hit it while it aims to cancel the shot.",先瞄一道红线再开火。瞄准的时候打它，这一发就放不出来。
+Rolls along the floor and breaks on its second wall. Jump it or shoot it.,在地上滚，撞到第二面墙就散了。跳过去或者打掉。
+Sits still until one stands. Then the whole row pounces.,一动不动坐着，直到有一个站起来，然后整排扑过来。
+"Sweeps a flashlight cone, then flashes. Step out of the cone.",手电筒扫来扫去，然后一闪。别站在光里。
+Whips its phone cord at waist height. Jump it or back off.,齐腰甩电话线。跳起来或者往后退。
+Electrifies the floor under you and calls fuse beetles. Shoot the plug to cut the power.,让你脚下的地板通电，还会叫保险丝甲虫。打插头就能断电。
+Its needle scratches along the floor. Jump over it.,唱针沿着地板划过来，跳过去。
+"A hot spotlight sweeps the floor, then reels walk out of its picture.",滚烫的光柱扫地板，然后胶片盘从画面里走出来。
+Hooks you with a cord and reels you in. Dodge off the dotted line.,用电话线勾住你往回拽。躲开那条虚线。
+Charges with giant scissors and cuts to the spot behind you. Jump over the charge.,拿大剪刀冲过来，一剪就跳到你身后。跳过它的冲锋。
+A living giant that pounds the ground. The floor cracks where its fists land.,会捶地的活巨人。拳头落下的地方，地板会裂。
+"Sends morse at you: dots are fast, dashes are slow. Read the code over its head.",朝你发电报：点快、划慢。看它头顶的电码。
+An old boiler that burns memories. It wants the tape in your lantern.,专烧回忆的老锅炉，想抢马灯里的录像带。
+A giant switchboard that kept every voice on the planet. It wants the family's voices.,收走了整颗星球声音的巨型交换台，想要录像里那家人的声音。
+The last TV that can still play the tape. It flips channels to fight.,最后一台还能放录像的老电视，靠换台出招。
+Bulb Moth,灯泡蛾
+Bench Vise,台钳
+Hand Saw,手锯
+Nail Gun,钉枪
+Alarm Clock,闹钟
+Flip-top Desk,翻盖课桌
+Board Eraser,黑板擦
+Film Projector,电影放映机
+Strap Bat,吊环蝙蝠
+Walkman,随身听
+Subway Rat,地铁鼠
+Farebox,投币箱
+Umbrella,雨伞
+Parking Meter,停车计时器
+Wind-up Cat,发条猫
+Payphone,公用电话
+Laundry Shirt,晾衣衫
+Homing Pigeon,信鸽
+Antenna Bug,天线虫
+Roof Dish,锅盖天线
+Rabbit Ears,兔耳天线
+Dial Phone,拨盘电话
+Upright Vacuum,立式吸尘器
+Phonograph,唱机
+Bedside Clock,床头闹钟
+Tape Moth,磁带蛾
+Iron,熨斗
+Flash Camera,闪光相机
+Tin Chopper,铁皮直升机
+Jack-in-the-Box,玩偶匣
+Tin Car,铁皮小车
+Tin Robot,铁皮机器人
+Ledger,账本
+Globe,地球仪
+Desk Lamp,台灯
+Typewriter,打字机
+Toilet Roll,卷纸
+Plunger,马桶塞
+Razor,剃刀
+Hair Dryer,吹风机
+Home Movie Reel,家庭录像盘
+Cardboard Box,纸箱
+Old Chair,旧椅子
+Home Projector,家用放映机
+Toaster,烤面包机
+Desk Fan,台扇
+Hand Mixer,打蛋器
+Percolator,咖啡壶
+Crab,螃蟹
+Jellyfish,水母
+Hermit Crab,寄居蟹
+Boombox,手提音响
+Clownfish,小丑鱼
+Treasure Chest,宝箱
+Shrimp,虾
+Toy Cannon,玩具炮
+Snowman,雪人
+Fairy Light,彩灯泡
+Sled,雪橇
+Stove,火炉
+Gull,海鸥
+Buoy,浮标
+Crate,货箱
+Foghorn,雾笛
+Vulture,秃鹫
+Jackrabbit,长耳兔
+Wagon Wheel,车轮
+Cactus,仙人掌
+Mushroom,蘑菇
+Firefly,萤火虫
+Beetle,甲虫
+Squirrel,松鼠
+UFO,飞碟
+Lander,登月舱
+Sputnik,人造卫星
+Space Robot,太空机器人
+Balloon,气球
+Carousel Horse,旋转木马
+Bumper Car,碰碰车
+Popcorn Cart,爆米花车
+Cloud,云
+Sun,太阳
+News Ticker,新闻滚动条
+Thermometer,温度计
+Reticle,准星
+Test Bars,测试条
+Jack Plug,插头
+Signal Generator,信号发生器
+Ghost,雪花幽灵
+Static Ears,雪花天线
+Coax Cable,同轴电缆
+Vacuum Tube,电子管

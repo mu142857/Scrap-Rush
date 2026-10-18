@@ -84,8 +84,18 @@ def rects(mask):
 R = [r for r in rects(solid) if r[2] * r[3] >= 12]        # 天线、零星的小点不算
 print(len(R), "solid rects")
 
+# 网页版：WebGL 只保证 2048 的贴图，很多手机、集显上限是 4096，第三关整张图 4600 多宽会画不出来。
+# 所以每层再切成 TILE 宽的竖条（l3_<层>_<序号>.png），游戏里拼起来显示。整张的也照旧拷过去，
+# tools/draw_boss3.py 拿它做 Boss 房背景。
+TILE = 2048
+n_tiles = 0
 for name in ("far", "mid", "screens", "near"):
     shutil.copy(HERE / f"l3_{name}.png", GAME / "art/levels" / f"l3_{name}.png")
+    full = Image.open(HERE / f"l3_{name}.png")
+    n_tiles = 0
+    for i, x in enumerate(range(0, full.width, TILE)):
+        full.crop((x, 0, min(full.width, x + TILE), full.height)).save(GAME / "art/levels" / f"l3_{name}_{i}.png")
+        n_tiles = i + 1
 
 
 def v2(p):
@@ -99,6 +109,9 @@ lines = [
     f"const BOUNDS := Rect2(0, 0, {W}, {H})",
     f"const START := {v2(L['start'])}",
     f"const END := {v2(L['end'])}",
+    "## 每层切成几条（网页版贴图不能超过 2048 宽），见 export_level3.py",
+    f"const TILE_W := {TILE}",
+    f"const TILES := {n_tiles}",
     "## 实心的地方：外壳、电视之间的杂物、仓库地面",
     "const SOLIDS: Array[Rect2] = [",
 ]
@@ -111,9 +124,48 @@ lines += ["]", "## 每块屏幕：名字、显示方式、屏幕框 [x0, y0, x1,
 for s in L["screens"]:
     lines.append(f"\t{{\"name\": \"{s['name']}\", \"tint\": \"{s['tint']}\", \"rect\": {s['screen']}, "
                  f"\"floor\": {s['floor']}, \"row\": {s['row']}, \"seg\": {s['seg']}, "
-                 f"\"encounter\": {str(s.get('encounter', False)).lower()}}},")
+                 f"\"encounter\": {str(s.get('encounter', False)).lower()}, "
+                 f"\"wall_left\": {str(s.get('wall_left', False)).lower()}}},")
+# 路线路点（自动驾驶测试用）：每条路线一串 [x, 地面 y, 动作]，动作是 "walk"（走到 x）、"climb"（在 x 爬到 y）、"exit"
+routes_wp = []
+for route in L.get("routes", []):
+    wp = []
+    for (r, sg), (nr, nsg) in zip(route, route[1:]):
+        h = next(h for h in L["holes"] if tuple(h["lower"]) == (r, sg) and tuple(h["upper"]) == (nr, nsg))
+        wp.append(f'[{h["ladder_x"]}, {h["bottom"]}, "walk"]')
+        wp.append(f'[{h["ladder_x"]}, {h["top"]}, "climb"]')
+    wp.append(f'[{L["end"][0]}, {L["end"][1]}, "exit"]')
+    routes_wp.append("[" + ", ".join(wp) + "]")
+lines += ["]", "## 每条路线的路点（scripts/debug/l3_autopilot.gd 用）：[x, 地面 y, 动作]", "const ROUTES := ["]
+lines += [f"\t{r}," for r in routes_wp]
 lines += ["]", "## 洞的位置，摆怪的时候避开：[x0, x1, 上面的地面, 下面的地面]", "const HOLES := ["]
 lines += [f"\t[{h['x0']}, {h['x1']}, {h['top']}, {h['bottom']}]," for h in L["holes"]]
 lines += ["]", ""]
 (GAME / "scripts/levels/level3_data.gd").write_text("\n".join(lines))
 print("wrote", GAME / "scripts/levels/level3_data.gd")
+
+
+# ---------------------------------------------------------------- 结局录像：家乡（2026-10-17 夜）
+# 结局里老电视放的录像、老电视屏幕上的家乡画面，都用这张 444×245 的图（boss3_room.gd、tv_boss.gd 读它）。
+# 以前 tools/draw_boss3.py 按旧地图坐标切，地图改了以后只剩左边一窄条。现在单独干净地画一张家乡：
+# 和地图里终点那块屏幕是同一个场景函数、同样大小，但没有左边通道砍出来的缺口。
+def export_hometown():
+    import random as _r
+    import crt_wall_v2 as k
+    from crt_wall_v2 import KHAKI, TV
+    k.setup(480, 300, 290)
+    _r.seed(3)
+    k.rng = np.random.default_rng(3)
+    import l3_registry as reg
+    tv = TV(10, 10, 460, 270, KHAKI, "meter", "color", top="vents")
+    tv.tint, tv.flat, tv.outdoor, tv.name = "color", False, True, "hometown"
+    k.set_vp(tv)
+    reg.draw("hometown", tv)
+    glass = k.scr.a[tv.sy0:tv.sy1 + 1, tv.sx0:tv.sx1 + 1].copy()
+    glass[glass[..., 3] == 0] = (0, 0, 0, 255)            # 圆角外面填黑，像显像管的边
+    out = GAME / "art/boss/hometown.png"
+    Image.fromarray(glass).save(out)
+    print("wrote", out, glass.shape[1], "x", glass.shape[0])
+
+
+export_hometown()

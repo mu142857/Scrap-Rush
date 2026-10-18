@@ -34,6 +34,8 @@ const DROP_TIME := 0.25
 const JUMP_BUFFER_TIME := 0.10
 ## 撞头修正（夜间打磨）：往上跳时头只蹭到平台角这么几像素，就把人往旁边挪一下让他过去，不被顶下来
 const CORNER_NUDGE := 4
+## 上台面补救：下落时贴着台边往前推，台面只比脚高这么几像素，就把人抬上去（差一点就跳上去的那种）
+const LEDGE_ASSIST := 4
 # —— 火箭靴 ——
 const JET_MAX_UP := 120.0
 const JET_ACCEL := 1500.0
@@ -72,6 +74,8 @@ const CHARGE_DOTS := 12
 const CHARGE_RING_R := 10.0
 ## 比屏幕半宽（2 倍放大后 120）略小，不锁屏幕外的怪
 const AIM_RANGE := 115.0
+## Boss 块头大、常常离得远（吊在头顶、在地上乱跑），自动瞄准对 Boss 放宽到这么远（夜间打磨：站桩测试里高台上打不到 Boss）
+const AIM_RANGE_BOSS := 200.0
 ## 身后的敌人按距离 ×1.8 算，面朝的方向优先
 const BEHIND_PENALTY := 1.8
 # —— 挨打 ——
@@ -80,8 +84,8 @@ const INVULN_TIME := 1.4
 ## 无敌闪烁一拍多长
 const BLINK_STEP := 0.06
 const STUN_TIME := 0.4
-const EMOTION_HIT_CARRY := 5.0
-const EMOTION_HIT_EMPTY := 8.0
+const EMOTION_HIT_CARRY := 3.0  # 按策划案第八节（原 +5/+8 太快过载）
+const EMOTION_HIT_EMPTY := 6.0
 
 const STRIP_COLORS := {
 	"red": Color8(255, 192, 192),
@@ -193,12 +197,17 @@ func _ready() -> void:
 	_smoke.damping_min = 110.0
 	_smoke.damping_max = 170.0
 	_smoke.gravity = Vector2(0, -18)
-	_smoke.scale_amount_min = 2.0
-	_smoke.scale_amount_max = 4.0
+	# 方块大小一律整格（美术巡检）：基础 3 格，随时间一档一档跳 2 → 3 → 4 格，不做平滑缩放
+	_smoke.scale_amount_min = 3.0
+	_smoke.scale_amount_max = 3.0
 	var smoke_scale := Curve.new()
-	smoke_scale.add_point(Vector2(0.0, 0.6))
-	smoke_scale.add_point(Vector2(0.4, 1.0))
-	smoke_scale.add_point(Vector2(1.0, 1.3))
+	smoke_scale.max_value = 2.0
+	smoke_scale.add_point(Vector2(0.0, 2.0 / 3.0), 0.0, 0.0, Curve.TANGENT_LINEAR, Curve.TANGENT_LINEAR)
+	smoke_scale.add_point(Vector2(0.299, 2.0 / 3.0), 0.0, 0.0, Curve.TANGENT_LINEAR, Curve.TANGENT_LINEAR)
+	smoke_scale.add_point(Vector2(0.3, 1.0), 0.0, 0.0, Curve.TANGENT_LINEAR, Curve.TANGENT_LINEAR)
+	smoke_scale.add_point(Vector2(0.699, 1.0), 0.0, 0.0, Curve.TANGENT_LINEAR, Curve.TANGENT_LINEAR)
+	smoke_scale.add_point(Vector2(0.7, 4.0 / 3.0), 0.0, 0.0, Curve.TANGENT_LINEAR, Curve.TANGENT_LINEAR)
+	smoke_scale.add_point(Vector2(1.0, 4.0 / 3.0), 0.0, 0.0, Curve.TANGENT_LINEAR, Curve.TANGENT_LINEAR)
 	_smoke.scale_amount_curve = smoke_scale
 	# 荧光条本身颜色很浅，雾一变透明就发灰，所以雾用它的高饱和版本
 	var mist := Color.from_hsv(strip_color.h, maxf(strip_color.s, 0.6), 1.0)
@@ -207,6 +216,8 @@ func _ready() -> void:
 	smoke_ramp.add_point(0.15, Color(mist.r, mist.g, mist.b, 0.9))
 	smoke_ramp.add_point(0.6, Color(mist.r * 0.8, mist.g * 0.8, mist.b * 0.8, 0.45))
 	smoke_ramp.set_color(1, Color(mist.r * 0.6, mist.g * 0.6, mist.b * 0.6, 0.0))
+	# 颜色按档跳（亮 → 本色 → 暗半透明 → 没），不做连续渐变
+	smoke_ramp.interpolation_mode = Gradient.GRADIENT_INTERPOLATE_CONSTANT
 	_smoke.color_ramp = smoke_ramp
 	var smoke_mat := CanvasItemMaterial.new()
 	smoke_mat.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
@@ -295,6 +306,7 @@ func _physics_process(delta: float) -> void:
 	var fall_speed := velocity.y
 	_corner_nudge(delta)
 	move_and_slide()
+	_ledge_assist(axis)
 	# 外力（Boss 吸气之类）按位移直接挪，不进 velocity，免得被走路的加减速抵消
 	if _push != Vector2.ZERO:
 		move_and_collide(_push * delta)
@@ -360,6 +372,23 @@ func _corner_nudge(delta: float) -> void:
 			if not test_move(global_transform.translated(side), up):
 				position.x += off * d
 				return
+
+
+## 下落（或刚过最高点）时贴着台边往前推：台面只比脚高 1~LEDGE_ASSIST 像素，就把人抬上台面
+func _ledge_assist(axis: float) -> void:
+	if axis == 0.0 or is_on_floor() or velocity.y < -20.0 or _stun > 0.0:
+		return
+	var dir := signf(axis)
+	if not _against_wall(dir):
+		return
+	for up in range(1, LEDGE_ASSIST + 1):
+		var lifted := global_transform.translated(Vector2(0.0, -up))
+		if test_move(global_transform, Vector2(0.0, -up)):
+			return
+		if not test_move(lifted, Vector2(dir * 2.0, 0.0)):
+			position += Vector2(dir * 2.0, -up)
+			velocity.y = 0.0
+			return
 
 
 ## 这个方向上是不是紧贴着一面竖直的墙（斜坡不算，斜坡要能走上去）
@@ -630,19 +659,43 @@ func _find_target() -> Node2D:
 			continue
 		var p := _aim_point(en)
 		var d := from.distance_to(p)
-		if d > AIM_RANGE:
+		if d > (AIM_RANGE_BOSS if en.has_method("start_fight") else AIM_RANGE):
 			continue
 		var score := d
 		if (p.x - global_position.x) * facing < 0.0:
 			score *= BEHIND_PENALTY
 		if score >= best_score:
 			continue
-		var q := PhysicsRayQueryParameters2D.create(from, p, 1)
-		if not space.intersect_ray(q).is_empty():
+		if not _line_clear(space, from, p):
 			continue
 		best = en
 		best_score = score
 	return best
+
+
+## 视线有没有被挡住：单向平台不算挡（子弹也能从下往上穿过它们）
+func _line_clear(space: PhysicsDirectSpaceState2D, from: Vector2, to: Vector2) -> bool:
+	var q := PhysicsRayQueryParameters2D.create(from, to, 1)
+	for _i in 4:
+		var hit := space.intersect_ray(q)
+		if hit.is_empty():
+			return true
+		if not is_one_way_body(hit["collider"]):
+			return false
+		q.exclude = q.exclude + [hit["rid"]]
+	return false
+
+
+## 这个物体是不是一块单向平台（身上所有碰撞形状都是 one_way_collision）
+static func is_one_way_body(body: Object) -> bool:
+	var b := body as CollisionObject2D
+	if b == null or b.get_shape_owners().is_empty():
+		return false
+	for owner_id in b.get_shape_owners():
+		var o := b.shape_owner_get_owner(owner_id)
+		if not ((o is CollisionShape2D or o is CollisionPolygon2D) and o.get("one_way_collision")):
+			return false
+	return true
 
 
 func _crystal_input() -> void:

@@ -22,7 +22,7 @@ signal hp_changed(hp: float, max_hp: float)
 signal phase_changed(phase: int)
 signal defeated
 
-const BASE_HP := 3600.0
+const BASE_HP := 7400.0  # 10-18 作者："最终 boss 太弱、太脆"：3600 → 7400，站桩三把武器 60~90 秒
 const CONTACT_DAMAGE := 10.0
 const CANVAS_ORIGIN := Vector2(44, 78)
 const SCREEN := Rect2(Vector2(12, 30) - CANVAS_ORIGIN, Vector2(47, 31))
@@ -63,6 +63,18 @@ var on_t := 0.0
 
 var _time := 0.0
 var _flash := 0.0
+## 受击顿一格、换阶段先停一下（夜间打磨：三个 Boss 统一，照总机）
+var _recoil := 0.0
+var _recoil_dir := 1.0
+var _pause_t := 0.0
+## 测试卡第一圈扫描线的缺口方向：射出前画一小段淡弧（和总机铃声招一样）
+var _gap_hint_t := 0.0
+## 冲撞教学：前两次冲撞预警 1.3 秒（先教一遍），之后 0.9 秒；预警期间能躲的吊电视顶上闪暖黄边（第三关新玩家报告第 4 条）
+var _charges_done := 0
+var _safe_flash_t := 0.0
+const CHARGE_WARN_FIRST := 1.3
+const CHARGE_WARN := 0.9
+var _gap_hint_a := 0.0
 var _hot := 0.0
 var _knob := [0.0, 0.0]
 var _osd_t := 0.0
@@ -95,6 +107,7 @@ var _static: AudioStreamPlayer
 
 func _ready() -> void:
 	add_to_group("enemy")
+	Bestiary.watch(self, "boss_set", Rect2(-48, -96, 96, 96))   # 怪物图鉴：第一次出现在画面里就记一笔
 	collision_layer = 4
 	collision_mask = 0
 	max_hp = BASE_HP * (1.0 + 0.5 * (Run.players.size() - 1))
@@ -151,7 +164,8 @@ func _ready() -> void:
 	_screen_light.texture = Game.light_texture()
 	_screen_light.color = Color.WHITE
 	_screen_light.energy = 0.0
-	_screen_light.texture_scale = 4.5
+	# 屏幕的光照亮周围一圈家具（夜间打磨：4.5 → 6）
+	_screen_light.texture_scale = 6.0
 	_screen_light.position = SCREEN.get_center() + Vector2(-30, 10)
 	_screen_light.range_item_cull_mask = 1
 	add_child(_screen_light)
@@ -205,7 +219,7 @@ func wake() -> void:
 	screen_mode = "warm"
 	var tw := create_tween()
 	tw.tween_property(self, "on_t", 1.0, 0.8)
-	await get_tree().create_timer(0.9, false).timeout
+	if is_inside_tree(): await get_tree().create_timer(0.9, false).timeout
 	_switch("snow")
 	Game.add_shake(4.0)
 
@@ -227,12 +241,16 @@ func turn_on(mode := "home") -> void:
 	tw.tween_property(self, "on_t", 1.0, 1.4)
 
 
-func hurt(damage: float, _from_dir: Vector2, _full: bool) -> void:
+func hurt(damage: float, from_dir: Vector2, full: bool) -> void:
 	if dead:
 		return
 	_flash = 1.0
 	if not active:
 		return
+	_recoil = 0.06
+	_recoil_dir = signf(from_dir.x) if from_dir.x != 0.0 else 1.0
+	if full:
+		Game.sfx("clang", -12.0, 1.8, 0.1)
 	if _mode == "stun":
 		damage *= 1.5
 	hp = maxf(hp - damage, 0.0)
@@ -246,6 +264,13 @@ func hurt(damage: float, _from_dir: Vector2, _full: bool) -> void:
 		phase_changed.emit(phase)
 		_phase_roar()
 
+
+
+## 离开场景树（重来、切场景、整关重载）：标成"已结束"，所有出招循环都会看 dead 自己停下；
+## 每个 await get_tree() 前面也先看还在不在树里。不然 get_tree() 变成空值，协程空转、无限刷错（夜间质检，网页版会卡死）
+func _exit_tree() -> void:
+	dead = true
+	active = false
 
 # —— 每帧 ——
 
@@ -261,7 +286,11 @@ func _physics_process(delta: float) -> void:
 	_shadow_t -= delta
 	_rumble = maxf(_rumble - delta, 0.0)
 	# 三阶段整台电视跟着画面抖；冲撞蓄力时抖得更厉害
-	_parts.position = Vector2(roundf(sin(_time * 40.0) * (_hot * 0.8 + (1.5 if _rumble > 0.0 else 0.0))), roundf(_crouch))
+	_recoil -= delta
+	_pause_t -= delta
+	_gap_hint_t -= delta
+	_safe_flash_t -= delta
+	_parts.position = Vector2(roundf(sin(_time * 40.0) * (_hot * 0.8 + (1.5 if _rumble > 0.0 else 0.0))) + (_recoil_dir if _recoil > 0.0 else 0.0), roundf(_crouch))
 	_legs.queue_redraw()
 	var target_light: Color = SCREEN_LIGHT.get(screen_mode, Color.WHITE)
 	_screen_light.color = _screen_light.color.lerp(target_light, delta * 6.0)
@@ -282,11 +311,12 @@ func _physics_process(delta: float) -> void:
 # —— 出招 ——
 
 func _wait(t: float) -> void:
-	await get_tree().create_timer(t, false).timeout
+	if is_inside_tree(): await get_tree().create_timer(t, false).timeout
 
 
 func _gap() -> float:
-	return [1.1, 0.85, 0.6][phase - 1]
+	# 10-18 加难：1.1 / 0.85 / 0.6 → 0.9 / 0.6 / 0.4（预警时长不变）
+	return [0.9, 0.6, 0.4][phase - 1]
 
 
 func _pool() -> Array[String]:
@@ -323,8 +353,11 @@ func _next_pattern() -> String:
 func _fight_loop() -> void:
 	await _wait(0.5)
 	while active and not dead:
+		while _pause_t > 0.0 and not dead:
+			if is_inside_tree(): await get_tree().physics_frame
 		var pick := _next_pattern()
-		if phase == 3 and pick != "rerun":
+		# 10-18 加难：二阶段起就叠招（原来三阶段才叠）
+		if phase >= 2 and pick != "rerun":
 			# 三阶段：一个移动招 + 一个频道招同时出（两个都是移动招就先后来）
 			var second := _next_pattern()
 			if pick in MOVES and second in MOVES:
@@ -390,6 +423,13 @@ func _x_max() -> float:
 func _stroll() -> void:
 	var p := _lead()
 	var px := p.global_position.x if p else arena.get_center().x
+	# 10-18 加难：二阶段起不再走远，朝玩家逼过去、停在约 50 像素外，压迫感
+	if phase >= 2:
+		var side := signf(position.x - px)
+		if side == 0.0:
+			side = 1.0
+		await _walk_to(px + side * 50.0, [55.0, 80.0, 100.0][phase - 1], 1.1)
+		return
 	var options: Array[float] = []
 	for x in [_x_min() + 10.0, arena.get_center().x, _x_max() - 10.0]:
 		if absf(x - px) > 70.0 and absf(x - position.x) > 30.0:
@@ -404,7 +444,7 @@ func _walk_to(x: float, speed: float, max_time := 9.0) -> void:
 	_mode = "walk"
 	var t := 0.0
 	while absf(position.x - x) > 0.5 and t < max_time and not dead:
-		await get_tree().physics_frame
+		if is_inside_tree(): await get_tree().physics_frame
 		var d := get_physics_process_delta_time()
 		t += d
 		var step := speed * d
@@ -426,13 +466,16 @@ func _charge() -> void:
 			dir = -signf(position.x - arena.get_center().x)
 		if dir == 0.0:
 			dir = -1.0
+		var warn := CHARGE_WARN_FIRST if _charges_done < 2 else CHARGE_WARN
+		_charges_done += 1
 		_mode = "crouch"
-		_rumble = 0.9
-		_warn_at(Vector2(0, -66), 0.9)
+		_rumble = warn
+		_safe_flash_t = warn
+		_warn_at(Vector2(0, -66), warn)
 		Game.sfx("static", -6.0, 0.6)
 		var tw := create_tween()
 		tw.tween_property(self, "_crouch", 5.0, 0.3)
-		await _wait(0.9)
+		await _wait(warn)
 		if dead:
 			return
 		_mode = "dash"
@@ -441,7 +484,7 @@ func _charge() -> void:
 		var end_x := _x_max() if dir > 0.0 else _x_min()
 		var dust_t := 0.0
 		while absf(position.x - end_x) > 0.5 and not dead:
-			await get_tree().physics_frame
+			if is_inside_tree(): await get_tree().physics_frame
 			var d := get_physics_process_delta_time()
 			position.x = move_toward(position.x, end_x, DASH_SPEED[phase - 1] * d)
 			_gait += DASH_SPEED[phase - 1] * d * 0.5
@@ -494,7 +537,7 @@ func _hop() -> void:
 		var dur := 0.7
 		var t := 0.0
 		while t < dur and not dead:
-			await get_tree().physics_frame
+			if is_inside_tree(): await get_tree().physics_frame
 			t = minf(t + get_physics_process_delta_time(), dur)
 			var k := t / dur
 			position.x = lerpf(from_x, to_x, k)
@@ -613,11 +656,16 @@ func _test() -> void:
 			await _wait(0.07)
 		return
 	var rings: int = [2, 3, 3][phase - 1]
+	var count := 22
+	# 第一圈的缺口先定好，在缺口方向画一小段淡弧，停 0.45 秒再射（第一圈不全靠反应）
+	var first_gap := randi() % count
+	_gap_hint_a = TAU * first_gap / count
+	_gap_hint_t = 0.45
+	await _wait(0.45)
 	for r in rings:
 		if dead:
 			return
-		var count := 22
-		var gap_at := randi() % count
+		var gap_at := first_gap if r == 0 else randi() % count
 		Game.sfx("rivets", -8.0, 1.6)
 		Game.add_shake(1.5)
 		for i in count:
@@ -677,6 +725,13 @@ func _phase_roar() -> void:
 	Game.flash(Color(0.9, 0.95, 1.0), 0.35, 0.5)
 	screen_mode = "snow"
 	_osd_t = 1.5
+	# 换阶段：清掉场上的子弹，下一招推迟 0.8 秒
+	for bl in get_tree().get_nodes_in_group("boss_bullet"):
+		if bl.has_method("fizzle"):
+			bl.call("fizzle")
+		else:
+			bl.queue_free()
+	_pause_t = 0.8
 
 
 func _die() -> void:
@@ -692,19 +747,32 @@ func _die() -> void:
 	var fall := create_tween().set_parallel(true)
 	fall.tween_property(self, "position:y", floor_y, 0.2)
 	fall.tween_property(self, "_crouch", 8.0, 0.4).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
+	# 场上的子弹：有 fizzle 的消散，其他（光柱、闪电、雪花分身）原地迸一下再没，不凭空消失
 	for b in get_tree().get_nodes_in_group("boss_bullet"):
-		b.queue_free()
+		if b.has_method("fizzle"):
+			b.call("fizzle")
+		else:
+			if b is Node2D:
+				Game.sparks(get_parent(), (b as Node2D).global_position, Color(0.85, 0.85, 0.95), 3, 40.0)
+			b.queue_free()
 	defeated.emit()
 	Game.hitstop(0.3)
-	await get_tree().create_timer(0.35, true, false, true).timeout
+	# 死的那一下有分量：机壳、塑料、玻璃碎片迸出来，屏幕炸一圈火花
+	EliteFx.scrap_burst(get_parent(), Rect2(global_position + Vector2(-36.0, -56.0), Vector2(72.0, 44.0)), 12,
+		[Color8(134, 77, 31), Color8(80, 86, 104), Color8(170, 176, 196)])
+	Game.sparks(get_parent(), aim_point(), Color(0.85, 0.9, 1.0), 14, 120.0)
+	Game.sfx("boom", -4.0, 1.2)
+	if is_inside_tree(): await get_tree().create_timer(0.35, true, false, true).timeout
 	# 疯狂乱换台一阵
 	for i in 12:
+		if not is_inside_tree():
+			return
 		screen_mode = ["snow", "bars", "test", "rerun", "storm"][i % 5]
 		_osd_t = 0.2
 		_flash = 0.6
 		Game.sfx("tvclick", -4.0, randf_range(0.7, 1.4))
 		Game.add_shake(3.0)
-		await get_tree().create_timer(0.09, true, false, true).timeout
+		if is_inside_tree(): await get_tree().create_timer(0.09, true, false, true).timeout
 	# 显像管关机：画面缩成一条横线，再缩成一个点，灭
 	screen_mode = "warm"
 	_static.stop()
@@ -861,6 +929,27 @@ func _draw_osd(at: Vector2, text: String) -> void:
 
 
 func _draw_warn() -> void:
+	if _safe_flash_t > 0.0 and int(_safe_flash_t * 8.0) % 2 == 0:
+		# 冲撞躲得开的地方：台面比机壳顶（脚底往上约 56 像素）还高的平台，顶上闪一道暖黄边，两头各一个小角
+		var case_top := floor_y - 56.0
+		for pl in platforms:
+			var plat: Vector3 = pl
+			if plat.z >= case_top - 6.0:
+				continue
+			var x0 := plat.x - global_position.x
+			var w := plat.y - plat.x
+			var y := plat.z - global_position.y
+			var col := Color(1.0, 0.85, 0.45, 0.9)
+			_warn.draw_rect(Rect2(x0, y - 1, w, 1), col)
+			_warn.draw_rect(Rect2(x0, y - 3, 1, 3), col)
+			_warn.draw_rect(Rect2(x0 + w - 1, y - 3, 1, 3), col)
+	if _gap_hint_t > 0.0:
+		# 测试卡第一圈扫描线的缺口：从屏幕中心往外一小段淡青色弧
+		var c := SCREEN.get_center() + _parts.position
+		for k in range(-2, 3):
+			var a := _gap_hint_a + k * 0.06
+			for rr in [14.0, 18.0, 22.0]:
+				_warn.draw_rect(Rect2((c + Vector2.from_angle(a) * rr).round(), Vector2.ONE), Color(0.6, 0.95, 1.0, 0.55))
 	if _shadow_t > 0.0 and int(_shadow_t * 16.0) % 2 == 0:
 		# 跳砸落点：地上一道闪烁的红影，宽度就是机壳的宽度
 		var x0 := _shadow_x - global_position.x - 38.0

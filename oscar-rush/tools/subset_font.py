@@ -3,7 +3,8 @@
     python3 tools/subset_font.py
 
 完整的原字体：tools/fonts/PixelFont_full.ttf（天王星像素 11Px，GPLv2 + 字体嵌入例外，tools/ 不进导出包）。
-输出：fonts/PixelFont.ttf（游戏实际用的，Hud.font() 读它）。字形原样保留，只是去掉没用到的字。
+输出：fonts/PixelFont.ttf（游戏实际用的，Hud.font() 读它）。字形原样保留，只是去掉没用到的字；
+另外把空格从 2.35 像素加宽到整 3 像素（见 SPACE_PX），句号逗号等左移贴住前一个字母（见 TIGHT_PUNCT）。
 
 留下的字：
 - 拉丁字母、常用标点、箭头、方块等符号整段保留（英文怎么改都不会缺字）；
@@ -23,6 +24,12 @@ ROOT = Path(__file__).resolve().parent.parent
 FULL = ROOT / "tools/fonts/PixelFont_full.ttf"
 OUT = ROOT / "fonts/PixelFont.ttf"
 CSV = ROOT / "localization/text.csv"
+
+## 字体按 11 号设计，空格宽度按 11 号时的像素算
+SIZE_PX = 11
+SPACE_PX = 3
+## 左边留白太多、要贴住前一个字母的英文标点
+TIGHT_PUNCT = ".,;!'"
 
 RANGES = [
     (0x0020, 0x024F),  # 拉丁
@@ -82,6 +89,27 @@ def main() -> None:
     sub = subset.Subsetter(opts)
     sub.populate(unicodes=have)
     sub.subset(full)
+    # 原字体的空格只有 2.35 像素（字母约 7 像素），英文单词几乎粘在一起（"PIXELPERFECT"），
+    # 而且小数宽度会让空格一会儿 2 像素一会儿 3 像素。改成整 3 像素：最长的英文提示也还放得下 480 宽。
+    cmap = full.getBestCmap()
+    upm = full["head"].unitsPerEm
+    for ch in (0x20, 0xA0):
+        if ch in cmap:
+            name = cmap[ch]
+            _, lsb = full["hmtx"][name]
+            full["hmtx"][name] = (round(SPACE_PX * upm / SIZE_PX), lsb)
+    # 句号、逗号、分号、感叹号、单引号的字形左边空了 2 格（字母和冒号左边不空），
+    # "charge." 看着像 "charge ."。整体左移贴住前一个字母，宽度同步减掉，和冒号一样。
+    for ch in TIGHT_PUNCT:
+        name = cmap.get(ord(ch))
+        glyph = full["glyf"][name] if name else None
+        if glyph is None or glyph.numberOfContours <= 0 or glyph.xMin <= 0:
+            continue
+        dx = glyph.xMin
+        glyph.coordinates.translate((-dx, 0))
+        glyph.recalcBounds(full["glyf"])
+        adv, _ = full["hmtx"][name]
+        full["hmtx"][name] = (adv - dx, glyph.xMin)
     full.save(OUT)
 
     # 检查：译文里的字都得在

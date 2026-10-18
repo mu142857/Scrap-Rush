@@ -64,6 +64,8 @@ func _after_ready() -> void:
 	_cable.draw.connect(_draw_cable)
 	add_child(_cable)
 	move_child(_cable, 0)          # 画在插头下面
+	# 夜间打磨：挨打顿一格、死时抖一下碎几块（见 elite_fx.gd）
+	EliteFx.attach_small(self, 5, 0.35)   # 0.35：第二关机房很暗，叠一层暗处亮层
 
 
 func _tick(delta: float) -> void:
@@ -82,6 +84,7 @@ func _tick(delta: float) -> void:
 				_state = WINDUP
 				_timer = WINDUP_TIME / speed_mult()
 				Game.sfx("buzz", -16.0, 1.6, 0.1)
+				EliteFx.mark(self, _timer)
 		WINDUP:
 			_swing_step(delta)
 			_move_to(_rest_y, delta, RETRACT_SPEED)
@@ -168,10 +171,11 @@ func _swing_step(delta: float) -> void:
 
 func _crawl() -> void:
 	# 还在往下掉就别走，免得从台子边上滑出去
-	if not is_knocked():
-		velocity.x = dir * CRAWL_SPEED * speed_mult() if is_on_floor() else 0.0
 	if is_on_floor() and not is_knocked() and (is_on_wall() or not ground_ahead()):
 		dir = -dir
+	# 先掉头再定速度：反过来的话，掉头这一帧还按旧方向撞墙，is_on_wall 又是真，下一帧再掉回去，贴着墙每帧左右抖（夜间打磨怪物地形测试抓到的）
+	if not is_knocked():
+		velocity.x = dir * CRAWL_SPEED * speed_mult() if is_on_floor() else 0.0
 	move_and_slide()
 	set_frame(4 + int(_time / CRAWL_FRAME_TIME) % 2)
 

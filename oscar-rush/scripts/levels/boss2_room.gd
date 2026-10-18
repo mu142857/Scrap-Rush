@@ -25,6 +25,10 @@ func _configure() -> void:
 	lamps = []
 	darkness = Color(0.42, 0.37, 0.36)
 	darkness_hot = Color(0.42, 0.3, 0.22)
+	boss_tip = "Watch the red shadow: it drops on you. Benches give cover"
+	# 蒸汽锤的圈够不到吊着的总机（插孔板离地约 100 像素）：站上长凳或桌子就够得着（自动化测试：每秒 83~96）
+	if Upgrades.weapon == "hammer":
+		boss_tip = "Steam hammer: stand on a bench or the desk to reach it"
 	boss_name = "THE OPERATOR"
 	card_sub = "It keeps every voice it ever heard."
 	defeat_line = "Somebody else's last call."
@@ -78,7 +82,7 @@ func _after_defeat() -> void:
 		_card_sub.text = ""
 		for i in line.length():
 			_card_sub.text = line.substr(0, i + 1)
-			await get_tree().create_timer(0.035).timeout
+			if is_inside_tree(): await get_tree().create_timer(0.035).timeout
 		Game.sfx("dial", -12.0, 0.6)
-		await get_tree().create_timer(0.9).timeout
+		if is_inside_tree(): await get_tree().create_timer(0.9).timeout
 	await super._after_defeat()

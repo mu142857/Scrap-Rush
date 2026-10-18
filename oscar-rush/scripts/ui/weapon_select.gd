@@ -25,9 +25,12 @@ var _selected := 0
 var _busy := false
 var _ready_t := 0.25
 var _cards: Array[Control] = []
+var _lift: Array[float] = [0.0, 0.0, 0.0]
+var _pop := 0.0
 var _ui: CanvasLayer
 var _fade: ColorRect
 var _time := 0.0
+var _hint: Label
 
 
 func _ready() -> void:
@@ -87,7 +90,9 @@ func _ready() -> void:
 
 	var hint := Label.new()
 	hint.label_settings = Hud.small_text(DIM)
-	hint.text = "A/D  choose      Space / C  start      Esc  back      You can swap tools in the shop"
+	_hint = hint
+	_update_hint()
+	Controls.device_changed.connect(func(_p: bool) -> void: _update_hint())
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.position = Vector2(0, 250)
 	hint.size = Vector2(480, 12)
@@ -103,13 +108,21 @@ func _ready() -> void:
 	_selected = maxi(CARDS.map(func(c): return c[0]).find(Upgrades.weapon), 0)
 
 
+## 底部按键提示：跟着输入设备（键盘 / 手柄）换键名
+func _update_hint() -> void:
+	_hint.text = tr("%s  choose      %s  start      %s  back      You can swap tools in the shop") % [
+		Controls.label("change"), Controls.label("confirm"), Controls.label("back")]
+
+
 func _process(delta: float) -> void:
 	_time += delta
 	_ready_t -= delta
 	for i in _cards.size():
 		var on := i == _selected
-		var target := 1.06 if on else 0.94
-		_cards[i].scale = _cards[i].scale.lerp(Vector2(target, target), 1.0 - exp(-14.0 * delta))
+		# 选中的卡片往上抬 3 像素（取整），不缩放：小数倍缩放会让卡片上的像素字一大一小（美术巡检第 4 条）
+		var lift := (3.0 + _pop) if on else 0.0
+		_lift[i] = lerpf(_lift[i], lift, 1.0 - exp(-14.0 * delta))
+		_cards[i].position.y = CARD_Y - roundf(_lift[i])
 		_cards[i].modulate = _cards[i].modulate.lerp(Color.WHITE if on else Color(0.62, 0.62, 0.66), 1.0 - exp(-14.0 * delta))
 		_cards[i].queue_redraw()
 	if _busy or _ready_t > 0.0:
@@ -176,10 +189,14 @@ func _choose() -> void:
 	for i in _cards.size():
 		if i != _selected:
 			tw.tween_property(_cards[i], "modulate:a", 0.0, 0.25)
-	tw.tween_property(_cards[_selected], "scale", Vector2(1.18, 1.18), 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	# 确认：选中的卡片再往上弹几像素、卡片底闪一下白，不缩放（美术巡检第三轮）
+	_pop = 4.0
+	_cards[_selected].self_modulate = Color(1.8, 1.8, 1.8)
+	tw.tween_property(_cards[_selected], "self_modulate", Color.WHITE, 0.3)
 	await tw.finished
 	await get_tree().create_timer(0.25).timeout
-	SceneFade.go(get_tree(), LEVEL_SCENE)
+	# 开始菜单"选择关卡"选了别的关，就进那一关（Game.start_scene，游戏细节讨论会话加的）
+	SceneFade.go(get_tree(), Game.take_start_scene(LEVEL_SCENE))
 
 
 func _back() -> void:

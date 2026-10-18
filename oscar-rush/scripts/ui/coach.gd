@@ -7,6 +7,7 @@ extends CanvasLayer
 ##   lantern 马灯第一次掉血：它就是你的命（箭头指左上角的灯）
 ##   drop    第一次打完遭遇战：放下马灯的利弊
 ##   low     马灯第一次掉到三成以下：小心，商店能修
+##   tube    第二关开场的气动管冲刺：上 / 下换管（tube_run.gd 调用 _want("tube")，换两次就收）
 ## 另外：每次存档（打完遭遇战）左上角闪一下 CHECKPOINT；从存档点重来时提示一句。
 
 const WARM := Color8(255, 211, 138)
@@ -31,6 +32,8 @@ var _start_x := 0.0
 var _jumped := false
 var _poll := 0.0
 var _last_hp := -1.0
+## 别的地方塞进来的一次性提示：{编号: 文字}（比如每个 Boss 开打时的打法提示）
+var _custom := {}
 ## 有精英正在登场（名字卡在屏幕上方）
 var _card_on := false
 ## 场上有活着的精英（屏幕底部有它的血条）
@@ -68,6 +71,10 @@ func _ready() -> void:
 	# "打完一场 / 灯油会回血"的提示只听真正的回血，不看血量变多（重来、商店修灯也会让血量变多）
 	Run.crystal_healed.connect(func(_amount: float): _want("heal"))
 	Run.resumed.connect(_on_resumed)
+	# 换输入设备时，正在显示的提示当场换成新设备的键名
+	Controls.device_changed.connect(func(_p: bool) -> void:
+		if _tip != "":
+			_label.text = _text(_tip))
 	var scene := get_tree().current_scene
 	if scene and scene.scene_file_path == FIRST_LEVEL:
 		_want("move")
@@ -100,15 +107,29 @@ func _text(tip: String) -> String:
 			return "Clearing a fight and lamp oil from wrecks mend the lantern"
 		"resumed":
 			return "Back at the last cleared fight"
-	return ""
+		"tube":
+			# 第二关开场的气动管冲刺（tube_run.gd 触发）
+			return tr("%s / %s  Switch tube up / down") % [Controls.key_name(s, "jump"), Controls.key_name(s, "down")]
+	return _custom.get(tip, "")
+
+
+## 外面塞一条一次性提示进来（key 用来记"出过了"，一局只出一次；text 已经翻译好）
+func want_text(key: String, text: String) -> void:
+	_custom[key] = text
+	_want(key)
+
+
+## 射击提示每把武器各出一次（商店里换了武器，下一关第一次遇到怪时再教一遍新武器的按法）
+func _seen_key(tip: String) -> String:
+	return "shoot:" + Upgrades.weapon if tip == "shoot" else tip
 
 
 ## 排队等着出（同一时间只出一条）
 func _want(tip: String) -> void:
-	if seen.has(tip) or _queue.has(tip) or _tip == tip:
+	if seen.has(_seen_key(tip)) or _queue.has(tip) or _tip == tip:
 		return
 	if tip != "resumed":
-		seen[tip] = true
+		seen[_seen_key(tip)] = true
 	_queue.append(tip)
 
 
@@ -176,6 +197,10 @@ func _finished() -> bool:
 			return Input.is_action_just_released("%s_attack" % _scheme()) and _tip_t > 0.8 or _tip_t > 9.0
 		"resumed":
 			return _tip_t > 2.5
+		"tube":
+			var run := get_tree().current_scene
+			var n: int = run.get("_switches") if run and run.get("_switches") != null else 0
+			return n >= 2 and _tip_t > 1.0 or _tip_t > 8.0
 	return _tip_t > 6.0
 
 
@@ -184,11 +209,14 @@ func _watch() -> void:
 	_card_on = false
 	_elite_on = false
 	for e in get_tree().get_nodes_in_group("enemy"):
+		# Boss 房：屏幕底部是 Boss 血条，提示框也挪到上面
+		if e.has_method("start_fight") and not e.get("dead"):
+			_elite_on = true
 		if e.has_method("in_intro") and not e.get("dead"):
 			_elite_on = true
 			if e.call("in_intro"):
 				_card_on = true
-	if not seen.has("shoot"):
+	if not seen.has(_seen_key("shoot")):
 		var p := _lead()
 		if p:
 			for e in get_tree().get_nodes_in_group("enemy"):
@@ -208,7 +236,7 @@ func _on_crystal_changed(hp: float, max_hp: float) -> void:
 func _on_checkpoint() -> void:
 	_toast_t = 1.6
 	Game.sfx("ui_confirm", -12.0, 1.2)
-	if seen.has("lantern") or seen.has("shoot"):
+	if seen.has("lantern") or seen.has(_seen_key("shoot")):
 		_want("drop")
 
 

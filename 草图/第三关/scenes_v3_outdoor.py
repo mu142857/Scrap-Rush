@@ -189,7 +189,9 @@ def lamp_post(x, fy, h=45, c=(30, 30, 42), head=(246, 232, 190), arm=1, pool=Non
     floor_shadow(x - 2, x + 2, fy, 2)
     if halo:                                                            # 灯后面的墙被照亮一圈（雨里一团光）
         ax_ = x + arm * 7
-        tone(ellipse_mask(ax_, fy - h + 8, 13, 11) & tv_mask_cache[0] & (k.YY < fy), 1)
+        # 两档：外圈亮一档、里圈再亮一档（2026-10-17 夜：黑白屏里一档太弱，看不出灯后那团光）
+        tone(ellipse_mask(ax_, fy - h + 8, 19, 15) & tv_mask_cache[0] & (k.YY < fy), 1)
+        tone(ellipse_mask(ax_, fy - h + 6, 10, 8) & tv_mask_cache[0] & (k.YY < fy), 1)
     R(x - 1, fy - 3, x + 2, fy, c)
     R(x, fy - h, x + 1, fy, c)
     ax = x + arm * 7
@@ -420,7 +422,8 @@ def sc_rooftop(tv):
     pw = fy - 12                                                               # 矮墙顶
     bands_v(tv, y0, pw, DUSK, jag=1)
     sun = (x0 + int(rw * (0.36 if sz else 0.62)), pw - int(wh * (0.46 if sz else 0.5)))
-    tone(ellipse_mask(*sun, wh * 0.16, wh * 0.13) & (k.YY < pw), 1)
+    tone(ellipse_mask(*sun, wh * 0.16 * 1.35, wh * 0.13 * 1.35) & (k.YY < pw), 1)   # 太阳光晕分两档，外圈淡，不再是一圈硬边
+    tone(ellipse_mask(*sun, wh * 0.16 * 0.8, wh * 0.13 * 0.8) & (k.YY < pw), 1)
     disc(*sun, max(5, wh // 16), (252, 228, 180))
     skyline_sun = sun
     # 远景：三层剪影
@@ -1561,7 +1564,8 @@ def sc_desert(tv):
     rnd = random.Random(131 + sz)
     sun = (x0 + int(rw * 0.8), y0 + int(wh * 0.18))
     bands_v(tv, y0, fy, DESERT_SKY, jag=1)
-    tone(ellipse_mask(*sun, wh * 0.11, wh * 0.10) & m_scr, 1)
+    tone(ellipse_mask(*sun, wh * 0.11 * 1.35, wh * 0.10 * 1.35) & m_scr, 1)   # 太阳光晕分两档，外圈淡，不再是一圈硬边
+    tone(ellipse_mask(*sun, wh * 0.11 * 0.8, wh * 0.10 * 0.8) & m_scr, 1)
     disc(*sun, max(6, wh // 18), (252, 244, 214))
     hz = fy - int(wh * (0.22 if sz else 0.3))
     rr = random.Random(17)

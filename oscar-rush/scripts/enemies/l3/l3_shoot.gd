@@ -6,12 +6,18 @@ extends EnemyBase
 
 enum { PATROL, AIM, FIRE, REST }
 
+## 2026-10-18 作者试玩"没有压迫感"：看得更远（整块屏幕）、瞄得快一点、两枪之间短一点（2.6 → 1.6 秒），
+## 看到人以后不再来回乱走，而是保持一个开枪的距离（离太近往后退，太远往前凑）
 const WALK_SPEED := 16.0
-const SEE_DIST := 150.0
+const KEEP_SPEED := 26.0
+const SEE_DIST := 260.0
 const SEE_HEIGHT := 70.0
-const AIM_TIME := 0.9
+## 想和人保持的水平距离
+const KEEP_NEAR := 70.0
+const KEEP_FAR := 130.0
+const AIM_TIME := 0.7
 const FIRE_TIME := 0.25
-const REST_TIME := 2.6
+const REST_TIME := 1.6
 const STEP_TIME := 0.22
 const BULLET_SPEED := 85.0
 
@@ -34,6 +40,8 @@ func _setup() -> void:
 func _after_ready() -> void:
 	L3Mob.apply_look(self, tint)
 	_cool = randf_range(0.5, 1.5)
+	# 夜间打磨：挨打顿一格、死时抖一下碎几块（见 elite_fx.gd，和第二关的小怪一样）
+	EliteFx.attach_small(self, 6)
 
 
 func _tick(delta: float) -> void:
@@ -41,16 +49,20 @@ func _tick(delta: float) -> void:
 	_cool -= delta
 	match _state:
 		PATROL:
-			if is_on_wall() or (is_on_floor() and not ground_ahead(6.0)):
-				dir = -dir
-			velocity.x = dir * WALK_SPEED * speed_mult()
-			set_frame(int(_time / STEP_TIME) % 2)
 			_target = nearest_player(SEE_DIST)
+			if _target and absf(_target.global_position.y - global_position.y) < SEE_HEIGHT:
+				_keep_range()
+			else:
+				if is_on_wall() or (is_on_floor() and not ground_ahead(6.0)):
+					dir = -dir
+				velocity.x = dir * WALK_SPEED * speed_mult()
+			set_frame(int(_time / STEP_TIME) % 2 if absf(velocity.x) > 2.0 else 0)
 			if _target and _cool <= 0.0 and absf(_target.global_position.y - global_position.y) < SEE_HEIGHT:
 				dir = 1 if _target.global_position.x > global_position.x else -1
 				_state = AIM
 				_timer = AIM_TIME
 				velocity.x = 0.0
+				EliteFx.mark(self, AIM_TIME)
 		AIM:
 			velocity.x = move_toward(velocity.x, 0.0, 400.0 * delta)
 			set_frame(2)
@@ -71,6 +83,24 @@ func _tick(delta: float) -> void:
 	if is_knocked():
 		velocity.x = move_toward(velocity.x, 0.0, 300.0 * delta)
 	move_and_slide()
+
+
+## 看到人、还在冷却：脸一直朝着人，离太近往后退、太远往前凑；脚下没地或撞墙就站住
+func _keep_range() -> void:
+	var dx := _target.global_position.x - global_position.x
+	var face := 1 if dx > 0.0 else -1
+	var move := 0.0
+	if absf(dx) < KEEP_NEAR:
+		move = -face
+	elif absf(dx) > KEEP_FAR:
+		move = face
+	dir = face
+	if move != 0.0:
+		var from := global_position + Vector2(move * 8.0, -2)
+		var q := PhysicsRayQueryParameters2D.create(from, from + Vector2(0, 8), 1)
+		if get_world_2d().direct_space_state.intersect_ray(q).is_empty() or (is_on_wall() and signf(get_wall_normal().x) != move):
+			move = 0.0
+	velocity.x = move_toward(velocity.x, move * KEEP_SPEED * speed_mult(), 300.0 * get_physics_process_delta_time())
 
 
 func _fire() -> void:

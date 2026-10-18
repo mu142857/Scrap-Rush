@@ -24,7 +24,8 @@ var _zoom_target := ZOOM
 
 func _ready() -> void:
 	super._ready()
-	_zoom_target = zoom.x
+	manages_zoom = false
+	_zoom_target = _base_zoom
 
 
 func snap() -> void:
@@ -35,7 +36,7 @@ func snap() -> void:
 		if r.size.x >= SMALL_W and r.size.y >= SMALL_H and _fits(r, _fit_zoom(r)):
 			_zoom_target = _fit_zoom(r)
 			zoom = Vector2(_zoom_target, _zoom_target)
-			global_position = r.get_center()
+			global_position = _clamp_to_bounds(r.get_center(), get_viewport_rect().size * 0.5 / zoom)
 
 
 func _process(delta: float) -> void:
@@ -60,7 +61,8 @@ func _process(delta: float) -> void:
 		global_position.x = clampf(global_position.x, rect.position.x + half.x - MARGIN.x, maxf(rect.position.x + half.x - MARGIN.x, rect.end.x - half.x + MARGIN.x))
 		global_position.y = clampf(global_position.y, rect.position.y + half.y - MARGIN.y, maxf(rect.position.y + half.y - MARGIN.y, rect.end.y - half.y + MARGIN.y))
 		return
-	var target := rect.get_center()
+	# 屏幕贴着关卡边时（harbor、classroom、study……）居中会露出关卡外面几像素到 27 像素，夹回关卡里
+	var target := _clamp_to_bounds(rect.get_center(), get_viewport_rect().size * 0.5 / Vector2(_zoom_target, _zoom_target))
 	global_position = global_position.lerp(target, 1.0 - exp(-LOCK_SPEED * delta))
 	if global_position.distance_to(target) < 0.25:
 		global_position = target
@@ -68,9 +70,11 @@ func _process(delta: float) -> void:
 
 
 func _apply_zoom(delta: float) -> void:
-	var z := lerpf(zoom.x, _zoom_target, 1.0 - exp(-ZOOM_SPEED * delta))
-	if absf(z - _zoom_target) < 0.002:
-		z = _zoom_target
+	# 目标按屏幕倍率对齐（见 GameCamera.pixel_zoom）。_fit_zoom 挑出来的已经对齐过
+	var tgt := pixel_zoom(get_viewport(), _zoom_target)
+	var z := lerpf(zoom.x, tgt, 1.0 - exp(-ZOOM_SPEED * delta))
+	if absf(z - tgt) < 0.002:
+		z = tgt
 	zoom = Vector2(z, z)
 
 
@@ -81,10 +85,13 @@ func _fits(rect: Rect2, z: float) -> bool:
 
 
 func _fit_zoom(rect: Rect2) -> float:
+	# 每一档先按屏幕倍率往小对齐（视野往大取），对齐后还装得下才用；
+	# 3 倍窗口下和原来一样是 2、5/3、4/3、1，别的窗口大小也保证像素是方的
 	for z in ZOOMS:
-		if _fits(rect, z):
-			return z
-	return ZOOMS[2]
+		var zz := pixel_zoom(get_viewport(), z, true)
+		if _fits(rect, zz):
+			return zz
+	return pixel_zoom(get_viewport(), ZOOMS[2], true)
 
 
 ## 所有玩家都在同一块屏幕里，就返回那块；否则返回空

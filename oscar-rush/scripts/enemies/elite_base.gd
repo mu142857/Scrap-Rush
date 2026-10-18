@@ -26,6 +26,18 @@ const INTRO_POSE_END := 1.4
 const INTRO_OUT := 1.75
 ## 落地前最多等这么久（掉进坑里也照样开演）
 const INTRO_MAX_FALL := 3.0
+## 出场时打不动：身上一圈闪动的白边（上下左右各错一格的白色剪影，叠在贴图后面），打上去冒"叮"的护盾火花。
+## 夜间打磨 10-18（新玩家体验报告：原来打不动却没有任何提示，像没打中）
+const SHIELD_COLOR := Color(0.9, 0.96, 1.0)
+const SHIELD_SHADER := """
+shader_type canvas_item;
+render_mode unshaded;
+uniform vec4 tint : source_color = vec4(1.0);
+void fragment() {
+	COLOR = vec4(tint.rgb, texture(TEXTURE, UV).a * tint.a);
+}
+"""
+static var _shield_shader: Shader
 
 ## 屏幕下方显示的名字（英文大写，评委看得懂）
 var elite_name := "ELITE"
@@ -33,6 +45,37 @@ var elite_name := "ELITE"
 var intro_title := ""
 ## 摆招牌姿势时显示的帧，-1 就一直用第 0 帧
 var intro_frame := -1
+
+## 暗处可读性（照总机台、留声机）：> 0 时叠一层不吃光照的同一张图，透明度就是这个值，暗处也看得出形状；
+## 亮处基本看不出差别。顺带预警（warn）期间整只一闪一闪发红。0 = 不叠（总机台、留声机自己叠了一层）
+var fill_alpha := 0.0
+## 预警时贴图一闪一闪发红（只在叠了亮层时生效）；自己在 _update_visual 里管颜色的子类（钢琴、压路机）关掉
+var warn_tint := true
+## 挨打时贴图往被打的方向顿一格（只在叠了亮层时生效；放映机、留声机自己有一套）
+const HIT_JOLT := 0.07
+## 死亡演出（照留声机）：> 0 时先"坏掉"这么多秒——停手、越抖越厉害、红灯接触不良一样闪着灭掉、噼啪冒火星、
+## 呜地一声降调停转——然后才炸开。0 = 原来的一下子炸开（自己做了一套的子类不填）
+var death_time := 0.0
+## 坏掉时摆的姿势（帧号），-1 = 保持当前帧
+var death_frame := -1
+## 炸开时撒废铁碎块（机器）；活物填 false，改成往前扑倒、扬起一大片灰
+var death_scrap := true
+## 碎块的颜色，空 = EliteFx 默认的暖灰 + 铜色（第三关按屏幕色调填）
+var death_colors: Array = []
+## 炸开那一下的声音和溅出来的两把火星（10-18 加）：机器默认"crack"、暖橙火星 + 灰碎屑；
+## 活物（第二关人形精英、守夜巨人）换成倒地的闷响和灰尘、碎布的颜色。EnemyBase 那一声见 death_sfx
+var death_boom_sfx := "crack"
+var death_boom_pitch := 0.5
+var death_spark_colors_big: Array = [Color8(255, 200, 130), Color8(160, 150, 135)]
+## 挨打时贴图往被打的方向顿一格。叠了亮层的自动打开；没叠亮层的子类（第三关）自己设 true
+var hit_jolt := false
+
+## 这一招盯的主角（双人以上用，夜间打磨 10-18，照总机）：每招预警开始时调一次 pick_focus() 选人，整招不换；
+## 出手时用 focus_player()。单人永远是那个人（和原来一样）；两人以上按玩家顺序轮着盯，
+## 不然精英永远只打"最近的"那个，另一个人整场没压力；离得太远（FOCUS_RANGE 外）的跳过，退回最近的
+const FOCUS_RANGE := 320.0
+var focus: Player = null
+var _focus_i := -1
 
 ## 出场动画：< 0 还在往下掉，0 起是落地以后的秒数，到 INTRO_TIME 结束
 var intro_t := -1.0
@@ -45,6 +88,14 @@ var _fall_t := 0.0
 var _fx: Node2D
 var _card: IntroCard
 var _land_pos := Vector2.ZERO
+var _lift_layer: Sprite2D
+var _hit_jolt := 0.0
+var _jolt_dir := 0.0
+## 死亡演出：< 0 没在死，0 起是"坏掉"了多久
+var _death_t := -1.0
+var _death_pop := 0.0
+var _shield: Array[Sprite2D] = []
+var _shield_ping := 0.0
 
 
 func _ready() -> void:
@@ -73,6 +124,30 @@ func _ready() -> void:
 	add_child(_card)
 	# 出场时镜头往这边拉（GameCamera 看 camera_focus 组），出场完了放开
 	add_to_group("camera_focus")
+	# 出场时打不动的白边：四个方向各错一格的白色剪影，放在贴图后面
+	if _shield_shader == null:
+		_shield_shader = Shader.new()
+		_shield_shader.code = SHIELD_SHADER
+	for off in [Vector2(-1, 0), Vector2(1, 0), Vector2(0, -1), Vector2(0, 1)]:
+		var sh := Sprite2D.new()
+		sh.texture = _sprite.texture
+		sh.hframes = hframes
+		sh.centered = false
+		var sm := ShaderMaterial.new()
+		sm.shader = _shield_shader
+		sh.material = sm
+		sh.set_meta("off", off)
+		add_child(sh)
+		move_child(sh, _sprite.get_index())
+		_shield.append(sh)
+	if fill_alpha > 0.0:
+		_lift_layer = Sprite2D.new()
+		_lift_layer.texture = _sprite.texture
+		_lift_layer.hframes = hframes
+		_lift_layer.centered = false
+		_lift_layer.material = unshaded
+		add_child(_lift_layer)
+		move_child(_lift_layer, _sprite.get_index() + 1)
 
 
 ## 头顶的红色"!"：offset 是相对脚底中间的位置，默认在贴图上面 6 像素
@@ -82,20 +157,93 @@ func warn(time := 0.5, offset := Vector2.INF) -> void:
 	Game.sfx("charge", -16.0, 2.2)
 
 
+## 选这一招盯谁（预警开始时调）。fallback 是调用的地方已经找好的最近的人
+func pick_focus(fallback: Player = null) -> Player:
+	var near := fallback if fallback else nearest_player()
+	var ps := get_tree().get_nodes_in_group("player")
+	if ps.size() <= 1:
+		focus = near
+		return focus
+	_focus_i = (_focus_i + 1) % ps.size()
+	var c := ps[_focus_i] as Player
+	if c == null or not is_instance_valid(c) or global_position.distance_to(c.global_position) > FOCUS_RANGE:
+		c = near
+	focus = c
+	return focus
+
+
+## 这一招盯的人；盯的人没了（退出、离开场景）就退回最近的
+func focus_player() -> Player:
+	if is_instance_valid(focus) and focus.is_inside_tree():
+		return focus
+	return nearest_player()
+
+
 func in_intro() -> bool:
 	return intro_t < INTRO_TIME and not dead
 
 
+func dying() -> bool:
+	return _death_t >= 0.0 and not dead
+
+
+func is_targetable() -> bool:
+	return super.is_targetable() and _death_t < 0.0
+
+
 func _physics_process(delta: float) -> void:
-	if in_intro():
+	if dying():
+		_tick_death(delta)
+	elif in_intro():
 		_tick_intro(delta)
 	else:
 		super._physics_process(delta)
+		if _hit_jolt > 0.0 and (_lift_layer or hit_jolt):
+			_hit_jolt -= delta
+			_sprite.position.x += _jolt_dir
 	if _warn_t > 0.0:
 		# 最后一帧减到 0 以下时也重画一次，把"!"擦掉
 		_warn_t -= delta
 		_warn_node.position = _warn_offset
 		_warn_node.queue_redraw()
+	if _lift_layer:
+		_sync_lift()
+	_sync_shield(delta)
+
+
+## 出场时打不动的白边：一闪一闪（打上去那一下全亮），出场完了收起来
+func _sync_shield(delta: float) -> void:
+	_shield_ping = maxf(_shield_ping - delta, 0.0)
+	var on := in_intro() and not dead and _sprite.visible
+	var a := 0.0
+	if on:
+		a = 1.0 if _shield_ping > 0.0 else 0.45 + 0.35 * sin(_time * 18.0)
+	for sh in _shield:
+		sh.visible = on
+		if not on:
+			continue
+		sh.frame = _sprite.frame
+		sh.flip_h = _sprite.flip_h
+		sh.offset = _sprite.offset
+		sh.position = _sprite.position + (sh.get_meta("off") as Vector2)
+		(sh.material as ShaderMaterial).set_shader_parameter("tint", Color(SHIELD_COLOR, a))
+
+
+## 亮层跟着贴图走（帧、翻转、抖动、白闪）；预警时贴图一闪一闪发红，越到最后闪得越快
+func _sync_lift() -> void:
+	if not warn_tint:
+		pass
+	elif _warn_t > 0.0 and not dead:
+		var pulse := 0.5 + 0.5 * sin(_time * (16.0 + 18.0 / maxf(_warn_t, 0.15)))
+		_sprite.modulate = Color.WHITE.lerp(Color(1.8, 0.75, 0.6), pulse * 0.75)
+	else:
+		_sprite.modulate = Color.WHITE
+	_lift_layer.visible = _sprite.visible
+	_lift_layer.frame = _sprite.frame
+	_lift_layer.flip_h = _sprite.flip_h
+	_lift_layer.offset = _sprite.offset
+	_lift_layer.position = _sprite.position
+	_lift_layer.modulate = Color(_sprite.modulate.lerp(Color(3, 3, 3), _flash), fill_alpha)
 
 
 ## 出场动画这段时间代替 EnemyBase._physics_process：只受重力、落地，不调子类的 _tick、不伤人
@@ -233,11 +381,18 @@ func _pixel_circle(c: Vector2, radius: int, col: Color) -> void:
 
 ## 出场时打不动：冒一点火星、响一下，告诉玩家"还没开打"
 func hurt(damage: float, from_dir: Vector2, full: bool) -> void:
+	if _death_t >= 0.0:
+		return
 	if in_intro():
-		Game.sparks(get_parent(), aim_point(), Color8(255, 220, 170), 4, 60.0)
-		Game.sfx("hit", -14.0, 2.2, 0.1)
+		# 护盾挡住："叮"一声、冒一点冷白的火花、白边全亮一下（连发武器时声音 0.12 秒最多一次）
+		Game.sparks(get_parent(), aim_point() - from_dir.normalized() * 6.0, SHIELD_COLOR, 5, 70.0, -from_dir.normalized())
+		if _shield_ping <= 0.0:
+			Game.sfx("ding", -16.0, 1.7, 0.1)
+		_shield_ping = 0.12
 		return
 	super.hurt(damage, from_dir, full)
+	_hit_jolt = HIT_JOLT
+	_jolt_dir = signf(from_dir.x) if from_dir.x != 0.0 else 0.0
 
 
 func _draw_warn() -> void:
@@ -252,13 +407,81 @@ func _draw_warn() -> void:
 
 
 func _die() -> void:
-	Game.sparks(get_parent(), aim_point(), Color8(255, 200, 130), 24, 160.0)
-	Game.sparks(get_parent(), aim_point(), Color8(160, 150, 135), 30, 140.0)
+	# 有死亡演出的：第一次血打空先"坏掉"，演完 _tick_death 再调回来真炸
+	if death_time > 0.0 and _death_t < 0.0:
+		_death_t = 0.0
+		_death_pop = 0.0
+		velocity.x = 0.0
+		_warn_t = 0.0
+		_contact.set_deferred("monitoring", false)
+		Game.hitstop(0.1, 0.25)
+		Game.sfx("crack", -4.0, 0.7)
+		if death_scrap:
+			Game.sfx("jet", -10.0, 0.9)
+		else:
+			Game.sfx("charge", -8.0, 0.4)
+		Game.add_shake(3.0)
+		_flash = 1.0
+		return
+	if death_scrap:
+		if death_colors.is_empty():
+			EliteFx.scrap_burst(get_parent(), Rect2(global_position + body_rect.position, body_rect.size), 22)
+		else:
+			EliteFx.scrap_burst(get_parent(), Rect2(global_position + body_rect.position, body_rect.size), 22, death_colors)
+	else:
+		Game.dust(get_parent(), global_position + Vector2(-body_rect.size.x * 0.3, 0), 14)
+		Game.dust(get_parent(), global_position + Vector2(body_rect.size.x * 0.3, 0), 14)
+		Game.sfx("boom", -4.0, 0.55)
+	Game.sparks(get_parent(), aim_point(), death_spark_colors_big[0], 24, 160.0)
+	Game.sparks(get_parent(), aim_point(), death_spark_colors_big[1], 30, 140.0)
 	Game.flash(Color(1, 0.9, 0.8), 0.25, 0.4)
 	Game.add_shake(6.0)
 	Game.hitstop(0.12, 0.3)
-	Game.sfx("crack", -2.0, 0.5)
+	Game.sfx(death_boom_sfx, -2.0, death_boom_pitch)
 	super._die()
+
+
+## "坏掉"的那一段：不调子类的 _tick、不伤人、打不动。越抖越厉害，红灯接触不良一样闪着灭掉，
+## 身上噼啪冒火星（活物冒灰），机器"呜——"地降调停转；最后半段白闪越来越密，到点真炸
+func _tick_death(delta: float) -> void:
+	_death_t += delta
+	_time += delta
+	var k := clampf(_death_t / death_time, 0.0, 1.0)
+	_flash = maxf(_flash - delta * 6.0, 0.0)
+	velocity.x = move_toward(velocity.x, 0.0, 600.0 * delta)
+	if not flying:
+		velocity.y = minf(velocity.y + gravity * delta, 400.0)
+		move_and_slide()
+	if death_frame >= 0:
+		set_frame(death_frame)
+	# 机器"呜——"地一档一档降调停转
+	if death_scrap:
+		for i in 3:
+			var at_t := death_time * (0.25 + 0.25 * i)
+			if _death_t - delta < at_t and _death_t >= at_t:
+				Game.sfx("jet", -12.0 - 2.0 * i, 0.75 - 0.15 * i)
+	_death_pop -= delta
+	if _death_pop <= 0.0:
+		_death_pop = lerpf(0.22, 0.07, k)
+		var at := global_position + Vector2(randf_range(body_rect.position.x, body_rect.end.x) * 0.8,
+				randf_range(body_rect.position.y, body_rect.end.y) * 0.9)
+		if death_scrap:
+			Game.sparks(get_parent(), at, Color8(255, 210, 140), 4, 70.0)
+			Game.sfx("hit", -16.0, randf_range(1.6, 2.4))
+		else:
+			Game.dust(get_parent(), Vector2(at.x, global_position.y), 2)
+		if k > 0.5:
+			_flash = 0.7
+	_update_visual()
+	var amp := 1.0 if k < 0.6 else 2.0
+	_sprite.position.x += amp if int(_death_t * 30.0) % 2 == 0 else -amp
+	# 红灯：接触不良，越来越常灭，最后全灭
+	_led.visible = _led.visible and k < 0.85 and randf() > k * 0.9
+	(_led.get_child(0) as PointLight2D).energy = 0.9 * (1.0 - k)
+	if _lift_layer:
+		_sync_lift()
+	if _death_t >= death_time:
+		_die()
 
 
 ## 屏幕下方的名字 + 血条。挂在精英怪身上，跟着它一起消失。

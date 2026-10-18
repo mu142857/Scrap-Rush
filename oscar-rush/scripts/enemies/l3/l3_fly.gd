@@ -15,3 +15,10 @@ func _setup() -> void:
 func _after_ready() -> void:
 	super._after_ready()
 	L3Mob.apply_look(self, tint)
+
+
+## 2026-10-18 作者试玩"没有压迫感"：扑灯蛾只扑亮的东西，人把马灯放下、又不蓄力时它就在原地打转。
+## 第三关的飞怪没有亮东西可扑就直接扑人（屏幕外的怪本来就定住，不会隔着屏幕追）
+func _brightest() -> Node2D:
+	var b := super._brightest()
+	return b if b else nearest_player(SENSE_RANGE * 1.8)

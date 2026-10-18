@@ -26,6 +26,9 @@ const SOLIDS: Array[Rect2] = [
 	Rect2(-16, -200, 16, 800),     # 左墙
 	Rect2(1006, -200, 16, 800),    # 右墙
 	Rect2(45, 118, 866, 18),       # 上层：传送带，到 911 为止
+	# 上层左端是一座桁架立柱（美术上从顶一直到传送带下面）。原来是空的：开局往左一走，直接穿过
+	# 中层左端的缺口掉到底层，上层、中层四场遭遇战全跳过（夜间打磨关卡检查抓到的）
+	Rect2(0, 0, 45, 136),          # 上层左端的桁架立柱
 	Rect2(48, 208, 958, 14),       # 中层：桁架走道，左边 0~48 留缺口往下跳
 	# 原来的"Boss 台"现在是会伸缩的桥（Bridge 节点管桥面碰撞）。桥下面从桥面到地面一直是实心：
 	# 桥伸出来以后这块被桥和两根柱子围住，人掉不进去；桥伸出来之前，钢琴那场的闸门挡着，人也过不来
@@ -161,7 +164,7 @@ func _ready() -> void:
 		enc.waves = d["waves"]
 		enc.hazards = d["hazards"]
 		if d.get("opens_bridge", false):
-			enc.finished.connect(_open_bridge)
+			enc.finished.connect(_open_bridge.bind(enc))
 		add_child(enc)
 
 	var first: Player = null
@@ -236,7 +239,13 @@ func _physics_process(_delta: float) -> void:
 
 
 ## 钢琴那场打完：歇一下，桥从右边柱子伸出来，接上左边的柱子，人才能上桥打最后一场
-func _open_bridge() -> void:
+func _open_bridge(enc: Node) -> void:
+	# 从存档点重来、钢琴那场早就打完了（一波怪都没出过）：桥直接是伸出来的样子，不再放 3.5 秒的动画。
+	# 不然桥还在慢慢伸的时候，人能走上桥下面那块还看不见的实心（夜间打磨地形压力测试抓到的）
+	if is_instance_valid(enc) and enc.get("_wave") == -1:
+		if is_instance_valid(_bridge):
+			_bridge.set_state(0.0)
+		return
 	await get_tree().create_timer(0.8, false).timeout
 	if is_instance_valid(_bridge):
 		Game.sfx("whistle", -2.0, 0.9)
@@ -255,7 +264,9 @@ func _retry() -> void:
 	_retrying = true
 	Engine.time_scale = 1.0
 	Run.retry_level()
-	get_tree().reload_current_scene()
+	# 重来也用统一的渐黑渐开（比过关快一点）；先暂停，免得黑下去的那 0.3 秒里马灯又挨打。SceneFade 切场时会解除暂停
+	get_tree().paused = true
+	SceneFade.go(get_tree(), get_tree().current_scene.scene_file_path, 0.3, 0.1, 0.45)
 
 
 func _draw() -> void:

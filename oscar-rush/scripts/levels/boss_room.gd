@@ -12,6 +12,7 @@ func _configure() -> void:
 	fg_tex = preload("res://art/boss/room_fg.png")
 	platforms = [Vector3(20, 76, 128), Vector3(100, 156, 104), Vector3(30, 86, 78)]
 	lamps = [Vector2(80, 16), Vector2(240, 16)]
+	boss_tip = "Embers rain down: stand under a platform"
 	boss_name = "THE STOKER"
 	card_sub = "It burns what you remember."
 	defeat_line = "Somebody else's memories. Burned."

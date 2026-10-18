@@ -140,6 +140,20 @@ func _on_body(body: Node) -> void:
 	_pop()
 
 
+## 被清场（Boss 换阶段、蒸汽锤吹散）时调这个，不要直接 queue_free：
+## 直接删掉的子弹看起来像"飞到一半凭空没了"（作者 10-18 试玩 Boss2 的反馈），这里迸两颗淡火花再没
+## push：被吹散的方向（蒸汽锤），火花顺着这个方向飞，看得出是被吹走的
+func fizzle(push := Vector2.ZERO) -> void:
+	if _done:
+		return
+	_done = true
+	if push == Vector2.ZERO:
+		Game.sparks(get_parent(), global_position, Color(0.85, 0.85, 0.9), 2, 30.0)
+	else:
+		Game.sparks(get_parent(), global_position, Color(0.95, 0.95, 1.0), 4, 90.0, push)
+	queue_free()
+
+
 func _pop() -> void:
 	_done = true
 	var col := Color(1.0, 0.6, 0.25) if kind != Kind.RIVET else Color(0.9, 0.85, 0.8)

@@ -112,6 +112,28 @@ def pad(img, n=2):
     return np.concatenate([np.zeros((n,) + img.shape[1:], img.dtype), img])
 
 
+def squash(img, n, at=0.55):
+    """上半身往下压 n 行：at 以上的部分整体下移，压掉中间 n 行，脚不动（瘫倒、蹲下用）。"""
+    if n <= 0:
+        return img.copy()
+    ys = np.nonzero((img[..., 3] > 0).any(1))[0]
+    y0, y1 = ys.min(), ys.max()
+    cut = y0 + int(at * (y1 - y0))
+    out = img.copy()
+    out[y0:y0 + n] = 0
+    out[y0 + n:cut + 1] = img[y0:cut + 1 - n]
+    return out
+
+
+def tilt(img, k, below=None):
+    """往前探（k>0）或往后仰（k<0）：越往上挪得越多，below 以下不动。"""
+    H = img.shape[0]
+    ys = np.nonzero((img[..., 3] > 0).any(1))[0]
+    y0 = ys.min()
+    b = below if below is not None else ys.max()
+    return shift_rows(img, [-round(k * max(0, b - y) / max(1, b - y0)) for y in range(H)])
+
+
 def lift(img, n):
     """整张往上挪 n 行（落地帧以外的整体起伏）。"""
     if n <= 0:
@@ -143,7 +165,9 @@ def op_body():
     m[H - 1, 6:19] = True                                                # 拖地：最后一行大部分贴地
     img = light_planes(m, OP_R, light=LIGHT, contrast=0.65, ambient=0.55, top_dark=0.55, rim=1,
                        folds=[((11, 9), (8, 24), 4), ((15, 8), (14, 24), 4), ((18, 14), (19, 24), 2)])
-    img = face(img, 8, 4, OP_OPEN, OP_DARK, OP_R[6], (1, 1))
+    img = face(img, 8, 4, OP_OPEN, OP_DARK, OP_R[6], (0, 1))
+    put(img, 9, 6, OP_A[2])                                              # 鼻尖（活人：帽兜里露出一点脸）
+    put(img, 10, 6, OP_A[1])
     # 话筒：从帽兜里伸到嘴前面的一根弯管，头上一个小喇叭口
     for x, y, c in [(8, 8, OP_A[0]), (7, 9, OP_A[0]), (6, 9, OP_A[1]), (5, 10, OP_A[1]), (4, 10, OP_A[2]),
                     (3, 10, OP_A[2]), (3, 11, OP_A[1]), (4, 11, OP_A[1])]:
@@ -194,6 +218,15 @@ def operator_frames():
     # 甩：身子往前探一格
     fwd = shift_rows(body, [-1 if y < 16 else 0 for y in range(H)])
     frames.append(over(feet(fwd, 1, (7, 15), OP_R[1], H - 1), pad(op_arm(2))))
+    still = feet(body, 0, (7, 15), OP_R[1], H - 1)
+    # 6 挨打后仰：上半身往后一仰，手臂跟着甩
+    frames.append(tilt(over(still, pad(op_arm(0))), -2, below=H - 8))
+    # 7 倒下：瘫成一堆，电话线散在地上
+    heap = squash(over(still, pad(op_arm(0))), 12, at=0.8)
+    for x in range(2, 7):
+        put(heap, x, H - 1, OP_R[4] if x % 2 else OP_R[3])
+    put(heap, 1, H - 1, OP_A[2])
+    frames.append(heap)
     return frames
 
 
@@ -217,7 +250,8 @@ def us_body():
     m = ragged_hem(m, depth=2, seed=8)
     img = light_planes(m, US_R, light=LIGHT, contrast=0.85, ambient=0.5, top_dark=0.45,
                        folds=[((9, 11), (4, 24), 3), ((13, 10), (11, 24), 4), ((17, 12), (19, 24), 3)])
-    img = face(img, 9, 4, US_OPEN, US_DARK, US_R[6], (1, 1))
+    img = face(img, 9, 4, US_OPEN, US_DARK, US_R[6], (0, 1))
+    put(img, 10, 6, US_A[1])                                             # 鼻尖
     # 小圆帽：帽顶亮、帽檐暗
     for x in range(10, 15):
         put(img, x, 1, US_R[6])
@@ -266,6 +300,13 @@ def usher_frames():
     frames.append(over(feet(body, 0, (6, 16), US_R[1], H - 1), pad(us_arm(1))))
     back = shift_rows(body, [1 if y < 18 else 0 for y in range(H)])
     frames.append(over(feet(back, 0, (6, 16), US_R[1], H - 1), pad(us_arm(2))))
+    still = feet(body, 0, (6, 16), US_R[1], H - 1)
+    frames.append(tilt(over(still, pad(us_arm(0))), -2, below=H - 8))
+    # 倒下：瘫成一堆，手电滚在身前的地上，镜片还亮着一点
+    heap = squash(still, 12, at=0.8)
+    for x, c in [(1, US_A[1]), (2, US_A[0]), (3, US_A[0])]:
+        put(heap, x, H - 1, c)
+    frames.append(heap)
     return frames
 
 
@@ -308,7 +349,7 @@ def au_seated():
     m = mask(W, H, outline)
     img = light_planes(m, AU_R, light=LIGHT, contrast=0.45, ambient=0.6, top_dark=0.3, rim=1)
     img = film_bands(img, m, [(7, 17, 19, 13), (4, 21, 19, 18)])
-    img = face(img, 8, 12, AU_OPEN, AU_DARK, AU_R[6], (1, 1))
+    img = face(img, 8, 12, AU_OPEN, AU_DARK, AU_R[6], (0, 1))
     # 膝盖：两团亮一点的凸起
     for x in (4, 5):
         put(img, x, 19, AU_R[5])
@@ -324,7 +365,7 @@ def au_standing(lean=0):
     m = ragged_hem(m, depth=2, seed=5)
     img = light_planes(m, AU_R, light=LIGHT, contrast=0.6, ambient=0.55, top_dark=0.4, rim=1)
     img = film_bands(img, m, [(8, 12, 17, 8), (8, 18, 18, 14)])
-    img = face(img, 10, 4, AU_OPEN, AU_DARK, AU_R[6], (1, 1))
+    img = face(img, 10, 4, AU_OPEN, AU_DARK, AU_R[6], (0, 1))
     if lean:
         img = shift_rows(img, [-round(lean * max(0, 14 - y) / 7) for y in range(H)])
     return img
@@ -372,6 +413,10 @@ def audience_frames():
     crouch = over(crouch, au_arms("hang"))
     frames.append(crouch)
     frames.append(over(au_standing(lean=3), au_arms("reach", lean=3)))
+    standing = over(stand, au_arms("hang"))
+    frames.append(tilt(standing, -2, below=AU_H - 6))
+    # 倒下：胶片散开，瘫成一堆
+    frames.append(squash(standing, 10, at=0.8))
     return frames
 
 
@@ -425,6 +470,15 @@ def main():
     allf = {}
     for name, title, fn, show in MONSTERS:
         fr, origin = trim_all(fn())
+        eyes = []
+        for f in fr:
+            ys, xs = np.nonzero((f[..., 0] == EYE[0]) & (f[..., 1] == EYE[1]) & (f[..., 2] == EYE[2]) & (f[..., 3] > 0))
+            eyes.append((int(xs[0]), int(ys[0])) if len(xs) else None)
+        dark = {"hooded_operator": OP_DARK, "usher": US_DARK, "audience": AU_DARK}[name]
+        for f in fr:
+            m = (f[..., 0] == EYE[0]) & (f[..., 1] == EYE[1]) & (f[..., 2] == EYE[2]) & (f[..., 3] > 0)
+            f[m] = rgba(dark)
+        print(f"  {name} 前面那只眼睛每帧 {eyes}")
         w, h = save_strip(name, fr)
         allf[name] = fr
         print(f"{name}.png: {len(fr)} 帧，每帧 {w}x{h}，裁掉的左上角 {origin}")

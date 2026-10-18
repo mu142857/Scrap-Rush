@@ -25,7 +25,8 @@ var _zoom_target := ZOOM
 
 func _ready() -> void:
 	super._ready()
-	_zoom_target = zoom.x
+	manages_zoom = false
+	_zoom_target = _base_zoom
 
 
 ## 天桥上缩到 1 倍；下了天桥回到平时的倍数
@@ -37,15 +38,35 @@ func set_wide(on: bool) -> void:
 
 
 ## 画面在关卡里的范围（按现在的缩放，不含震屏）
+## 天桥的烧穿边、右边的空气墙、换卷战的场子宽度都按它算。
+## 镜头的 zoom 会按屏幕倍率对齐（GameCamera.pixel_zoom），窗口很小（无窗口测试）时算出来的画面会窄得离谱，
+## 那时退回设计尺寸（480×270 除以想要的倍数），免得场子只有几十像素宽。
+## 主角瞬移以后：忘掉记着的上一帧位置（GameCamera 自己按物理帧插值，不清的话还会按瞬移前的位置算），再直接对准
+func teleported() -> void:
+	_prev.clear()
+	_curr.clear()
+	forget_ground()
+	snap()
+
+
 func view_rect() -> Rect2:
 	var half := get_viewport_rect().size * 0.5 / zoom
+	if half.x * 2.0 < 240.0:
+		half = Vector2(480, 270) * 0.5 / maxf(_zoom_target, 0.5)
 	return Rect2(global_position - half, half * 2.0)
 
 
 func _process(delta: float) -> void:
-	var z := lerpf(zoom.x, _zoom_target, 1.0 - exp(-ZOOM_SPEED * delta))
-	if absf(z - _zoom_target) < 0.002:
-		z = _zoom_target
+	# 目标按屏幕倍率对齐（见 GameCamera.pixel_zoom），过渡途中是小数没关系
+	var tgt := pixel_zoom(get_viewport(), _zoom_target)
+	# 平时（不在天桥上、不坐管子）合作两人拉开时往外拉，见 GameCamera.coop_fit_zoom
+	if not scrolling and chase == null:
+		var fit := coop_fit_zoom()
+		if fit < tgt:
+			tgt = maxf(pixel_zoom(get_viewport(), fit, true), 1.0)
+	var z := lerpf(zoom.x, tgt, 1.0 - exp(-ZOOM_SPEED * delta))
+	if absf(z - tgt) < 0.002:
+		z = tgt
 	zoom = Vector2(z, z)
 	if is_instance_valid(chase):
 		var h := get_viewport_rect().size * 0.5 / zoom

@@ -45,6 +45,11 @@ func _setup() -> void:
 	contact_damage = 10.0
 
 
+func _after_ready() -> void:
+	# 夜间打磨：挨打顿一格、死时抖一下碎几块（见 elite_fx.gd）
+	EliteFx.attach_small(self, 7, 0.35)   # 0.35：第二关机房很暗，叠一层暗处亮层
+
+
 func _tick(delta: float) -> void:
 	_timer -= delta
 	_cooldown -= delta
@@ -86,6 +91,7 @@ func _walk() -> void:
 			_state = WINDUP
 			_timer = WINDUP_TIME / speed_mult()
 			Game.sfx("ready", -10.0, 1.4, 0.05)
+			EliteFx.mark(self, _timer)
 			return
 		tx = _lamp.global_position.x
 	else:

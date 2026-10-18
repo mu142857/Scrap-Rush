@@ -40,7 +40,7 @@ const NAMES := {
 	"plating": ["PLATING", "blocks a hit every %ds"],
 	"damping": ["DAMPER", "emotion rises 20% slower"],
 	"repair": ["REPAIR LANTERN", "lantern +25"],
-	"refresh": ["REFRESH", "new weapons & mutations"],
+	"refresh": ["REFRESH", "restock + new mutations"],
 	"flash": ["FLASH LAMP", "hold to charge, full shot pierces"],
 	"hammer": ["STEAM HAMMER", "steam blast all around you"],
 	"tongs": ["SHOCK TONGS", "arc jumps 3 (5 when full)"],
@@ -62,6 +62,16 @@ const INFO_RECT := Rect2(96, 2, 288, 56)
 ## 选武器界面那三把的数值（POWER / RATE / REACH），信息卡上照样画格子条；没有的武器不画
 const WEAPON_CARDS := preload("res://scripts/ui/weapon_select.gd").CARDS
 const INTRO_TIME := 6.0
+## 第一次进店：进门提示多两页（零件是什么、买什么划算、拉杆是刷新），每页 4 秒。
+## 站到货前面时照常显示那件货，走开后接着翻没看完的页
+const GUIDE_PAGE := 4.0
+const GUIDE := [
+	["SPEND YOUR PARTS", "parts: one drops after every fight", "", "part"],
+	["WHAT'S WORTH IT", "gear (1 part): small boost, up to Lv3", "mutation (2): changes every attack", "charge"],
+	["LEVER: REFRESH", "first pull free: new mutations", "sold-out items come back too", "refresh"],
+]
+## 这一局里是不是已经带着看过一次了（只有第一次进店多翻两页）
+static var guided := false
 
 var _stands: Array[ShopStand] = []
 var _weapon_slots: Array[ShopStand] = []
@@ -75,11 +85,19 @@ var _info_box: Control
 var _info_lines: Array[Label] = []
 var _info_focus: ShopStand = null
 var _info_intro := INTRO_TIME
+var _guide := false
+var _guide_t := 0.0
 var _card_icon := "part"
 var _card_kind := ""
 var _card_pop := 0.0
 var _card_deny := 0.0
 var _key := "V"
+var _counter: PartsCounter
+var _ui: CanvasLayer
+## 进门小演出：篝火噗地亮一下、冒一把火星，围着火坐的船员挨个抬头看你（时间从进门算）
+var _intro_t := 0.0
+var _flared := false
+var _flare := 0.0
 
 
 func _ready() -> void:
@@ -122,7 +140,8 @@ func _ready() -> void:
 		Upgrades.apply(p)
 
 	var exit_sign := HintSign.new()
-	exit_sign.zone = Rect2(380, 150, 100, 120)
+	# 人走到能看见出口牌子的地方（镜头 2 倍放大，右边 120 像素）牌子就亮
+	exit_sign.zone = Rect2(300, 150, 180, 120)
 	exit_sign.position = Vector2(462, 236)
 	exit_sign.text = "Exit"
 	exit_sign.arrow = "right"
@@ -141,8 +160,16 @@ func _ready() -> void:
 	var counter := PartsCounter.new()
 	counter.position = Vector2(10, 24)
 	ui.add_child(counter)
+	_counter = counter
+	_ui = ui
 	if not Run.players.is_empty():
 		_key = Controls.key_name(Run.players[0]["input"], "crystal")
+	# 玩家中途换了键盘 / 手柄，"V 买"跟着变成对应的键（信息卡每帧都会重写，换完下一帧就生效）
+	Controls.device_changed.connect(_on_device_changed)
+	if not guided:
+		guided = true
+		_guide = true
+		_info_intro = GUIDE_PAGE * GUIDE.size()
 	_build_info_box(ui)
 	Run.crystal_changed.emit(Run.crystal_hp, Run.crystal_max)
 
@@ -199,6 +226,8 @@ func _add_crew() -> void:
 				unshaded.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
 				sp.material = unshaded
 			sp.set_meta("phase", seat * 0.37)
+			sp.set_meta("seat", seat)
+			sp.set_meta("base", s["pos"])
 			add_child(sp)
 			_crew.append(sp)
 		seat += 1
@@ -232,15 +261,25 @@ func _stand(id: String, pos: Vector2) -> ShopStand:
 	return st
 
 
-## 武器 2 把、变异 2 个：从身上没有的里面随机挑
+## 武器 2 把、变异 2 个：从身上没有的里面随机挑。
+## 武器只有 3 把，去掉身上的正好剩 2 把，所以武器格刷新只是补货（买走的那格补回来）。
+## 变异去掉身上的剩 3 个、摆 2 个：刷新时先放刚才没摆出来的，保证至少换出一个新的，不会花了零件还是原样
 func _restock() -> void:
 	var w := Upgrades.WEAPONS.filter(func(x): return x != Upgrades.weapon)
 	var m := Upgrades.MUTATIONS.filter(func(x): return x != Upgrades.mutation)
 	w.shuffle()
-	m.shuffle()
+	var shown: Array = []
+	for st in _mutation_slots:
+		if st.item != "":
+			shown.append(st.item)
+	var fresh := m.filter(func(x): return not x in shown)
+	var old := m.filter(func(x): return x in shown)
+	fresh.shuffle()
+	old.shuffle()
+	var pick: Array = fresh + old
 	for i in 2:
-		_weapon_slots[i].item = w[i]
-		_mutation_slots[i].item = m[i]
+		_weapon_slots[i].item = w[i] if i < w.size() else ""
+		_mutation_slots[i].item = pick[i] if i < pick.size() else ""
 	_update_all()
 
 
@@ -306,6 +345,9 @@ func _on_buy(st: ShopStand, p: Player) -> void:
 	if not info.get("can_buy", false):
 		st.deny()
 		_card_deny = 1.0
+		# 零件不够：左上角零件数也变红抖一下，告诉你缺的是零件
+		if _counter and int(info.get("price", 0)) > Run.parts:
+			_counter.deny()
 		Game.sfx("ui_back", -8.0)
 		return
 	var price: int = info.get("price", 0)
@@ -327,6 +369,7 @@ func _on_buy(st: ShopStand, p: Player) -> void:
 			st.item = ""
 	if price > 0:
 		Run.add_part(-price)
+		_fly_parts(p, st, price)
 	if st.id == "refresh":
 		_restock()
 	st.pop()
@@ -335,6 +378,27 @@ func _on_buy(st: ShopStand, p: Player) -> void:
 	Game.sfx("lantern_pick", -10.0, 1.2)
 	Game.sparks(self, st.global_position, Color8(255, 211, 138), 8, 60.0)
 	_update_all()
+
+
+func _on_device_changed(_using_pad: bool) -> void:
+	if not Run.players.is_empty():
+		_key = Controls.key_name(Run.players[0]["input"], "crystal")
+
+
+## 买到东西：零件一颗颗从人身上飞到货上，每落下一颗"叮"一声（越来越高）。
+## 左上角零件数旁边飘的"-N"由 PartsCounter 自己出
+func _fly_parts(p: Player, st: ShopStand, price: int) -> void:
+	for i in price:
+		var f := PartFly.new()
+		f.from = p.global_position + Vector2(0, -14)
+		f.to = st.global_position
+		f.delay = i * 0.09
+		var last := i == price - 1
+		f.on_arrive = func():
+			Game.sfx("ding", -16.0, 1.5 + 0.12 * i)
+			if last and is_instance_valid(st):
+				st.pop()
+		add_child(f)
 
 
 ## 信息卡：和开局选武器界面同一套画法（UiStyle）。左边一格放大 3 倍的图标，右边名字 / 说明 / 价钱三行，
@@ -364,7 +428,14 @@ func _set_info(lines: Array, colors: Array) -> void:
 func _show_intro() -> void:
 	_card_icon = "part"
 	_card_kind = "intro"
-	_set_info(["SPEND YOUR PARTS", "walk up to a glowing item", tr("%s: BUY") % _key],
+	if _guide:
+		var page: Array = GUIDE[mini(int(_guide_t / GUIDE_PAGE), GUIDE.size() - 1)]
+		_card_icon = page[3]
+		var third: String = page[2] if page[2] != "" else tr("%s: BUY      EXIT: KEEP RIGHT") % _key
+		_set_info([page[0], page[1], third], [UiStyle.WARM, UiStyle.TEXT, UiStyle.WARM if page[2] == "" else UiStyle.TEXT])
+		return
+	# 第三行顺便说出口在哪：进门时出口在画面外（夜间打磨：出口不好找）
+	_set_info(["SPEND YOUR PARTS", "walk up to a glowing item", tr("%s: BUY      EXIT: KEEP RIGHT") % _key],
 			[UiStyle.WARM, UiStyle.TEXT, UiStyle.WARM])
 
 
@@ -380,7 +451,9 @@ func _update_info_box(delta: float) -> void:
 	if focus != _info_focus and focus != null:
 		Game.sfx("ui_move", -12.0)
 	if focus:
-		_info_intro = 0.0
+		# 第一次进店：站到货前面先看货，走开后接着翻引导，不清掉
+		if not _guide:
+			_info_intro = 0.0
 		var info := focus.info
 		var price_line := ""
 		var price_col := UiStyle.WARM
@@ -394,7 +467,7 @@ func _update_info_box(delta: float) -> void:
 		elif focus.can_buy():
 			var price: int = info.get("price", 0)
 			price_line = ((tr("%d PARTS      %s: BUY") if price > 1 else tr("%d PART      %s: BUY")) % [price, _key]) if price > 0 \
-					else (tr("FREE      %s: PULL") % _key)
+					else (tr("FREE REROLL      %s: PULL") % _key)
 		else:
 			var price: int = info.get("price", 0)
 			price_line = (tr("NEED %d PARTS  (YOU HAVE %d)") if price > 1 else tr("NEED %d PART  (YOU HAVE %d)")) % [price, Run.parts] \
@@ -408,6 +481,8 @@ func _update_info_box(delta: float) -> void:
 		_info_box.position = INFO_RECT.position + Vector2(roundf(sin(focus.shake * 60.0) * 2.0 * signf(focus.shake)), 0)
 	elif _info_intro > 0.0:
 		_info_intro -= delta
+		if _guide:
+			_guide_t += delta
 		_show_intro()
 		_info_box.visible = true
 		_info_box.position = INFO_RECT.position
@@ -463,10 +538,21 @@ func _draw_card() -> void:
 func _process(delta: float) -> void:
 	_time += delta
 	_update_info_box(delta)
+	# 进门 0.5 秒（转场淡入差不多完了）篝火噗地亮一下
+	_intro_t += delta
+	if not _flared and _intro_t >= 0.5:
+		_flared = true
+		_flare = 1.0
+		Game.sfx("embers", -8.0, 1.1)
+		Game.sparks(self, Vector2(FIRE_X, FLOOR_LOW - 6), UiStyle.WARM, 14, 70.0, Vector2.UP)
+	_flare = maxf(_flare - delta * 1.2, 0.0)
 	# 篝火的光一抖一抖
-	_fire_light.energy = 0.7 + 0.06 * sin(_time * 7.0) + 0.04 * sin(_time * 17.3)
+	_fire_light.energy = 0.7 + 0.06 * sin(_time * 7.0) + 0.04 * sin(_time * 17.3) + 0.9 * _flare
 	for sp in _crew:
 		sp.frame = int((_time + float(sp.get_meta("phase"))) / 0.2) % 4
+		# 火一亮，船员挨个抬头（往上 1 像素）看一眼
+		var since := _intro_t - 0.65 - 0.12 * int(sp.get_meta("seat", 0))
+		sp.position = sp.get_meta("base", sp.position) + Vector2(0, -1 if since > 0.0 and since < 0.35 else 0)
 
 
 func _physics_process(_delta: float) -> void:

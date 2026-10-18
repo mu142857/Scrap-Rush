@@ -17,7 +17,7 @@ const MOVE_SPEED := 16.0
 const WALK_FRAME_TIME := 0.2
 ## 离主角这么近就不再往前挪
 const STOP_DIST := 34.0
-const MOVE_TIME := Vector2(2.0, 2.8)
+const MOVE_TIME := Vector2(0.6, 1.0)  # 10-18 作者：招和招之间停太久
 ## 主角在前面这么远以内才开始吸
 const SUCK_RANGE := 190.0
 const SUCK_WARN := 0.6
@@ -39,7 +39,7 @@ const DEBRIS := 7
 const DEBRIS_SPREAD := 0.5
 const DEBRIS_SPEED := Vector2(120.0, 170.0)
 const DEBRIS_DAMAGE := 8.0
-const RECOVER_TIME := 0.9
+const RECOVER_TIME := 0.6
 ## 吸嘴（抬起时）相对脚底中点的位置，朝左
 const MOUTH := Vector2(-18, -14)
 ## 吸头平放在地上（走路、预警）时，嘴的前端
@@ -56,23 +56,36 @@ var _drain_t := 0.0
 ## 刚吐出来的马灯短时间内不再被身子碰到
 var _spat_t := 0.0
 var _suck_fx: CPUParticles2D
+## 吸的范围 / 喷的扇面的提示（夜间打磨 10-18：原来预警时看不出吸多远，开吸以后也只有一点灰）
+var _zone_fx: Node2D
 
 
 func _setup() -> void:
 	elite_name = "VACUUM"
 	intro_title = "CLEAN SWEEP"
 	intro_frame = 5
+	fill_alpha = 0.35
+	death_time = 1.1
+	death_frame = 6
 	texture_path = "res://art/enemies/vacuum.png"
 	hframes = 7
 	frame_size = Vector2i(46, 20)
 	body_rect = Rect2(-22, -19, 44, 19)
 	led_pixel = Vector2i(20, 4)
-	max_hp = 1200.0
+	max_hp = 2300.0  # 10-18 作者：血不够，三把武器 20～35 秒
 	contact_damage = 10.0
 	_move_time = 1.6
 
 
 func _after_ready() -> void:
+	_zone_fx = Node2D.new()
+	_zone_fx.top_level = true
+	_zone_fx.z_index = 5
+	var zmat := CanvasItemMaterial.new()
+	zmat.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+	_zone_fx.material = zmat
+	_zone_fx.draw.connect(_draw_zone)
+	add_child(_zone_fx)
 	# 吸的时候嘴前面一股灰往嘴里收
 	_suck_fx = CPUParticles2D.new()
 	_suck_fx.emitting = false
@@ -104,7 +117,11 @@ func _tick(delta: float) -> void:
 			if _state_t >= _move_time * interval_mult() and is_on_floor() and p \
 					and absf(p.global_position.x - global_position.x) < SUCK_RANGE \
 					and absf(p.global_position.y - global_position.y) < 60.0:
-				_face(p)
+				var t := pick_focus(p)
+				# 轮到的人不在能吸的范围里就还是吸最近的
+				if absf(t.global_position.x - global_position.x) >= SUCK_RANGE or absf(t.global_position.y - global_position.y) >= 60.0:
+					focus = p
+				_face(focus)
 				_suck_dir = dir
 				warn(SUCK_WARN)
 				_enter(State.SUCK_WARN)
@@ -145,6 +162,7 @@ func _tick(delta: float) -> void:
 				_enter(State.MOVE)
 	move_and_slide()
 	_hold_crystal(delta)
+	_zone_fx.queue_redraw()
 
 
 func _enter(s: State) -> void:
@@ -309,6 +327,53 @@ func _on_hurt(_damage: float, _full: bool) -> void:
 		_held_hits += 1
 		if _held_hits >= HELD_HITS:
 			_release()
+
+
+## 吸的范围：预警时从吸嘴往外"量"出去（0.6 秒量满 120），范围的远端立一道竖的虚线，
+## 范围里三排往吸嘴指的小箭头一闪一闪；开吸以后箭头一排排往嘴里跑。
+## 喷之前：吸嘴前面三道虚线标出碎屑喷的扇面。都不吃压暗
+func _draw_zone() -> void:
+	if dead or dying() or in_intro():
+		return
+	var col := Color(0.82, 0.8, 0.74)
+	if state == State.SUCK_WARN or state == State.SUCK:
+		var z := _zone()
+		var m := mouth_point()
+		var reach := ZONE_LENGTH * (clampf(_state_t / SUCK_WARN, 0.0, 1.0) if state == State.SUCK_WARN else 1.0)
+		var far_x := roundf(m.x + _suck_dir * reach)
+		var top := roundf(z.position.y)
+		var bottom := roundf(z.end.y) - 1.0
+		var blink := state == State.SUCK or int(_state_t * 12.0) % 2 == 0
+		var a := 0.55 if state == State.SUCK_WARN else 0.3
+		# 远端的竖虚线
+		var y := top
+		while y <= bottom:
+			_zone_fx.draw_rect(Rect2(far_x, y, 1, 2), Color(col, a))
+			y += 4.0
+		if not blink:
+			return
+		# 三排往吸嘴指的箭头（< 形，指向吸嘴那边）
+		var scroll := fmod(_state_t * 50.0, 16.0) if state == State.SUCK else 0.0
+		for row in 3:
+			var ry := roundf(top + ZONE_HEIGHT * (0.25 + 0.25 * row))
+			var k := 12.0 - scroll
+			while k < reach - 4.0:
+				var x := roundf(m.x + _suck_dir * k)
+				var d := -float(_suck_dir)          # 箭头尖朝吸嘴
+				_zone_fx.draw_rect(Rect2(x, ry, 1, 1), Color(col, a))
+				_zone_fx.draw_rect(Rect2(x - d, ry - 1, 1, 1), Color(col, a))
+				_zone_fx.draw_rect(Rect2(x - d, ry + 1, 1, 1), Color(col, a))
+				k += 16.0
+	elif state == State.SPIT_WARN and int(_state_t * 12.0) % 2 == 0:
+		var m2 := mouth_point()
+		var fwd := float(_suck_dir)
+		for a2 in [-DEBRIS_SPREAD - 0.12, -0.12, DEBRIS_SPREAD - 0.12]:
+			var v := Vector2(fwd, 0).rotated(a2 * fwd)
+			for i in range(3, 13):
+				if i % 2 == 0:
+					continue
+				var p := (m2 + v * i * 4.0).round()
+				_zone_fx.draw_rect(Rect2(p, Vector2.ONE), Color(1.0, 0.6, 0.45, 0.8))
 
 
 func _on_die() -> void:

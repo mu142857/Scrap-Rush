@@ -484,6 +484,8 @@ def rocket(x, fy):
 
 
 def stars(x0, y0, x1, y1, n=9):
+    if x1 < x0 or y1 < y0:                     # 墙很矮的小屏：放不下就不贴
+        return
     for _ in range(n):
         sx, sy = random.randint(x0, x1), random.randint(y0, y1)
         for dx, dy in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:

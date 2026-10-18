@@ -11,6 +11,10 @@ signal moved
 const BRIDGE_TEX := preload("res://art/levels/scene1_bridge.png")
 const CRANE_TEX := preload("res://art/levels/scene1_crane.png")
 const FRAMES := 27
+## 每帧多大。27 帧原来横排一行，桥那张有 9720 宽，超过 WebGL2 保证的 2048，手机、集显上可能画不出来；
+## 现在导出时排成多行（每行不超过 2048 宽，tools/export_art.py），这里按贴图大小算几列几行，帧号照旧按行数
+const BRIDGE_FRAME := Vector2i(360, 37)
+const CRANE_FRAME := Vector2i(91, 161)
 const FRAME_TIME := 0.1
 const BRIDGE_POS := Vector2(449, 343)
 const CRANE_POS := Vector2(912, 0)
@@ -31,8 +35,8 @@ var _rumble: AudioStreamPlayer
 
 
 func _ready() -> void:
-	_crane = _sheet(CRANE_TEX, CRANE_POS, -16)
-	_bridge = _sheet(BRIDGE_TEX, BRIDGE_POS, -15)
+	_crane = _sheet(CRANE_TEX, CRANE_POS, -16, CRANE_FRAME)
+	_bridge = _sheet(BRIDGE_TEX, BRIDGE_POS, -15, BRIDGE_FRAME)
 	var body := StaticBody2D.new()
 	body.collision_layer = 1
 	_shape = CollisionShape2D.new()
@@ -50,10 +54,11 @@ func _ready() -> void:
 	_apply()
 
 
-func _sheet(tex: Texture2D, pos: Vector2, z: int) -> Sprite2D:
+func _sheet(tex: Texture2D, pos: Vector2, z: int, cell: Vector2i) -> Sprite2D:
 	var s := Sprite2D.new()
 	s.texture = tex
-	s.hframes = FRAMES
+	s.hframes = tex.get_width() / cell.x
+	s.vframes = tex.get_height() / cell.y
 	s.centered = false
 	s.position = pos
 	s.z_index = z

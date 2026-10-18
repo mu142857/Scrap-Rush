@@ -201,11 +201,17 @@ def reel_glow(body):
             c = tuple(int(v) for v in body[y, x, :3])
             d = ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5
             if c == RGB[8]:
-                out[y, x] = hi
+                col = hi
             elif c == RGB[6] and d > 5.0:
-                out[y, x] = rim
+                col = rim
             elif c in (RGB["r1"], RGB["r2"]):
-                out[y, x] = film
+                col = film
+            else:
+                continue
+            # 风格检查器不收半透明：把亮边色按原来的透明度和本体那一格先混好，存成不透明
+            a = col[3] / 255.0
+            mix = [round(col[i] * a + int(body[y, x, i]) * (1.0 - a)) for i in range(3)]
+            out[y, x] = (*mix, 255)
     return out
 
 

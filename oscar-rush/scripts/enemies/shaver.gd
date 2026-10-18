@@ -49,6 +49,8 @@ func _after_ready() -> void:
 	_glint.draw.connect(_draw_glint)
 	_glint.visible = false
 	add_child(_glint)
+	# 夜间打磨：挨打顿一格、死时抖一下碎几块（见 elite_fx.gd，和第二关的小怪一样）
+	EliteFx.attach_small(self, 5)
 
 
 func _tick(delta: float) -> void:
@@ -76,10 +78,11 @@ func _tick(delta: float) -> void:
 
 
 func _patrol() -> void:
-	if not is_knocked():
-		velocity.x = dir * PATROL_SPEED * speed_mult()
 	if is_on_floor() and not is_knocked() and (is_on_wall() or not ground_ahead()):
 		dir = -dir
+	# 先掉头再定速度：反过来的话，掉头这一帧还按旧方向撞墙，is_on_wall 又是真，下一帧再掉回去，贴着墙每帧左右抖（夜间打磨怪物地形测试抓到的）
+	if not is_knocked():
+		velocity.x = dir * PATROL_SPEED * speed_mult()
 	_walk_frames()
 	_target = _find_target()
 	if _target:
@@ -115,6 +118,7 @@ func _circle() -> void:
 		_timer = WINDUP_TIME
 		set_frame(2)
 		Game.sfx("ready", -8.0, 1.8, 0.05)
+		EliteFx.mark(self, WINDUP_TIME)
 
 
 func _start_dash() -> void:

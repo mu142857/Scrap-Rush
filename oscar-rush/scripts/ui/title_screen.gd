@@ -30,21 +30,29 @@ const LANTERN_X := 352.0
 ## 开始界面镜头放大 2 倍（整数倍，像素还是方的），船员站在画面下方三分之一，
 ## 地面以下（关卡边界外）是黑的，说明文字就放在那片黑里
 const CAM_ZOOM := 2.0
-const CAM_CENTER := Vector2(386, 374)
+## 船员和选项错开：镜头往上 4 像素，船员在屏幕上往下 8 像素，四个选项（中文行距更大）都不压到船员头
+## 菜单在左边一列（MENU_X），镜头往左挪，船员和马灯站在画面右半边
+const CAM_CENTER := Vector2(350, 366)
 const CAM_DRIFT := 8.0
 
 # —— 文字 ——
 const WARM := Color8(255, 211, 138)
 const DIM := Color(0.55, 0.55, 0.6)
 const LIT := Color(1, 1, 1)
-const OPTION_TOP := 100.0
+const OPTION_TOP := 84.0
 const OPTION_STEP := 19.0
+## 菜单左边一列：选项多了（选择关卡、怪物图鉴，作者 10-18 要的），居中一列会压到船员
+const MENU_X := 40.0
+const MENU_W := 200.0
 
-var _options: Array[String] = ["START", "CO-OP", "SETTINGS", "QUIT"]
+var _options: Array[String] = ["START", "LEVELS", "CO-OP", "BESTIARY", "SETTINGS", "CREDITS", "QUIT"]
 var _option_hints: Array[String] = [
 	"One player. Carry the lantern home.",
+	"Start from a level you have already reached.",
 	"2-4 players, one screen. Keyboard halves or gamepads.",
+	"Every machine you have met on the way.",
 	"Volume, fullscreen, pixel scaling, screen shake, controls.",
+	"Who made this, and the licenses.",
 	"",
 ]
 
@@ -86,10 +94,16 @@ func _ready() -> void:
 			add_child(shots)
 	# 网页版关不掉页面，不放 QUIT
 	if OS.has_feature("web"):
-		_options.resize(3)
-		_option_hints.resize(3)
+		var qi := _options.find("QUIT")
+		_options.remove_at(qi)
+		_option_hints.remove_at(qi)
+	# 从哪儿回来的都一样干净：上一局在顿帧 / 慢动作 / 暂停中途退出时，这些全局状态不会自己复原
+	Engine.time_scale = 1.0
+	get_tree().paused = false
+	Game.shake = 0.0
 	_build_world()
 	_build_ui()
+	Controls.device_changed.connect(_on_device_changed)
 	_animate_in()
 
 
@@ -160,10 +174,11 @@ func _build_ui() -> void:
 	_ui.layer = 20
 	add_child(_ui)
 
-	_title = _label("SCRAP RUSH", 30.0, 33, WARM, 4)
-	_sub = _label("LUDUM DARE 60  /  OLD TECH", 72.0, 11, DIM, 2)
+	_title = _left(_label("SCRAP RUSH", 18.0, 33, WARM, 4))
+	_sub = _left(_label("LUDUM DARE 60  /  OLD TECH", 58.0, 11, DIM, 2))
+	_sub.position.x += 2.0
 	for i in _options.size():
-		_option_labels.append(_label(_options[i], OPTION_TOP + i * Lang.menu_step(OPTION_STEP), 22, DIM, 3))
+		_option_labels.append(_left(_label(_options[i], OPTION_TOP + i * _step(), 22, DIM, 3)))
 	_hint = _label("", 246.0, 11, DIM, 2)
 	for l in [_title, _sub, _hint] + _option_labels:
 		l.modulate.a = 0.0
@@ -173,6 +188,14 @@ func _build_ui() -> void:
 	_fade.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_ui.add_child(_fade)
+
+
+## 放进左边那一列，左对齐
+func _left(l: Label) -> Label:
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	l.position.x = MENU_X
+	l.size.x = MENU_W + 120.0
+	return l
 
 
 func _label(text: String, y: float, size: int, color: Color, outline: int, parent: Node = null) -> Label:
@@ -200,6 +223,11 @@ func _animate_in() -> void:
 		var intro := IntroOverlay.new()
 		add_child(intro)
 		await intro.finished
+		# 跳过片头的那一下（空格 / 回车 / C）不能顺手把 START 也按了：菜单是轮询 just_pressed，
+		# 不认 set_input_as_handled，所以等这一帧过去、而且确认键松开了再开放（质检会话 10-17 夜里报的）
+		await get_tree().process_frame
+		while Input.is_action_pressed("ui_accept"):
+			await get_tree().process_frame
 	_ready_for_input = true
 
 
@@ -209,21 +237,27 @@ func _fade_in(c: CanvasItem, duration: float) -> void:
 	await tw.finished
 
 
+func _on_device_changed(_pad: bool) -> void:
+	if not _lobby and not _busy:
+		_refresh()
+
+
 func _refresh() -> void:
 	for i in _option_labels.size():
 		var l := _option_labels[i]
 		var on := i == _selected
-		l.text = ("> %s <" % tr(_options[i])) if on else tr(_options[i])
-		l.position.y = OPTION_TOP + i * Lang.menu_step(OPTION_STEP)
+		l.text = ("> " + tr(_options[i])) if on else "  " + tr(_options[i])
+		var y := OPTION_TOP + i * _step()
 		l.label_settings.font_color = LIT if on else DIM
-		l.pivot_offset = l.size * 0.5
+		l.scale = Vector2.ONE
 		if on:
-			l.scale = Vector2(1.12, 1.12)
-			l.create_tween().tween_property(l, "scale", Vector2.ONE, 0.18) \
-				.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+			# 选中时往上跳 2 像素再落回来（整像素），不缩放：小数倍缩放会让像素字一大一小（美术巡检第 4 条）
+			l.position.y = y - 2.0
+			l.create_tween().tween_property(l, "position:y", y, 0.12).set_delay(0.06)
 		else:
-			l.scale = Vector2.ONE
-	var keys := tr("W/S select    Space / C / A confirm    F11 fullscreen")
+			l.position.y = y
+	var keys := (tr("%s select    %s confirm") % [Controls.label("select"), Controls.label("confirm")]) if Controls.using_pad \
+		else (tr("%s select    %s confirm    F11 fullscreen") % [Controls.label("select"), Controls.label("confirm")])
 	var h := _option_hints[_selected]
 	_hint.text = keys if h == "" else tr(h) + "\n" + keys
 	_hint.position.y = 246.0 if h == "" else 234.0
@@ -232,6 +266,8 @@ func _refresh() -> void:
 
 func _process(delta: float) -> void:
 	_time += delta
+	# 缩放对齐屏幕倍率，像素是方的（见 GameCamera.pixel_zoom）
+	_cam.zoom = Vector2.ONE * GameCamera.pixel_zoom(get_viewport(), CAM_ZOOM)
 	_cam.position.x = CAM_CENTER.x + sin(_time * 0.12) * CAM_DRIFT
 	_animate_crew(delta)
 	if _busy:
@@ -291,8 +327,8 @@ func _unhandled_input(event: InputEvent) -> void:
 ## 鼠标指着第几项（480×270 的坐标），没指着返回 -1
 func _option_at() -> int:
 	var pos := get_viewport().get_mouse_position()
-	var i := floori((pos.y - OPTION_TOP + 2.0) / Lang.menu_step(OPTION_STEP))
-	return i if i >= 0 and i < _options.size() and absf(pos.x - 240.0) < 90.0 else -1
+	var i := floori((pos.y - OPTION_TOP + 2.0) / _step())
+	return i if i >= 0 and i < _options.size() and pos.x >= MENU_X - 10.0 and pos.x <= MENU_X + MENU_W else -1
 
 
 func _move(step: int) -> void:
@@ -310,11 +346,97 @@ func _confirm() -> void:
 			_enter_lobby()
 		"SETTINGS":
 			_open_settings()
+		"CREDITS":
+			_open_credits()
+		"LEVELS":
+			_open_levels()
+		"BESTIARY":
+			_open_bestiary()
 		"QUIT":
 			Game.sfx("ui_back", -6.0)
 			_busy = true
 			await _fade_to(1.0, 0.4)
 			get_tree().quit()
+
+
+## 选项行距。五个选项（加了 CREDITS）时中文的大行距会压到船员头，封顶 22
+func _step() -> float:
+	var st := Lang.menu_step(OPTION_STEP)
+	return minf(st, 20.0) if _options.size() >= 6 else (minf(st, 22.0) if _options.size() >= 5 else st)
+
+
+func _open_levels() -> void:
+	_busy = true
+	Game.sfx("ui_confirm", -8.0)
+	var hidden := _hide_menu()
+	var page := LevelSelect.new()
+	_ui.add_child(page)
+	var level: int = await page.chosen
+	if level > 0:
+		Run.players = [{"input": "solo", "skin": Run.SKINS[0]}]
+		# 菜单字已经藏着，直接黑场进选武器
+		_busy = true
+		Run.reset_run()
+		Game.reset_stats()
+		_apply_level_start(level)
+		await _fade_to(1.0, 0.5)
+		get_tree().change_scene_to_file(LEVEL_SCENE)
+		Game.flash(Color.BLACK, 1.0, 0.6)
+		return
+	_show_menu(hidden)
+	await get_tree().process_frame
+	_busy = false
+	_refresh()
+
+
+## 怪物图鉴：立绘添加会话做的 BestiaryMenu（叠在开始界面上，关掉时发 closed）。
+## 用 load 找，不写类名：图鉴还没做好时开始界面照样能编译，按钮先显示"敬请期待"
+func _open_bestiary() -> void:
+	const PATH := "res://scripts/ui/bestiary_menu.gd"
+	if not ResourceLoader.exists(PATH):
+		Game.sfx("ui_back", -8.0, 0.8)
+		_hint.text = tr("COMING SOON")
+		return
+	_busy = true
+	Game.sfx("ui_confirm", -8.0)
+	var hidden := _hide_menu()
+	var page: Control = (load(PATH) as GDScript).new()
+	_ui.add_child(page)
+	await page.closed
+	_show_menu(hidden)
+	await get_tree().process_frame
+	_busy = false
+	_refresh()
+
+
+func _hide_menu() -> Array[CanvasItem]:
+	var hidden: Array[CanvasItem] = [_title, _sub, _hint]
+	hidden.append_array(_option_labels)
+	for c in hidden:
+		c.visible = false
+	return hidden
+
+
+func _show_menu(hidden: Array[CanvasItem]) -> void:
+	for c in hidden:
+		c.visible = true
+
+
+func _open_credits() -> void:
+	_busy = true
+	Game.sfx("ui_confirm", -8.0)
+	var hidden: Array[CanvasItem] = [_title, _sub, _hint]
+	hidden.append_array(_option_labels)
+	for c in hidden:
+		c.visible = false
+	var page := CreditsMenu.new()
+	_ui.add_child(page)
+	await page.closed
+	for c in hidden:
+		c.visible = true
+	await get_tree().process_frame
+	_busy = false
+	_refresh()
 
 
 func _open_settings() -> void:
@@ -336,17 +458,46 @@ func _open_settings() -> void:
 	_refresh()
 
 
-func _start_game() -> void:
+## 选关直接开第二关、第三关时的起始状态（商店会话按零件经济定的，见它报告第 17 节）：
+## 直接开会跳过前面的商店，所以把正常打过来时一般已经买到的装备等级直接给上；变异不送（玩家自己选），
+## 零件留一点到下一个商店花。马灯按上限的比例给（双人时上限是 80）。
+const LEVEL_STARTS := {
+	2: {"scene": "res://scenes/level2.tscn", "gear": 1, "parts": 2, "hp": 0.90},
+	3: {"scene": "res://scenes/level3.tscn", "gear": 2, "parts": 4, "hp": 0.85},
+}
+const GEAR_IDS: Array[String] = ["charge", "fuel", "plating", "damping"]
+
+
+## 新开一局（先 Run.reset_run），从第 level 关开始时给上起始状态；第一关什么都不加
+func _apply_level_start(level: int) -> void:
+	if not LEVEL_STARTS.has(level):
+		return
+	var st: Dictionary = LEVEL_STARTS[level]
+	for id in GEAR_IDS:
+		Upgrades.levels[id] = int(st["gear"])
+	Run.add_part(int(st["parts"]))
+	Run.crystal_hp = Run.crystal_max * float(st["hp"])
+	Run.crystal_changed.emit(Run.crystal_hp, Run.crystal_max)
+	Game.start_scene = st["scene"]
+
+
+## level：从第几关开始（选择关卡用），1 = 照常从第一关
+func _start_game(level := 1) -> void:
 	_busy = true
 	Game.sfx("ui_confirm", -4.0)
 	Run.reset_run()
+	Game.reset_stats()
+	_apply_level_start(level)
 	var chosen := _option_labels[_selected]
 	var tw := create_tween().set_parallel(true)
 	for l in _option_labels:
 		if l != chosen:
 			tw.tween_property(l, "modulate:a", 0.0, 0.2)
 	tw.tween_property(_hint, "modulate:a", 0.0, 0.2)
-	tw.tween_property(chosen, "scale", Vector2(1.3, 1.3), 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	# 确认：往上弹 3 像素加一下闪白，不缩放（小数倍放大会让像素字一大一小，美术巡检第三轮）
+	tw.tween_property(chosen, "position:y", chosen.position.y - 3.0, 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	chosen.modulate = Color(1.8, 1.8, 1.8)
+	tw.tween_property(chosen, "modulate", Color.WHITE, 0.25)
 	await tw.finished
 	await _fade_to(1.0, 0.5)
 	get_tree().change_scene_to_file(LEVEL_SCENE)
@@ -476,7 +627,7 @@ func _refresh_lobby() -> void:
 	elif n == 1:
 		_lobby_info.text = "Need one more player    (lantern key: leave)"
 	else:
-		_lobby_info.text = tr("%d players ready  -  any player press ATTACK to start\n(lantern key: leave)") % n
+		_lobby_info.text = tr("%d players ready  -  any player: press ATTACK to start\n(lantern key: leave)") % n
 
 
 func _start_coop() -> void:
@@ -488,6 +639,7 @@ func _start_coop() -> void:
 			Run.players.append({"input": _slots[i], "skin": Run.SKINS[i]})
 	Game.sfx("ui_confirm", -4.0)
 	Run.reset_run()
+	Game.reset_stats()
 	await _fade_to(1.0, 0.5)
 	get_tree().change_scene_to_file(LEVEL_SCENE)
 	Game.flash(Color.BLACK, 1.0, 0.6)

@@ -56,6 +56,8 @@ func _after_ready() -> void:
 
 	_steam = _make_particles(spout, 48, 0.55, 120.0, 8.0, Vector2(2, 4), 0.5)
 	_hiss = _make_particles(spout, 6, 0.3, 30.0, 40.0, Vector2(1, 2), 0.35)
+	# 夜间打磨：挨打顿一格、死时抖一下碎几块（见 elite_fx.gd，和第二关的小怪一样）
+	EliteFx.attach_small(self, 7)
 
 
 func _tick(delta: float) -> void:

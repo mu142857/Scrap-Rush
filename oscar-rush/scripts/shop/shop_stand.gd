@@ -72,7 +72,7 @@ func _ready() -> void:
 	_tag = Label.new()
 	_tag.use_parent_material = true
 	_tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_tag.size = Vector2(40, 12)
+	_tag.size = Vector2(80, 12)
 	_marks.add_child(_tag)
 	_t = randf() * TAU
 	refresh_view()
@@ -88,7 +88,7 @@ func refresh_view() -> void:
 	_tag.label_settings = Hud.small_text(tag_color())
 	# 价签左边留 6 像素画小齿轮（只有写着价钱的时候画）
 	var gear := 6.0 if text.is_valid_int() else 0.0
-	_tag.position = Vector2(-20.0 + gear * 0.5, tag_y)
+	_tag.position = Vector2(-40.0 + gear * 0.5, tag_y)
 	_back.queue_redraw()
 	_marks.queue_redraw()
 
@@ -105,7 +105,10 @@ func tag_text() -> String:
 	var price: int = info.get("price", 0)
 	if price > 0:
 		return str(price)
-	return "FREE" if info.get("can_buy", false) else ""
+	# 只有拉杆（刷新）会免费：写清楚免费的是什么，远看只有"免费"两个字新玩家看不懂（新玩家体验报告）
+	if info.get("can_buy", false):
+		return "FREE REROLL" if id == "refresh" else "FREE"
+	return ""
 
 
 func tag_color() -> Color:
@@ -142,8 +145,14 @@ func near(p: Player) -> bool:
 	return absf(d.x) <= zone_half and d.y > -4.0 and d.y < 100.0
 
 
+## 按下买以后这么久里不再认别的买：双人同时（或前后几帧）按下只算一次，不会连买两级（夜间质检报的）
+const BUY_GAP := 0.15
+var _buy_cd := 0.0
+
+
 func _physics_process(delta: float) -> void:
 	_t += delta
+	_buy_cd = maxf(_buy_cd - delta, 0.0)
 	shake = maxf(shake - delta, 0.0)
 	_pop = maxf(_pop - delta * 4.0, 0.0)
 	focused = false
@@ -152,7 +161,8 @@ func _physics_process(delta: float) -> void:
 		if p == null or not near(p):
 			continue
 		focused = true
-		if Input.is_action_just_pressed(p.input_prefix + "_crystal"):
+		if Input.is_action_just_pressed(p.input_prefix + "_crystal") and _buy_cd <= 0.0:
+			_buy_cd = BUY_GAP
 			buy_pressed.emit(self, p)
 	_focus_s = move_toward(_focus_s, 1.0 if focused else 0.0, delta * 8.0)
 	var sh := Vector2(roundf(sin(shake * 60.0) * 2.0 * signf(shake)), 0)

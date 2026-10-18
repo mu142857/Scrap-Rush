@@ -3,8 +3,14 @@ extends Node2D
 ## 关卡里的路线提示牌：一行字加一个会上下（或左右）晃的像素箭头。
 ## 有玩家走进 zone 就淡入，走出去就淡出。不吃场景压暗，黑处也看得清。
 ## 原点是箭头尖的位置，字在箭头上面。字不会伸出关卡左右两边。
+## 屏幕分区（2026-10-17 夜间，游戏细节讨论会话）：
+## - 有精英在画面里（出场名字卡、打的时候）就淡出，让给名字卡和战斗；打完再淡回来；
+## - 字快出画面时往里推（离边 SCREEN_MARGIN 像素），箭头还指着原来的地方。
 
 const FADE_SPEED := 4.0
+const SCREEN_MARGIN := 6.0
+## 屏幕最上面这一条是 HUD 的（左上马灯血条、右上压力表），字不往这里放
+const TOP_MARGIN := 22.0
 const ARROW_COLOR := Color8(255, 211, 138)
 ## 箭头朝下的像素图，其他方向旋转着画
 const ARROW := [
@@ -21,11 +27,15 @@ var zone := Rect2()
 var text := ""
 ## "up" / "down" / "left" / "right"
 var arrow := "down"
+## 关卡宽度：字不会伸出关卡左右两边。默认是第一关的 1006；更宽的关卡要设成自己的宽度，
+## 不然 x 超过 1000 左右的提示牌，字会被推到画面外（2026-10-17 夜，第三关发现）
+var level_width := 1006.0
 
 var _alpha := 0.0
 var _time := 0.0
 var _label: Label
 var _text_half := 0.0
+var _base_label_pos := Vector2.ZERO
 
 
 func _ready() -> void:
@@ -44,7 +54,8 @@ func _ready() -> void:
 	_label.position = Vector2(-80, -24)
 	add_child(_label)
 	_text_half = Hud.font().get_string_size(tr(text), HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x * 0.5 + 10.0
-	_label.position.x = clampf(-80.0, _text_half - position.x - 80.0, 1006.0 - _text_half - position.x - 80.0)
+	_label.position.x = clampf(-80.0, _text_half - position.x - 80.0, level_width - _text_half - position.x - 80.0)
+	_base_label_pos = _label.position
 	modulate.a = 0.0
 
 
@@ -55,10 +66,43 @@ func _process(delta: float) -> void:
 		if zone.has_point((p as Node2D).global_position):
 			inside = true
 			break
-	_alpha = move_toward(_alpha, 1.0 if inside else 0.0, delta * FADE_SPEED)
+	var want := inside and not _elite_on_screen()
+	_alpha = move_toward(_alpha, 1.0 if want else 0.0, delta * FADE_SPEED)
 	modulate.a = _alpha
 	visible = _alpha > 0.0
+	if visible:
+		_keep_label_on_screen()
 	queue_redraw()
+
+
+## 画面里有没有还活着的精英（出场中或者在打）
+func _elite_on_screen() -> bool:
+	var view := get_viewport_rect().grow(-4.0)
+	for n in get_tree().get_nodes_in_group("enemy"):
+		if n is EliteBase and not n.get("dead"):
+			if view.has_point((n as Node2D).get_global_transform_with_canvas().origin):
+				return true
+	return false
+
+
+## 字的屏幕位置快出边时，把字往里推；推完换算回自己的坐标
+func _keep_label_on_screen() -> void:
+	_label.position = _base_label_pos
+	var xf := get_global_transform_with_canvas()
+	var s := xf.get_scale()
+	if s.x <= 0.0 or s.y <= 0.0:
+		return
+	var view := get_viewport_rect().size
+	var half := _text_half - 10.0
+	var center := xf * (_base_label_pos + Vector2(80.0, 6.0))
+	var dx := 0.0
+	if center.x - half * s.x < SCREEN_MARGIN:
+		dx = SCREEN_MARGIN - (center.x - half * s.x)
+	elif center.x + half * s.x > view.x - SCREEN_MARGIN:
+		dx = (view.x - SCREEN_MARGIN) - (center.x + half * s.x)
+	var top := (xf * _base_label_pos).y
+	var dy := maxf(0.0, TOP_MARGIN - top)
+	_label.position = _base_label_pos + Vector2(dx / s.x, dy / s.y).round()
 
 
 func _draw() -> void:

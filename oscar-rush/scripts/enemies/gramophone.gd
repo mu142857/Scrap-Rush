@@ -3,7 +3,7 @@ extends EliteBase
 ## 留声机（第二关精英怪，从策划案第九节原设计 B3 留声机来）：大喇叭朝前，转盘上放着唱片，唱臂会动。
 ## 红灯在喇叭的喉咙深处。和主角保持一段距离（远了靠近、近了后退；26 以内的台阶走得下去、蹦得上去），
 ## 横扫和声波轮着放，都先冒红色"!"：
-## - 唱针横扫：唱臂伸长，唱针贴着地面从脚下一直划到场子那头（撞墙、到坑边或划满 320 停），要跳过去。
+## - 唱针横扫：预警时前面地上三个箭头一个接一个亮；然后唱臂伸长，唱针贴着地面从脚下一直划到场子那头（撞墙、到坑边或划满 320 停），要跳过去。
 ##   唱针头宽 6、高 8，碰到伤 12；伸出去的唱臂不伤人。上下 26 以内的台阶都跟着走。两种轮着来：
 ##   - 单程：划到头抬起来收回去。
 ##   - 来回：划到头停 0.45 秒（唱头一闪一闪发红），再贴地划回来，要再跳一次。
@@ -27,7 +27,8 @@ const WALK_FRAME_TIME := 0.25
 ## 主角比这个近就后退，比 FAR 远就靠近
 const NEAR := 50.0
 const FAR := 110.0
-const MOVE_TIME := Vector2(2.4, 3.0)
+## 两招之间挪几步就出下一招（10-18 作者嫌停顿太长：2.4~3.0 → 0.5~0.8，连收招一共空 0.9~1.2 秒；它的招本身比较长）
+const MOVE_TIME := Vector2(0.5, 0.8)
 const ATTACK_RANGE := 240.0
 ## 走路时往前看多远、最多蹦上多高的台阶（座位一排 22）、最多往下走多深（落在座位边角上时，
 ## 前面可能一下子低两排、44 像素；再深就当是坑）、蹦上台阶的起跳速度（重力 900，蹦 30 像素高）
@@ -41,13 +42,18 @@ const SWEEP_WARN := 0.8
 ## 横扫最长等多久（来回那种 5 秒内也收回来了）
 const SWEEP_MAX := 6.0
 const WAVE_WARN := 0.9
-const RECOVER_TIME := 0.9
+const RECOVER_TIME := 0.4
 ## 帧内像素（朝左）：横扫时的臂尖、喇叭口中心
 const ARM_TIP := Vector2i(10, 30)
 const MOUTH := Vector2i(6, 11)
+## 第一次放声波时那行提示：Coach.seen 里的键、英文原文（中文在 localization/text.csv）
+const GAP_HINT_KEY := "gramophone_gap"
+const GAP_HINT := "Stand in the green"
 ## 声波缺口离主角站的地方多远、地面上那一段的一半宽
 const ZONE_STEP := 50.0
 const ZONE_HALF := 20.0
+## 缺口离喇叭口最近多少（再近第一圈一出来就扫到了，走不过去）
+const ZONE_MIN := 60.0
 ## 跟拍：缺口一圈比一圈远多少
 const MARCH_STEP := 40.0
 ## 声波的弹幕型：每圈什么时候放（从放第一圈算）、多快、哪种圈（SoundRing.GAP / LOW / HIGH）、缺口怎么摆
@@ -60,9 +66,19 @@ const WAVES := {
 }
 ## 不吃光照的那层叠图多不透明（暗处也看得出身子的样子）
 const FILL_ALPHA := 0.4
+## 血打空以后先"停转"这么久：唱片越转越慢、声音往下掉成呜——，喇叭口一闪一闪，红灯灭掉，然后炸成废铁
+const DIE_TIME := 1.1
+## 挨打时贴图往后顿 1 格多久（精英怪不吃击退，没有这一下打上去像打在墙上）
+const JOLT_TIME := 0.07
 
 var state := State.MOVE
 var _fill: Sprite2D
+## 停转演出进行了多久，-1 = 没在死
+var _dying := -1.0
+var _jolt := 0.0
+## 横扫预警时画在前面地上的箭头
+var _aim: Node2D
+var _wind_down := 0
 var _state_t := 0.0
 var _move_time := 1.4
 var _next := 0
@@ -91,22 +107,22 @@ func _setup() -> void:
 	body_rect = Rect2(-21, -45, 42, 45)
 	contact_rect = Rect2(-13, -35, 28, 35)
 	led_pixel = Vector2i(7, 11)
-	max_hp = 1150.0
+	max_hp = 2800.0   # 10-18：1150 → 2800，出招变密以后每招都能放 3 轮以上
 	contact_damage = 10.0
 
 
-## 遭遇战把怪的脚底放在天花板下 14 像素（encounter.gd），第二关的机房有实心天花板，
-## 这只 45 高，一出生身子就卡在天花板里，被物理挤到天花板上面去了（看得见血条、看不见怪）。
-## 出生时先往上探一下：头顶有天花板就把自己往下挪到天花板下面。
+## 第二关机房很暗，背后又是一整面插孔板，深灰的身子融进墙里只剩红灯（作者 10-17 找不到它）。
+## 叠一层不吃光照的同一张图，半透明，暗处也看得出形状；亮处基本看不出差别。
+## （出生卡进天花板的问题已经在 encounter.gd 的 _drop_below_ceiling 统一修了，这里原来的补丁删了）
 func _after_ready() -> void:
-	var feet := global_position
-	var top := feet.y + body_rect.position.y - 2.0
-	var q := PhysicsRayQueryParameters2D.create(Vector2(feet.x, feet.y - 1.0), Vector2(feet.x, top), 1)
-	var hit := get_world_2d().direct_space_state.intersect_ray(q)
-	if not hit.is_empty():
-		global_position.y = (hit.position as Vector2).y - body_rect.position.y + 1.0
-	# 第二关机房很暗，背后又是一整面插孔板，深灰的身子融进墙里只剩红灯（作者 10-17 找不到它）。
-	# 叠一层不吃光照的同一张图，半透明，暗处也看得出形状；亮处基本看不出差别
+	_aim = Node2D.new()
+	_aim.top_level = true
+	_aim.z_index = 6
+	var aim_mat := CanvasItemMaterial.new()
+	aim_mat.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+	_aim.material = aim_mat
+	_aim.draw.connect(_draw_aim)
+	add_child(_aim)
 	_fill = Sprite2D.new()
 	_fill.texture = _sprite.texture
 	_fill.hframes = hframes
@@ -119,6 +135,10 @@ func _after_ready() -> void:
 
 
 func _tick(delta: float) -> void:
+	if _dying >= 0.0:
+		_tick_dying(delta)
+		move_and_slide()
+		return
 	_state_t += delta
 	match state:
 		State.MOVE:
@@ -154,7 +174,7 @@ func _tick(delta: float) -> void:
 				_rings_done += 1
 			var last: float = times[_rings_done - 1] if _rings_done > 0 else 0.0
 			set_frame(5 if _state_t - last < 0.3 else 4)
-			if _rings_done >= times.size() and _state_t >= times[-1] + 0.5:
+			if _rings_done >= times.size() and _state_t >= times[-1] + 0.3:   # 10-18：最后一圈放完停 0.5 → 0.3
 				_enter(State.RECOVER)
 		State.RECOVER:
 			_brake(delta)
@@ -308,7 +328,7 @@ func _sweep() -> void:
 	var n := Needle.new()
 	n.elite = self
 	n.dir = _attack_dir
-	n.returns = _sweeps % 2 == 1
+	n.returns = _sweeps % 3 == 2   # 10-18：来回那种从隔一次改成三次里一次（来回一趟 3.6 秒，太多了别的招放不出来）
 	_sweeps += 1
 	get_parent().add_child(n)
 	n.global_position = Vector2(roundf(global_position.x + _attack_dir * 18.0), global_position.y)
@@ -333,19 +353,37 @@ func _plan_zones(p: Player) -> void:
 		var z0 := clampf(a, 34.0, 60.0)
 		var ok := true
 		for i in n:
-			if not _floor_near(m.x + _attack_dir * (z0 + i * MARCH_STEP), floor_y):
+			if not _zone_ok(p, z0 + i * MARCH_STEP, floor_y):
 				ok = false
 		if ok:
 			for i in n:
 				_zones.append(z0 + i * MARCH_STEP)
 			return
 	var b := a + ZONE_STEP if a + ZONE_STEP <= 150.0 else a - ZONE_STEP
-	if not _floor_near(m.x + _attack_dir * b, floor_y):
+	if b < ZONE_MIN or not _zone_ok(p, b, floor_y):
 		b = a - ZONE_STEP if b > a else a + ZONE_STEP
-		if b < 24.0 or not _floor_near(m.x + _attack_dir * b, floor_y):
+		# 离喇叭口太近的缺口不要：第一圈半秒就扫到，来不及走过去（夜间打磨，乐池 E4 发现）。那就让缺口落在主角脚下
+		if b < ZONE_MIN or not _zone_ok(p, b, floor_y):
 			b = a
 	for i in n:
 		_zones.append(b)
+
+
+## 离喇叭口 d 的那段地面能不能当缺口：脚下有地，而且主角走得过去（中间没有墙、没有关着的闸门）。
+## 夜间打磨：乐池 E4 的缺口曾经摆到右边闸门外面，站不进去
+func _zone_ok(p: Player, d: float, floor_y: float) -> bool:
+	var m := mouth()
+	if not _floor_near(m.x + _attack_dir * d, floor_y):
+		return false
+	var far_x := m.x + _attack_dir * (d + ZONE_HALF)
+	var near_x := m.x + _attack_dir * (d - ZONE_HALF)
+	var px := p.global_position.x
+	var space := get_world_2d().direct_space_state
+	for x in [far_x, near_x]:
+		var q := PhysicsRayQueryParameters2D.create(Vector2(px, floor_y - 8.0), Vector2(x, floor_y - 8.0), 1)
+		if not space.intersect_ray(q).is_empty():
+			return false
+	return true
 
 
 func _floor_near(x: float, y: float) -> bool:
@@ -364,6 +402,13 @@ func _ring(i: int) -> void:
 	var z: float = _zones[i] if i < _zones.size() else 80.0
 	r.zone = Vector2(z - ZONE_HALF, z + ZONE_HALF)
 	get_parent().add_child(r)
+	# 第一次看到有缺口的声波：缺口那段绿点上方出一行"站进绿点"（每局一次，记在 Coach.seen 里，和新手提示一样）
+	if r.kind == SoundRing.GAP and not Coach.seen.has(GAP_HINT_KEY):
+		Coach.seen[GAP_HINT_KEY] = true
+		r.loud_marker = true
+		var h := GapHint.new()
+		h.position = Vector2(roundf(r.center.x + _attack_dir * (r.zone.x + r.zone.y) / 2.0), _zone_floor - 12.0)
+		get_parent().add_child(h)
 	# 圈越快音越高；低圈闷、高圈尖
 	var pitch := 0.45 + r.speed / 100.0
 	if r.kind == SoundRing.LOW:
@@ -375,12 +420,64 @@ func _ring(i: int) -> void:
 	Game.add_shake(1.5)
 
 
+func is_targetable() -> bool:
+	return super.is_targetable() and _dying < 0.0
+
+
+func _on_hurt(_damage: float, full: bool) -> void:
+	_jolt = JOLT_TIME
+	if full:
+		Game.sfx("clang", -14.0, 1.4, 0.1)
+
+
+## 血打空了：先演一段停转（DIE_TIME），然后才真的死（EliteBase 的大爆炸、顿帧、扣情绪都在那一刻）。
+## 停转期间不动、不伤人、不再挨打，唱针马上抬起来收回。
+func _die() -> void:
+	if _dying >= 0.0:
+		return
+	_dying = 0.0
+	_wind_down = 0
+	velocity.x = 0.0
+	_contact.set_deferred("monitoring", false)
+	if is_instance_valid(_needle):
+		_needle.lift()
+	Game.sfx("scrape", -6.0, 0.6)
+	Game.hitstop(0.08)
+	Game.add_shake(2.0)
+
+
+## 唱片停转的"呜——"：四声一声比一声低（[时间, 音高]）
+const WIND := [[0.0, 1.0], [0.22, 0.75], [0.46, 0.55], [0.7, 0.38]]
+
+
+func _tick_dying(delta: float) -> void:
+	_dying += delta
+	velocity.x = move_toward(velocity.x, 0.0, 600.0 * delta)
+	var k := _dying / DIE_TIME
+	while _wind_down < WIND.size() and _dying >= WIND[_wind_down][0]:
+		Game.sfx("voice", -6.0, WIND[_wind_down][1])
+		_wind_down += 1
+	# 唱片转得越来越慢：走路的两帧换得越来越慢，前半段喇叭口还一闪一闪（帧 4）
+	var period := lerpf(0.08, 0.4, k)
+	var f := int(_dying / period) % 2
+	set_frame(4 if k < 0.5 and f == 0 else f)
+	if randf() < 0.2:
+		Game.sparks(get_parent(), global_position + Vector2(randf_range(-12.0, 12.0), randf_range(-26.0, -18.0)),
+				Color(1.0, 0.8, 0.55), 2, 35.0)
+	if _dying >= DIE_TIME:
+		var brassy: Array = EliteFx.SCRAP + [Color8(0x6e, 0x58, 0x46), Color8(0x45, 0x36, 0x2e)]
+		EliteFx.scrap_burst(get_parent(), Rect2(global_position + body_rect.position, body_rect.size), 20, brassy)
+		Game.sparks(get_parent(), mouth(), Color(1.0, 0.86, 0.62), 12, 90.0)
+		super._die()
+
+
 func _on_die() -> void:
 	if is_instance_valid(_needle):
 		_needle.lift()
 
 
 func _on_respawn() -> void:
+	_dying = -1.0
 	_enter(State.MOVE)
 
 
@@ -393,7 +490,37 @@ func _process(_delta: float) -> void:
 	_fill.flip_h = _sprite.flip_h
 	_fill.offset = _sprite.offset
 	_fill.position = _sprite.position
-	_fill.modulate = Color(_sprite.modulate.lerp(Color(3, 3, 3), _flash), FILL_ALPHA)
+	# 死前那一段亮层加厚，灯一闪一灭在暗处也看得清
+	_fill.modulate = Color(_sprite.modulate.lerp(Color(3, 3, 3), _flash), 0.75 if _dying >= 0.0 else FILL_ALPHA)
+
+## 横扫预警：前脚外面的地上三个往前指的箭头（唱片纹的颜色），一个接一个亮，告诉你唱针往哪边划
+func _draw_aim() -> void:
+	if _dying >= 0.0:
+		return
+	if state == State.WAVE_WARN and not _zones.is_empty() and WAVES[_wave]["zones"] != "none":
+		# 声波预警：第一圈的缺口那段地面先亮绿点，一闪一闪，圈还没出来就知道往哪站
+		if int(_state_t / 0.12) % 2 == 0:
+			var z: float = _zones[0]
+			var m := mouth()
+			for d in range(int(z - ZONE_HALF), int(z + ZONE_HALF) + 1, 4):
+				_aim.draw_rect(Rect2(roundf(m.x + _attack_dir * d), _zone_floor - 1.0, 2, 1), Color(SoundRing.SAFE, 0.85))
+		return
+	if state != State.SWEEP_WARN:
+		return
+	var y := roundf(global_position.y) - 1.0
+	var x0 := roundf(global_position.x) + _attack_dir * 22.0
+	var lit := int(_state_t / 0.12) % 4
+	for i in 3:
+		var a := 0.9 if i == lit else 0.3
+		var c := Color(1.0, 0.75, 0.5, a)
+		var tip := x0 + _attack_dir * (i * 8.0 + 4.0)
+		# 一个 ">" 形：三格高
+		_aim.draw_rect(Rect2(tip - _attack_dir * 2.0, y - 4.0, 1, 1), c)
+		_aim.draw_rect(Rect2(tip - _attack_dir * 1.0, y - 3.0, 1, 1), c)
+		_aim.draw_rect(Rect2(tip, y - 2.0, 1, 1), c)
+		_aim.draw_rect(Rect2(tip - _attack_dir * 1.0, y - 1.0, 1, 1), c)
+		_aim.draw_rect(Rect2(tip - _attack_dir * 2.0, y, 1, 1), c)
+
 
 ## 预警时琴身抖、一闪一闪发红（照钢琴）
 func _update_visual() -> void:
@@ -411,6 +538,19 @@ func _update_visual() -> void:
 		_sprite.modulate = Color.WHITE.lerp(Color(1.8, 0.75, 0.6), pulse * (0.4 + 0.6 * warn_t))
 	else:
 		_sprite.modulate = Color.WHITE
+	# 挨打：往背离主角的方向顿 1 格
+	_jolt = maxf(_jolt - get_physics_process_delta_time(), 0.0)
+	if _jolt > 0.0:
+		_sprite.position.x -= dir
+	if _aim:
+		_aim.queue_redraw()
+	if _dying >= 0.0:
+		# 停转：越抖越厉害，开头闪白；红灯一跳一跳地灭
+		var k := _dying / DIE_TIME
+		var amp := 1.0 + 2.0 * k
+		_sprite.position.x += amp if int(_dying * 30.0) % 2 == 0 else -amp
+		_sprite.modulate = Color.WHITE.lerp(Color(2.0, 2.0, 2.0), clampf(1.0 - k * 4.0, 0.0, 1.0))
+		_led.visible = _led.visible and k < 0.65 and int(_dying * (8.0 + 16.0 * k)) % 2 == 0
 
 
 ## 伸长的唱臂 + 贴地划过去的唱针。原点 = 唱针尖（地面上）。
@@ -421,10 +561,10 @@ class Needle:
 	extends Node2D
 
 	const SPEED := 150.0
-	const BACK_SPEED := 130.0
+	const BACK_SPEED := 160.0   # 10-18：130 → 160（回程快一点，来回一趟别拖太久）
 	const STEP := 26.0
 	const RETRACT_SPEED := 420.0
-	const REACH := 320.0
+	const REACH := 220.0   # 10-18：320 → 220（它离主角只有 50~110，划太远是白等；来回那种从 5 秒缩到 3.6 秒）
 	const PAUSE := 0.45
 	const DAMAGE := 12.0
 	## 唱针头的判定：宽 6、贴地往上 8（跳得过去）
@@ -610,6 +750,8 @@ class SoundRing:
 	var kind := GAP
 	## 缺口落在地面上的那一段：离喇叭口的前向距离（近, 远）
 	var zone := Vector2(60, 100)
+	## 带"站进绿点"提示的那一圈：绿点一开始就亮（不然提示指着的地方还是淡得看不见）
+	var loud_marker := false
 	var _r := 3.0
 	var _gap := Vector2.ZERO
 	var _hit := {}
@@ -680,7 +822,7 @@ class SoundRing:
 			var reach := zone.x - (_r - 10.0)
 			if reach > -20.0:
 				var blink := reach < 30.0 and int(_r / 4.0) % 2 == 0
-				var col := Color(SAFE, 0.85 if blink else (0.5 if reach < 70.0 else 0.22))
+				var col := Color(SAFE, 0.85 if blink else (0.5 if reach < 70.0 or loud_marker else 0.22))
 				for d in range(int(zone.x), int(zone.y) + 1, 4):
 					draw_rect(Rect2(roundf(center.x + dir * d), floor_y - 1, 2, 1), col)
 		# 圈：一格一个点，同一个像素只画一次；低圈粗一点、亮一点
@@ -700,3 +842,44 @@ class SoundRing:
 					continue
 				drawn[p] = true
 				draw_rect(Rect2(p, Vector2.ONE), c)
+
+
+
+## "站进绿点"：一行淡绿色的小字，在缺口那段地面的绿点正上方，淡入、停一会儿、淡出（共 HOLD 秒）。不吃场景压暗
+class GapHint:
+	extends Node2D
+
+	const HOLD := 2.8
+	const COLOR := Color(0.7, 1.0, 0.7)
+
+	var _t := 0.0
+	var _label: Label
+
+	func _ready() -> void:
+		z_index = 30
+		var unshaded := CanvasItemMaterial.new()
+		unshaded.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+		material = unshaded
+		_label = Label.new()
+		_label.use_parent_material = true
+		_label.label_settings = Hud.small_text(COLOR)
+		_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_label.text = Gramophone.GAP_HINT
+		_label.size = Vector2(160, 12)
+		_label.position = Vector2(-80, -12)
+		add_child(_label)
+		modulate.a = 0.0
+
+	func _process(delta: float) -> void:
+		_t += delta
+		if _t >= HOLD:
+			queue_free()
+			return
+		modulate.a = clampf(_t / 0.2, 0.0, 1.0) * clampf((HOLD - _t) / 0.5, 0.0, 1.0)
+		# 往下指的小箭头，一跳一跳的，指着绿点
+		queue_redraw()
+
+	func _draw() -> void:
+		var y := 2.0 + float(int(_t * 4.0) % 2)
+		for k in 3:
+			draw_rect(Rect2(-2 + k, y + k, 5 - 2 * k, 1), COLOR)

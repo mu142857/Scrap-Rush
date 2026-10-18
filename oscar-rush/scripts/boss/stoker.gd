@@ -14,7 +14,7 @@ signal hp_changed(hp: float, max_hp: float)
 signal phase_changed(phase: int)
 signal defeated
 
-const BASE_HP := 3000.0
+const BASE_HP := 7500.0  # 夜间打磨：武器加强后站桩 26 秒就能打死，+20%；10-18 作者：再翻一倍多，三把武器 60～90 秒
 const CONTACT_DAMAGE := 10.0
 ## 画布 84×96，原点在画布底边中间 (42, 95)
 const CANVAS_ORIGIN := Vector2(42, 95)
@@ -45,12 +45,17 @@ var dead := false
 
 var _time := 0.0
 var _flash := 0.0
+## 受击顿一格、换阶段先停一下（夜间打磨：三个 Boss 统一，照总机）
+var _recoil := 0.0
+var _recoil_dir := 1.0
+var _pause_t := 0.0
 var _hot := 0.0
 var _door_open := false
 var _stoke_damage := 0.0
 var _pressure := 0.0
 var _needle := 0.0
 var _last_pattern := ""
+var _pattern := ""         # 正在放的招，招和招之间是空的
 var _bag: Array[String] = []
 var _bag_phase := 0
 var _breathe := 0
@@ -72,10 +77,27 @@ var _warn: Node2D
 var _warn_t := 0.0
 var _warn_pos := Vector2.ZERO
 var _suction: AudioStreamPlayer
+## 只照 Boss 自己的正面暖光（舞台追光）。开场时先打亮，开打几秒后落回平时的亮度（新玩家体验报告：开场太暗）
+var _key: PointLight2D
+const KEY_ENERGY := 2.0
+const KEY_INTRO_ENERGY := 4.5
+## 开场提亮：0~1，开场时整台锅炉的颜色乘 1 + 0.7×它（贴图本身很暗，光照加强对深色作用不大，直接提亮颜色才看得出）
+var _intro_glow := 0.0
+## 夜间打磨（布谷鸟钟会话接手 Boss1）：余烬落点标记、炉门弱点框、换阶段提示字、死亡时熄火塌掉
+var _marks: Node2D
+var _land: Array = []                 # 每颗余烬的落点 {pos, t}（t = 还有几秒落地）
+var _osd_text := ""
+var _osd_t := 0.0
+var _fire_k := 1.0                    # 炉火亮度（死的时候一点点熄掉）
+var _sink := 0.0                      # 塌下去多少像素
+## 双人以上：这一招盯的玩家（每招轮换，照总机）。单人永远是他
+var _focus: Player = null
+var _focus_i := -1
 
 
 func _ready() -> void:
 	add_to_group("enemy")
+	Bestiary.watch(self, "boss_stoker", Rect2(-48, -96, 96, 96))   # 怪物图鉴：第一次出现在画面里就记一笔
 	collision_layer = 4
 	collision_mask = 0
 	max_hp = BASE_HP * (1.0 + 0.5 * (Run.players.size() - 1))
@@ -151,14 +173,14 @@ func _ready() -> void:
 	_fire_light.position = DOOR_RECT.get_center() + Vector2(-6, 6)
 	_parts.add_child(_fire_light)
 	# 只照 Boss 自己的一盏正面暖光（舞台追光），铁壳看得清又不会过曝
-	var key := PointLight2D.new()
-	key.texture = Game.light_texture()
-	key.color = Color(1.0, 0.78, 0.62)
-	key.energy = 2.0
-	key.texture_scale = 3.6
-	key.position = Vector2(-40, -56)
-	key.range_item_cull_mask = 2
-	add_child(key)
+	_key = PointLight2D.new()
+	_key.texture = Game.light_texture()
+	_key.color = Color(1.0, 0.78, 0.62)
+	_key.energy = KEY_ENERGY
+	_key.texture_scale = 3.6
+	_key.position = Vector2(-40, -56)
+	_key.range_item_cull_mask = 2
+	add_child(_key)
 
 	_smoke = CPUParticles2D.new()
 	_smoke.amount = 18
@@ -192,6 +214,14 @@ func _ready() -> void:
 	_suction.volume_db = -6.0
 	add_child(_suction)
 
+	# 余烬落点：挂在世界坐标上，不吃压暗
+	_marks = Node2D.new()
+	_marks.top_level = true
+	_marks.material = unshaded
+	_marks.z_index = 6
+	_marks.draw.connect(_draw_marks)
+	add_child(_marks)
+
 
 func _sprite(path: String, parent: Node, frames: int) -> Sprite2D:
 	var s := Sprite2D.new()
@@ -218,23 +248,33 @@ func is_targetable() -> bool:
 ## 开场：红灯亮起、指针甩到顶再落回来、烟囱喷一口、汽笛
 func wake() -> void:
 	Game.sfx("whistle", -4.0)
+	# 追光先打亮，让人看清这台锅炉长什么样；开打以后再慢慢落回去（start_fight 里）
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(_key, "energy", KEY_INTRO_ENERGY, 0.4)
+	tw.tween_property(self, "_intro_glow", 1.0, 0.4)
 	for i in 3:
+		if not is_inside_tree():
+			return
 		_led_light.energy = 1.0
 		_led.queue_redraw()
-		await get_tree().create_timer(0.08, false).timeout
+		if is_inside_tree(): await get_tree().create_timer(0.08, false).timeout
 		_led_light.energy = 0.0
-		await get_tree().create_timer(0.06, false).timeout
+		if is_inside_tree(): await get_tree().create_timer(0.06, false).timeout
 	_led_light.energy = 1.0
 	_pressure = 1.0
 	_smoke.amount = 40
 	_blast_smoke()
 	Game.add_shake(4.0)
-	await get_tree().create_timer(0.6, false).timeout
+	if is_inside_tree(): await get_tree().create_timer(0.6, false).timeout
 	_pressure = 0.3
 
 
 func start_fight() -> void:
 	active = true
+	var tw := create_tween()
+	tw.tween_interval(2.5)
+	tw.tween_property(_key, "energy", KEY_ENERGY, 1.5)
+	tw.parallel().tween_property(self, "_intro_glow", 0.0, 1.5)
 	_fight_loop()
 
 
@@ -244,10 +284,15 @@ func hurt(damage: float, from_dir: Vector2, full: bool) -> void:
 	_flash = 1.0
 	if not active:
 		return
+	_recoil = 0.06
+	_recoil_dir = signf(from_dir.x) if from_dir.x != 0.0 else 1.0
+	if full:
+		Game.sfx("clang", -12.0, 1.4, 0.1)
 	var dmg := damage * (2.0 if _door_open else 1.0)
 	if _door_open:
 		_stoke_damage += dmg
-		Game.sparks(get_parent(), aim_point(), FIRE_COLOR, 10, 90.0)
+		Game.sparks(get_parent(), aim_point(), Color(1.0, 0.85, 0.45), 14, 110.0)
+		Game.sfx("ready", -10.0, 2.2, 0.05)
 	hp = maxf(hp - dmg, 0.0)
 	hp_changed.emit(hp, max_hp)
 	if hp <= 0.0:
@@ -259,6 +304,13 @@ func hurt(damage: float, from_dir: Vector2, full: bool) -> void:
 		phase_changed.emit(phase)
 		_phase_roar()
 
+
+
+## 离开场景树（重来、切场景、整关重载）：标成"已结束"，所有出招循环都会看 dead 自己停下；
+## 每个 await get_tree() 前面也先看还在不在树里。不然 get_tree() 变成空值，协程空转、无限刷错（夜间质检，网页版会卡死）
+func _exit_tree() -> void:
+	dead = true
+	active = false
 
 # —— 每帧 ——
 
@@ -275,12 +327,24 @@ func _physics_process(delta: float) -> void:
 	if b != _breathe:
 		_breathe = b
 		_parts.position.y = -b
+	_recoil -= delta
+	_pause_t -= delta
+	_parts.position.x = _recoil_dir if _recoil > 0.0 else 0.0
+	_parts.position.y = (0.0 if dead else -float(_breathe)) + roundf(_sink)
+	for m in _land:
+		m["t"] -= delta
+	_land = _land.filter(func(m): return m["t"] > -0.15)
+	_marks.queue_redraw()
+	_osd_t -= delta
 	# 超压：通体发红，一跳一跳的
 	_hot = move_toward(_hot, 1.0 if (phase == 3 and not dead) else 0.0, delta)
 	var pulse := 0.5 + 0.5 * sin(_time * 9.0)
 	var tint := Color.WHITE.lerp(HOT_TINT, _hot * (0.6 + 0.4 * pulse))
 	if dead:
 		tint = Color(0.55, 0.55, 0.6)
+	elif _intro_glow > 0.0:
+		var g := 1.0 + 0.7 * _intro_glow
+		tint = Color(tint.r * g, tint.g * g, tint.b * g)
 	for s in [_legs, _body, _door, _arm]:
 		s.modulate = tint
 
@@ -293,7 +357,7 @@ func _physics_process(delta: float) -> void:
 	_glow.queue_redraw()
 	_led.queue_redraw()
 	var fire := 0.55 + 0.15 * sin(_time * 13.0) + 0.1 * sin(_time * 31.0)
-	_fire_light.energy = 0.0 if dead else fire * (2.2 if _door_open else 1.0) * (1.0 + _hot * 0.6)
+	_fire_light.energy = (fire * _fire_k) if dead else fire * (2.2 if _door_open else 1.0) * (1.0 + _hot * 0.6)
 
 	if active and not dead:
 		for body in _contact.get_overlapping_bodies():
@@ -306,7 +370,7 @@ func _physics_process(delta: float) -> void:
 # —— 出招 ——
 
 func _wait(t: float) -> void:
-	await get_tree().create_timer(t, false).timeout
+	if is_inside_tree(): await get_tree().create_timer(t, false).timeout
 
 
 ## 歇口气的时间：越往后越短，情绪越高越短
@@ -317,7 +381,11 @@ func _gap() -> float:
 func _fight_loop() -> void:
 	await _wait(0.6)
 	while active and not dead:
+		while _pause_t > 0.0 and not dead:
+			if is_inside_tree(): await get_tree().physics_frame
 		var pick := _next_pattern()
+		_pick_focus()
+		_pattern = pick      # 给 tools/qa/elite_regression.gd 量节奏用
 		match pick:
 			"ember":
 				await _ember_volley()
@@ -333,6 +401,7 @@ func _fight_loop() -> void:
 				await _spiral()
 			"fan":
 				await _rivet_fan()
+		_pattern = ""
 		if dead:
 			return
 		# 三阶段：歇口气的同时还会补一股余烬
@@ -430,12 +499,70 @@ func _ember_burst(n: int) -> void:
 			vx = clampf((target + randf_range(-18, 18) - top.x) / (t_up + t_down), -150.0, 150.0)
 		else:
 			vx = randf_range(-170.0, -30.0) if randf() < 0.9 else randf_range(0.0, 30.0)
-		var b := BossBullet.spawn(bullet_parent, BossBullet.Kind.EMBER, top + Vector2(randf_range(-3, 3), 0), Vector2(vx, vy), i % 3 == 0)
+		var start := top + Vector2(randf_range(-3, 3), 0)
+		var b := BossBullet.spawn(bullet_parent, BossBullet.Kind.EMBER, start, Vector2(vx, vy), i % 3 == 0)
 		b.arena = arena
+		var land := _predict_ember(start, Vector2(vx, vy))
+		if not land.is_empty():
+			_land.append(land)
 
 
-## 离 Boss 最近那个玩家的 x（瞄准用）
+## 照 BossBullet 的余烬飞法（重力、下落限速、水平速度慢慢衰减）一步步推，往下落的时候碰到的第一块
+## 平台 / 地面就是落点。返回 {pos, t}（t = 几秒后落地）；飞出场子返回空
+func _predict_ember(pos: Vector2, vel: Vector2) -> Dictionary:
+	var space := get_world_2d().direct_space_state
+	var dt := 1.0 / 60.0
+	var p := pos
+	var v := vel
+	var t := 0.0
+	while t < 6.0:
+		v.y = minf(v.y + BossBullet.EMBER_GRAVITY * dt, BossBullet.EMBER_MAX_FALL)
+		v.x *= 1.0 - 0.15 * dt
+		var np := p + v * dt
+		t += dt
+		if v.y > 0.0:
+			var q := PhysicsRayQueryParameters2D.create(p, np + Vector2(0, 2.5), 1)
+			var hit := space.intersect_ray(q)
+			if not hit.is_empty():
+				return {"pos": (hit["position"] as Vector2).round(), "t": t}
+		if not arena.grow(24.0).has_point(np):
+			return {}
+		p = np
+	return {}
+
+
+## 余烬落点：落点那块地面 / 平台上一道短橙线，快落下来时变亮、上面冒一个往下的小箭头
+func _draw_marks() -> void:
+	for m in _land:
+		var p: Vector2 = m["pos"]
+		var left: float = m["t"]
+		if left > 1.4:
+			continue
+		var k := clampf(1.0 - left / 1.4, 0.0, 1.0)
+		var col := Color(1.0, 0.45 + 0.3 * k, 0.2, 0.35 + 0.6 * k)
+		if left < 0.35 and int(left * 20.0) % 2 == 0:
+			col = Color(1.0, 0.9, 0.7, 0.95)
+		_marks.draw_rect(Rect2(p + Vector2(-2, -1), Vector2(5, 1)), col)
+		if left < 0.6:
+			_marks.draw_rect(Rect2(p + Vector2(0, -4), Vector2(1, 2)), col)
+			_marks.draw_rect(Rect2(p + Vector2(-1, -3), Vector2(3, 1)), Color(col, col.a * 0.6))
+
+
+## 下一招盯谁：按玩家顺序轮着来（单人永远是他）。不然铲煤、扇射、瞄人的余烬永远冲着离 Boss 最近的那个，
+## 另一个人整场没压力（夜间打磨，双人测试发现）
+func _pick_focus() -> void:
+	var ps := get_tree().get_nodes_in_group("player")
+	if ps.size() <= 1:
+		_focus = null
+		return
+	_focus_i = (_focus_i + 1) % ps.size()
+	_focus = ps[_focus_i] as Player
+
+
+## 这一招瞄准的那个玩家的 x：双人以上是轮到的人，单人（或轮到的人没了）是离 Boss 最近的
 func _target_x() -> float:
+	if is_instance_valid(_focus) and _focus.is_inside_tree():
+		return _focus.global_position.x
 	var best := INF
 	var x := arena.position.x + 60.0
 	for n in get_tree().get_nodes_in_group("player"):
@@ -447,6 +574,8 @@ func _target_x() -> float:
 
 
 func _target_pos() -> Vector2:
+	if is_instance_valid(_focus) and _focus.is_inside_tree():
+		return _focus.global_position + Vector2(0, -8)
 	var tx := _target_x()
 	for n in get_tree().get_nodes_in_group("player"):
 		var p := n as Player
@@ -595,7 +724,7 @@ func _stoke() -> void:
 		if randf() < 0.4:
 			Game.sparks(get_parent(), mouth + Vector2(randf_range(-60, -20), randf_range(-20, 10)), FIRE_COLOR, 1, 20.0,
 				Vector2(1, 0))
-		await get_tree().physics_frame
+		if is_inside_tree(): await get_tree().physics_frame
 	_suction.stop()
 	_door_open = false
 	_door.frame = 0
@@ -626,6 +755,14 @@ func _phase_roar() -> void:
 	_blast_smoke()
 	for v in vents:
 		v.trigger(randf() * 0.3)
+	# 换阶段：清掉场上的子弹，下一招推迟 0.8 秒
+	for bl in get_tree().get_nodes_in_group("boss_bullet"):
+		bl.queue_free()
+	_land.clear()
+	_pause_t = 0.8
+	# 头顶飘一句：二阶段压力上升，三阶段超压（先闪几下再停住，2.2 秒后淡掉）
+	_osd_text = tr("PRESSURE RISING") if phase == 2 else tr("OVERPRESSURE!")
+	_osd_t = 2.2
 
 
 func _blast_smoke() -> void:
@@ -664,17 +801,31 @@ func _die() -> void:
 	defeated.emit()
 	# 慢动作里一连串爆炸
 	Game.hitstop(0.25)
-	await get_tree().create_timer(0.3, true, false, true).timeout
+	if is_inside_tree(): await get_tree().create_timer(0.3, true, false, true).timeout
 	Engine.time_scale = 0.35
 	for i in 9:
+		if not is_inside_tree():
+			return
+		# 炉火一下一下暗下去，接缝里往外泄白汽
+		_fire_k = 1.0 - float(i + 1) / 9.0
+		_steam_leak()
 		var p := global_position + Vector2(randf_range(-26, 30), randf_range(-70, -14))
 		Game.sparks(get_parent(), p, [FIRE_COLOR, Color(1, 0.85, 0.5), Color(0.8, 0.78, 0.75)][i % 3], 16, 140.0)
 		Game.sfx("boom", -4.0, randf_range(0.8, 1.2))
 		Game.add_shake(5.0)
 		Game.flash(Color(1.0, 0.7, 0.4), 0.25, 0.25)
 		_flash = 1.0
-		await get_tree().create_timer(0.18, true, false, true).timeout
+		if is_inside_tree(): await get_tree().create_timer(0.18, true, false, true).timeout
 	Engine.time_scale = 1.0
+	_fire_k = 0.0
+	# 塌：锅炉身子往下一沉、压在腿上，脚下扬灰，铁皮碎块炸开
+	var tw := create_tween()
+	tw.tween_property(self, "_sink", 7.0, 0.35).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	Game.dust(get_parent(), global_position + Vector2(-20, 0), 10)
+	Game.dust(get_parent(), global_position + Vector2(24, 0), 10)
+	Game.sfx("clang", -4.0, 0.5)
+	Game.add_shake(6.0)
+	EliteFx.scrap_burst(get_parent(), Rect2(global_position + Vector2(-28, -70), Vector2(58, 56)), 30)
 	# 炉门炸飞，指针落回零，"叮"
 	_door.visible = false
 	_spawn_flying_door()
@@ -687,6 +838,37 @@ func _die() -> void:
 	_smoke.emitting = false
 	await _wait(0.4)
 	_release_memories()
+
+
+## 死的时候接缝里往外泄的一股白汽（随机一处，往外喷、往上飘）
+func _steam_leak() -> void:
+	var p := CPUParticles2D.new()
+	p.one_shot = true
+	p.amount = 14
+	p.lifetime = 0.9
+	p.explosiveness = 0.8
+	var side := -1.0 if randf() < 0.5 else 1.0
+	p.direction = Vector2(side, -0.6)
+	p.spread = 20.0
+	p.initial_velocity_min = 50.0
+	p.initial_velocity_max = 90.0
+	p.damping_min = 60.0
+	p.damping_max = 90.0
+	p.gravity = Vector2(0, -30)
+	p.scale_amount_min = 2.0
+	p.scale_amount_max = 4.0
+	var ramp := Gradient.new()
+	ramp.set_color(0, Color(0.92, 0.9, 0.88, 0.85))
+	ramp.set_color(1, Color(0.7, 0.7, 0.72, 0.0))
+	p.color_ramp = ramp
+	var mat := CanvasItemMaterial.new()
+	mat.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+	p.material = mat
+	p.global_position = global_position + Vector2(side * randf_range(18, 28), randf_range(-62, -24)) + _parts.position
+	get_parent().add_child(p)
+	p.emitting = true
+	p.finished.connect(p.queue_free)
+	Game.sfx("vent", -14.0, randf_range(1.2, 1.6))
 
 
 func _spawn_flying_door() -> void:
@@ -709,6 +891,8 @@ func _spawn_flying_door() -> void:
 func _release_memories() -> void:
 	var mouth := global_position + DOOR_RECT.get_center()
 	for i in 16:
+		if not is_inside_tree():
+			return
 		var m := Memory.new()
 		m.global_position = mouth + Vector2(randf_range(-6, 6), randf_range(-4, 4))
 		m.velocity = Vector2(randf_range(-60, 10), randf_range(-70, -30))
@@ -717,10 +901,10 @@ func _release_memories() -> void:
 
 
 func _draw_glow() -> void:
-	if dead:
+	if dead and _fire_k <= 0.0:
 		_glow.draw_rect(DOOR_RECT, Color(0.05, 0.04, 0.04))
 		return
-	# 炉膛：底下最亮，往上暗，格子一闪一闪
+	# 炉膛：底下最亮，往上暗，格子一闪一闪（死的时候跟着 _fire_k 一点点熄掉）
 	var r := DOOR_RECT
 	for y in int(r.size.y):
 		var k := float(y) / r.size.y
@@ -728,8 +912,22 @@ func _draw_glow() -> void:
 		if _door_open:
 			base = base.lerp(Color(1.0, 0.85, 0.5), 0.35)
 		for x in int(r.size.x):
-			var f := 0.75 + 0.25 * sin(_time * 11.0 + x * 1.7 + y * 0.9)
+			var f := (0.75 + 0.25 * sin(_time * 11.0 + x * 1.7 + y * 0.9)) * _fire_k
 			_glow.draw_rect(Rect2(r.position + Vector2(x, y), Vector2.ONE), base * f + Color(0, 0, 0, 1.0 - f))
+	# 炉门开着 = 弱点（伤害翻倍）：门口一圈金色角框一闪一闪
+	if _door_open and int(_time * 10.0) % 2 == 0:
+		var g := r.grow(2.0)
+		var a := g.position
+		var b := g.end - Vector2.ONE
+		var gold := Color(1.0, 0.85, 0.35)
+		for c in [a, Vector2(b.x, a.y), Vector2(a.x, b.y), b]:
+			var sx := 1.0 if c.x == a.x else -1.0
+			var sy := 1.0 if c.y == a.y else -1.0
+			_glow.draw_rect(Rect2(c, Vector2.ONE), gold)
+			_glow.draw_rect(Rect2(c + Vector2(sx, 0), Vector2.ONE), gold)
+			_glow.draw_rect(Rect2(c + Vector2(sx * 2.0, 0), Vector2.ONE), gold)
+			_glow.draw_rect(Rect2(c + Vector2(0, sy), Vector2.ONE), gold)
+			_glow.draw_rect(Rect2(c + Vector2(0, sy * 2.0), Vector2.ONE), gold)
 
 
 func _draw_needle() -> void:
@@ -764,6 +962,13 @@ func _draw_led() -> void:
 
 
 func _draw_warn() -> void:
+	# 换阶段的一句提示：Boss 头顶，先闪几下再停住，最后 0.4 秒淡掉
+	if _osd_t > 0.0 and (_osd_t < 1.6 or int(_osd_t * 12.0) % 2 == 0):
+		var a := clampf(_osd_t / 0.4, 0.0, 1.0)
+		var at := Vector2(-60, -108)
+		_warn.draw_string_outline(Hud.font(), at, _osd_text, HORIZONTAL_ALIGNMENT_CENTER, 120, 11, 2,
+				Color(0.03, 0.03, 0.045, a))
+		_warn.draw_string(Hud.font(), at, _osd_text, HORIZONTAL_ALIGNMENT_CENTER, 120, 11, Color(1.0, 0.75, 0.47, a))
 	if _warn_t <= 0.0 or int(_warn_t * 14.0) % 2 == 0:
 		return
 	var p := _warn_pos.round()

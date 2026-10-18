@@ -10,8 +10,12 @@ extends EliteBase
 ##   半径 50 以内都挨 10。预警时走出红圈就安全。拽线和转线连着来：被拽过去以后下一招常常就是转线。
 ## - 叫班：两手举起来，身边掉下两个接线员（hooded_operator.gd），算进这一场遭遇战。
 ## 拽来的线、转着的线、瞄准虚线、红圈都是代码画的（unshaded，暗处也看得清）。
+## 是活人，不是机器（作者 10-17："加一些不是机器的，是有生命的"）：帽兜里一张老人的脸、一把白胡子，
+## 两只暖白的眼睛由代码画（会眨、会往主角那边看）；站着时慢慢呼吸；主角绕到身后，先扭头看一眼再转身；
+## 挨打往后一仰、踉跄一步（出招时只抖一下，不打断招式）；血打空先瘫倒在地，再散掉。
 ## 贴图 chief_operator.png（草图/精英怪/l2_robed_elites.py 导出），6 帧：
-## 0、1 飘；2 拽线预警（手举过头）；3 拽线（手往前伸直）；4 转线（两手张开，背后的线炸开）；5 叫班（两手举起来）。
+## 0、1 飘（也是呼吸的两帧）；2 拽线预警（手举过头）；3 拽线（手往前伸直）；4 转线（两手张开，背后的线炸开）；
+## 5 叫班（两手举起来）；6 挨打后仰；7 倒下。
 
 enum State { MOVE, HOOK_AIM, HOOK_LOCK, HOOK_FLY, HOOK_PULL, HOOK_SLAM, HOOK_BACK, SPIN_WARN, SPIN, CALL, RECOVER }
 
@@ -19,8 +23,10 @@ const MOVE_SPEED := 18.0
 const FRAME_TIME := 0.3
 const NEAR := 70.0
 const FAR := 150.0
-## 招与招之间歇多久（精英怪不乘 interval_mult，照钢琴：情绪高时招看不清）
-const IDLE_TIME := Vector2(2.0, 2.6)
+## 招与招之间歇多久（精英怪不乘 interval_mult，照钢琴：情绪高时招看不清）。
+## 10-18 作者："技能之间的停顿太长，一辈子只能放出几次"：两招之间的停顿（RECOVER + IDLE）压到 1.0~1.3 秒，
+## 打死之前每招至少完整放 3 轮。预警时长没动
+const IDLE_TIME := Vector2(0.65, 0.95)
 ## 拽线
 const AIM_TIME := 0.5
 const LOCK_TIME := 0.3
@@ -42,10 +48,16 @@ const CHEST := Vector2(0, -28)
 ## 叫班
 const CALL_TIME := 0.8
 const CALL_AT := [0.6, 0.3]
-const RECOVER_TIME := 0.7
+const RECOVER_TIME := 0.35
 const CORD := Color(0.8, 0.74, 0.86)
 const BRASS := Color(1.0, 0.8, 0.45)
 const AIM := Color(1.0, 0.25, 0.2)
+## 活物的部分：眼睛颜色、呼吸、挨打后仰、转身前扭头、倒下
+const EYE_COLOR := Color(1.0, 0.86, 0.62)
+const BREATH_TIME := 0.75
+const FLINCH_TIME := 0.28
+const TURN_TIME := 0.22
+const COLLAPSE_TIME := 0.9
 
 var state := State.MOVE
 var _state_t := 0.0
@@ -61,6 +73,13 @@ var _calls_done := 0
 var _call_pending := false
 var _summoned: Array[Node] = []
 var _fx2: Node2D
+var _flinch := 0.0
+var _turn_t := 0.0
+var _blink := 0.0
+var _blink_cd := 2.5
+var _look := Vector2.ZERO
+var _dying := false
+var _die_t := 0.0
 
 
 func _setup() -> void:
@@ -68,17 +87,34 @@ func _setup() -> void:
 	intro_title = "HOLD THE LINE"
 	intro_frame = 4
 	texture_path = "res://art/enemies/chief_operator.png"
-	hframes = 6
+	hframes = 8
 	frame_size = Vector2i(50, 53)
 	body_rect = Rect2(-12, -48, 24, 48)
-	led_pixel = Vector2i(20, 12)
-	led_by_frame = {1: Vector2i(20, 11), 3: Vector2i(19, 12), 5: Vector2i(20, 11)}
-	max_hp = 1300.0
+	# led_pixel 是前面那只眼睛（眼睛由 _draw_led 画成两只会眨的暖白眼睛，不是机器的红灯）
+	led_pixel = Vector2i(19, 12)
+	led_by_frame = {1: Vector2i(19, 11), 3: Vector2i(18, 12), 5: Vector2i(19, 11), 6: Vector2i(21, 12),
+			7: Vector2i(19, 28)}
+	# 10-18：停顿压短以后三把武器 13~17 秒就打死（真实时间），每招只放得出 2 轮；血加到 20~35 秒、每招 3 轮以上
+	max_hp = 2400.0
 	contact_damage = 10.0
+	# 活人：倒下扬灰（不撒废铁），倒地的闷响，溅出来的是深紫的袍子碎片、黄铜插头、白胡子和灰
+	death_scrap = false
+	death_sfx = "land"
+	death_sfx_pitch = 0.55
+	death_spark_colors = [Color8(90, 76, 100), Color8(164, 128, 70)]
+	death_boom_sfx = "boom"
+	death_boom_pitch = 0.45
+	death_spark_colors_big = [Color8(206, 204, 198), Color8(90, 76, 100)]
+	# 暗处亮层用 EliteBase 自带的（预警时还会一闪一闪发红）
+	fill_alpha = 0.32
 
 
 func _after_ready() -> void:
 	_unstick()
+	# 眼睛的光：暖白、很弱，只是让暗处看得出眼神
+	var glow := _led.get_child(0) as PointLight2D
+	glow.color = EYE_COLOR
+	glow.texture_scale = 0.35
 	_fx2 = Node2D.new()
 	_fx2.top_level = true
 	_fx2.z_index = 4
@@ -96,16 +132,40 @@ func _unstick() -> void:
 	q.collision_mask = 1
 	q.exclude = [get_rid()]
 	var space := get_world_2d().direct_space_state
-	for i in 40:
-		q.transform = Transform2D(0.0, global_position + _shape.position)
+	# 往下最多挪到原来脚底下那块地面（不能穿过地板，碰撞会话 10-18 报过整只掉出地图）
+	var floor_d := 80.0
+	var ray := PhysicsRayQueryParameters2D.create(global_position + Vector2(0, -1), global_position + Vector2(0, 82), 1)
+	var hit := space.intersect_ray(ray)
+	if not hit.is_empty():
+		floor_d = (hit.position as Vector2).y - global_position.y
+	# 先原地、往上一点（脚压进了地面、斜坡），再左右挪（身子侧面插进柱子、墙），最后往下（头顶卡进天花板）
+	var tries: Array[Vector2] = []
+	for dy in [0.0, -1.0, -2.0, -3.0, -4.0, -6.0, -8.0]:
+		tries.append(Vector2(0, dy))
+	for dx in [2.0, 4.0, 6.0, 8.0, 12.0, 16.0]:
+		for dy in [0.0, -2.0, -4.0]:
+			tries.append(Vector2(dx, dy))
+			tries.append(Vector2(-dx, dy))
+	var d := 2.0
+	while d <= floor_d:
+		tries.append(Vector2(0, d))
+		d += 2.0
+	for t in tries:
+		q.transform = Transform2D(0.0, global_position + t + _shape.position)
 		if space.intersect_shape(q, 1).is_empty():
+			global_position += t
 			return
-		global_position.y += 2.0
+	# 都不行：留在原地，交给物理把它挤出来
 
 
 func _tick(delta: float) -> void:
+	if _dying:
+		_collapse(delta)
+		return
 	_state_t += delta
-	if not is_knocked():
+	_alive_tick(delta)
+	# 不走路的时候刹住（走路时 _move 自己管速度，这里再刹就把走路的加速抵掉了）
+	if not is_knocked() and state != State.MOVE:
 		velocity.x = move_toward(velocity.x, 0.0, 500.0 * delta)
 	match state:
 		State.MOVE:
@@ -116,7 +176,7 @@ func _tick(delta: float) -> void:
 			set_frame(2)
 			var p := nearest_player()
 			if p:
-				_face(p)
+				_face(p, true)
 				_attack_dir = dir
 				_aim_at(p.global_position + Vector2(0, -8))
 			if _state_t >= AIM_TIME:
@@ -201,8 +261,62 @@ func _tick(delta: float) -> void:
 			set_frame(0)
 			if _state_t >= RECOVER_TIME:
 				_enter(State.MOVE)
+	# 挨打后仰：不在出招的时候才换成后仰那一帧
+	if _flinch > 0.0 and state in [State.MOVE, State.RECOVER]:
+		set_frame(6)
 	move_and_slide()
 	_fx2.queue_redraw()
+
+
+## 活物的小动作：眨眼、眼睛跟着主角、扭头、挨打后仰的计时
+func _alive_tick(delta: float) -> void:
+	_flinch = maxf(_flinch - delta, 0.0)
+	_blink = maxf(_blink - delta, 0.0)
+	_blink_cd -= delta
+	if _blink_cd <= 0.0:
+		_blink = 0.12
+		_blink_cd = randf_range(2.0, 4.5)
+	var p := nearest_player()
+	_look = Vector2.ZERO
+	if p:
+		# 主角比头高很多就往上看一格
+		if p.global_position.y < global_position.y - 44.0:
+			_look.y = -1.0
+	if _turn_t > 0.0:
+		_turn_t -= delta
+		_look.x = -dir                     # 眼睛先往身后看
+		if _turn_t <= 0.0:
+			dir = -dir
+
+
+## 倒下：先后仰，再瘫在地上，然后才走 EliteBase 的死亡（爆开、降情绪）
+func _collapse(delta: float) -> void:
+	_die_t += delta
+	velocity.x = 0.0
+	set_frame(6 if _die_t < 0.22 else 7)
+	_blink = 1.0 if _die_t > 0.5 else 0.0
+	if _die_t >= 0.22 and _die_t - delta < 0.22:
+		Game.sfx("land", -6.0, 0.6)
+		Game.dust(get_parent(), global_position, 8)
+		Game.add_shake(2.0)
+	move_and_slide()
+	if _die_t >= COLLAPSE_TIME:
+		super._die()
+
+
+func _die() -> void:
+	if _dying:
+		return
+	_dying = true
+	_die_t = 0.0
+	state = State.RECOVER
+	_hooked = null
+	_contact.set_deferred("monitoring", false)
+	Game.sfx("hurt", -6.0, 0.6)
+
+
+func is_targetable() -> bool:
+	return super.is_targetable() and not _dying
 
 
 func _enter(s: State) -> void:
@@ -217,7 +331,7 @@ func _enter(s: State) -> void:
 func _start_attack() -> void:
 	var p := nearest_player()
 	if p:
-		_face(p)
+		_face(p, true)
 	_attack_dir = dir
 	velocity.x = 0.0
 	if _call_pending:
@@ -238,6 +352,7 @@ func _start_attack() -> void:
 
 
 func _move(delta: float) -> void:
+	var standing := true
 	var p := nearest_player()
 	var side := 0.0
 	if p:
@@ -249,14 +364,26 @@ func _move(delta: float) -> void:
 			side = -signf(dx)
 	if side != 0.0 and (not _ground_at(side) or _wall_at(side)):
 		side = 0.0
+	if side != 0.0:
+		standing = false
 	if not is_knocked():
 		velocity.x = move_toward(velocity.x, side * MOVE_SPEED * speed_mult(), 300.0 * delta)
-	set_frame(int(_time / FRAME_TIME) % 2)
+	# 飘的时候袍子快快地飘，站着的时候慢慢呼吸（同两帧，节奏不同）
+	set_frame(int(_time / (BREATH_TIME if standing else FRAME_TIME)) % 2)
 
 
-func _face(p: Node2D) -> void:
-	if absf(p.global_position.x - global_position.x) > 2.0:
-		dir = 1 if p.global_position.x > global_position.x else -1
+## 面朝主角。走动时主角绕到身后，先扭头看一眼（TURN_TIME）再转身；出招时直接转
+func _face(p: Node2D, instant := false) -> void:
+	if absf(p.global_position.x - global_position.x) <= 2.0:
+		return
+	var want := 1 if p.global_position.x > global_position.x else -1
+	if want == dir:
+		_turn_t = 0.0
+	elif instant:
+		dir = want
+		_turn_t = 0.0
+	elif _turn_t <= 0.0:
+		_turn_t = TURN_TIME
 
 
 func _hand(h: Vector2) -> Vector2:
@@ -303,7 +430,15 @@ func _wall_at(side: float) -> bool:
 
 
 ## 血掉到 60%、30% 各叫一次班（下一招就是叫班）
-func _on_hurt(_damage: float, _full: bool) -> void:
+func _on_hurt(_damage: float, full: bool) -> void:
+	if _dying:
+		return
+	# 挨打后仰：走动、歇着的时候换成后仰那一帧，往后踉跄一步；出招时只抖一下
+	if full or _flinch <= 0.0:
+		_flinch = FLINCH_TIME
+		if state in [State.MOVE, State.RECOVER] and not is_knocked():
+			velocity.x = -dir * (60.0 if full else 30.0)
+			_knock = 0.12
 	if _calls_done < CALL_AT.size() and hp / max_hp <= CALL_AT[_calls_done]:
 		_calls_done += 1
 		_call_pending = true
@@ -324,6 +459,10 @@ func _call_operators() -> void:
 		var x: float = global_position.x + s * 44.0
 		if _in_wall(Vector2(x, global_position.y - 12.0)):
 			x = global_position.x - s * 20.0
+		# 夹在场子里面，留出半个身宽：闸门只有 8 像素宽，站在门边叫班时门外那一点不在墙里，
+		# 接线员会生在闸门外面打不到、场子清不了（10-18 作者试玩 E3 卡关，碰撞会话报的）
+		if enc:
+			x = clampf(x, enc.left + 16.0, enc.right - 16.0)
 		var e: Node2D = (load(path) as GDScript).new()
 		e.set("respawn_time", 0.0)
 		e.position = Vector2(roundf(x), global_position.y - 30.0)
@@ -339,26 +478,44 @@ func _call_operators() -> void:
 
 
 func _encounter() -> Node:
+	# 先找 _alive 里有自己的那一场；找不到再按 x、y 范围找开打了没打完的（第二关 E1 和 E3 上下叠着，
+	# x 范围重合，只按 x 会找到楼下那一场，碰撞会话 10-18 报的）
 	var parent := get_parent()
 	if parent == null:
 		return null
+	var fallback: Encounter = null
 	for c in parent.get_children():
-		if c is Encounter and not (c as Encounter).cleared:
-			var e := c as Encounter
-			if global_position.x >= e.left - 8.0 and global_position.x <= e.right + 8.0:
-				return e
-	return null
+		var e := c as Encounter
+		if e == null or e.cleared:
+			continue
+		if e._alive.has(self):
+			return e
+		var floor_y := maxf(e.floor_left, e.floor_right)
+		if e.started and global_position.x >= e.left - 8.0 and global_position.x <= e.right + 8.0 \
+				and global_position.y >= e.ceil_y - 8.0 and global_position.y <= floor_y + 8.0:
+			fallback = e
+	return fallback
 
 
-## 预警时机身抖一抖
+## 两只暖白的眼睛（代替机器的红灯）：会眨眼，会往主角那边、往身后看。_led 在前面那只眼睛的位置
+func _draw_led() -> void:
+	if _blink > 0.0 or not _led.visible:
+		return
+	var c := EYE_COLOR.lerp(Color.WHITE, _flash)
+	var lk := _look.round()
+	_led.draw_rect(Rect2(lk, Vector2.ONE), c)
+	_led.draw_rect(Rect2(lk + Vector2(-2 * dir, 0), Vector2.ONE), Color(c, 0.75))
+
+
+## 预警时身子抖一抖；挨打（出招中）也抖一下
 func _update_visual() -> void:
 	super._update_visual()
-	if state in [State.HOOK_LOCK, State.SPIN_WARN]:
-		_sprite.position.x += 1.0 if int(_state_t * 30.0) % 2 == 0 else -1.0
+	if state in [State.HOOK_LOCK, State.SPIN_WARN] or (_flinch > FLINCH_TIME - 0.1 and not _dying):
+		_sprite.position.x += 1.0 if int(_time * 30.0) % 2 == 0 else -1.0
 
 
 func _draw_fx2() -> void:
-	if dead or in_intro():
+	if dead or in_intro() or _dying:
 		return
 	match state:
 		State.HOOK_AIM, State.HOOK_LOCK:

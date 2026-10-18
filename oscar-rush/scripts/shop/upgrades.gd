@@ -56,7 +56,8 @@ static func plating_block() -> bool:
 	var lv := level("plating")
 	if lv <= 0:
 		return false
-	var now := Time.get_ticks_msec() / 1000.0
+	# 按物理帧数算，不用现实时间：卡顿掉帧时不会多走表
+	var now := Engine.get_physics_frames() / float(Engine.physics_ticks_per_second)
 	if now < _plating_ready:
 		return false
 	_plating_ready = now + PLATING_INTERVAL[lv]
