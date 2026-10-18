@@ -167,7 +167,8 @@ func _update_prompt() -> void:
 
 ## 像素马灯，7×9。摆动时越往下的部分偏得越多
 func _draw() -> void:
-	draw_set_transform(global_position.round() - global_position)
+	# 不对齐整数像素：提在主角手里时和主角一起平滑移动，取整会一格一格跳（同 player.gd 的 _snap）
+	draw_set_transform(Vector2.ZERO)
 	var glass := GLASS.lerp(Color.WHITE, _hurt_flash)
 	var hp_ratio := Run.crystal_hp / Run.crystal_max
 	glass = glass.lerp(Color8(120, 90, 70), (1.0 - hp_ratio) * 0.5)

@@ -23,6 +23,17 @@ const TINT_LIGHT := {
 }
 ## 这几块屏幕不摆怪：玄关、家乡（出生点在第一块屏幕左边的走廊里，第一块屏幕照常摆）
 const NO_ENEMY := ["entry", "hometown"]
+## 遭遇战的特殊玩法（见 l3_mode.gd）：场景名 → 玩法。没列的是普通场子。
+## 三条路线都至少碰到三种：路线 1 沙漠风、港口停电、厨房购物……；第一块屏幕（卧室）故意留普通的
+const MODES := {
+	"harbor": "blackout", "aquarium": "blackout", "attic": "blackout", "subway": "blackout", "bathroom": "blackout",
+	"desert": "wind", "rooftop": "wind", "beach": "wind", "weather": "wind", "snow_yard": "wind",
+	"static": "signal", "test_card": "signal", "space": "signal", "rain_street": "signal", "classroom": "signal",
+	"kitchen": "shop", "living": "shop", "kids": "shop", "workshop": "shop", "ferris": "shop",
+}
+## 清过场的屏幕，人离开再回来时，有这个几率零星刷出 1～3 只小怪（不关门、不算遭遇战）；同一块屏幕不连着刷
+const REVISIT_CHANCE := 0.4
+const REVISIT_WARN := 0.7
 ## 只挡怪、不挡人的墙（单独一层，只有屏幕里摆的怪会碰）：洞口两边各一堵矮墙，每块屏幕左右边上各一堵整面墙。
 ## 小怪来回走会掉进洞里、或者从门口走到隔壁屏幕，原来那块屏幕就空了（2026-10-17 作者说"有的屏幕没怪"）
 const MOB_WALL_LAYER := 128
@@ -50,6 +61,11 @@ const FAR_FOLLOW := 0.6
 ## 平时摆的小怪和它所在的屏幕：{node, rect}（rect 到地面为止）
 var _screen_mobs: Array = []
 var _wake_t := 0.0
+## 场子屏幕：清场以后回访刷怪用，{rect, enc, smalls, tint, floor, inside, left_clear, last}
+var _revisit: Array = []
+var _modes: Array[L3Mode] = []
+## 回访刷怪的几率（自测时可以改成 1）
+var revisit_chance := REVISIT_CHANCE
 ## 出口：家门口。门在山坡上，比屏幕地面高一点，所以一直延到地面，走到门前就算
 var _exit := Rect2()
 
@@ -133,9 +149,11 @@ func _ready() -> void:
 
 	hud = Hud.new()
 	add_child(hud)
+	for m in _modes:
+		m.hud = hud
 	# 开场说清目标（新玩家报告第 1 条：不知道往哪走）。从存档点重来就不再出
 	if Run.checkpoint.is_empty():
-		get_tree().create_timer(1.2).timeout.connect(func() -> void:
+		_after(1.2, func() -> void:
 			if is_instance_valid(hud) and not _leaving:
 				hud.show_banner(tr("Find the house from the tape. Up and to the right."), 3.0))
 
@@ -163,6 +181,17 @@ func _ready() -> void:
 				if a2.begins_with("--l3shots="):
 					ap.set("shots_dir", a2.trim_prefix("--l3shots="))
 			add_child(ap)
+		if arg.begins_with("--l3mode="):
+			var mc: Node = load("res://scripts/debug/l3_mode_check.gd").new()
+			mc.set("scene_name", arg.trim_prefix("--l3mode="))
+			for a2 in OS.get_cmdline_user_args():
+				if a2.begins_with("--l3signal="):
+					mc.set("signal_start", a2.trim_prefix("--l3signal=").to_float())
+				if a2 == "--l3revisit":
+					mc.set("revisit", true)
+				if a2.begins_with("--l3shots="):
+					mc.set("shots_dir", a2.trim_prefix("--l3shots="))
+			add_child(mc)
 		if arg == "--l3fix":
 			add_child(load("res://scripts/debug/l3_fix_check.gd").new())
 		if arg == "--l3enc":
@@ -255,18 +284,36 @@ func _place_enemies() -> void:
 			enc.ceil_y = rect[1]
 			enc.floor_left = fy
 			enc.floor_right = fy
-			# 2026-10-18 作者试玩"没有压迫感"：每波 2 只 → 宽屏 3 只（两波小怪 + 精英，波数不变）；
-			# 清场回血按小怪数量给（每只 1.4，6 只回 8；原来不管多少只都回 12，第三关是净回血）
-			var per := 3 if w >= WIDE_SCREEN else 2
+			# 2026-10-18 作者试玩"没有压迫感"：宽屏场子多放小怪（两波小怪 + 精英，波数不变）；
+			# 清场回血按小怪数量给（每只 1.4，5 只回 7；原来不管多少只都回 12，第三关是净回血）
+			# 10-18 作者又说"敌人太多了"：一场加起来不超过 8 只（精英最多再叫出 2 只），
+			# 宽屏改成 3 只 → 2 只，窄屏 2 → 2，一场 5 或 4 只小怪 + 精英
+			var first := 3 if w >= WIDE_SCREEN else 2
+			var second := 2
 			var w1: Array = []
 			var w2: Array = []
-			for k in per:
+			for k in first:
 				w1.append(bag[k % bag.size()])
-				w2.append(bag[(k + per) % bag.size()])
+			for k in second:
+				w2.append(bag[(k + first) % bag.size()])
 			enc.waves = [w1, w2, [elite]]
-			enc.clear_heal = roundf(HEAL_PER_MOB * per * 2)
+			enc.clear_heal = roundf(HEAL_PER_MOB * (first + second))
 			enc.spawn_hook = _spawn_in_encounter.bind(tint, rect[1], rect[0] + 10, rect[2] - 10)
 			add_child(enc)
+			var glass := Rect2(rect[0], rect[1], w, fy - rect[1])
+			if MODES.has(s["name"]):
+				var mode := L3Mode.new()
+				mode.kind = MODES[s["name"]]
+				mode.rect = glass
+				mode.floor_y = fy
+				mode.enc = enc
+				for p in D.PLATFORMS:
+					if p[0] >= rect[0] and p[1] <= rect[2] and p[2] > rect[1] and p[2] < fy:
+						mode.platforms.append(p)
+				add_child(mode)
+				_modes.append(mode)
+			_revisit.append({"rect": glass, "enc": enc, "smalls": smalls, "tint": tint, "floor": fy,
+				"inside": false, "left_clear": false, "last": false})
 			continue
 		var n := 1 if w < MID_SCREEN else (2 if w < WIDE_SCREEN else 3)
 		var left: float = rect[0] + ENTRY_CLEAR
@@ -399,6 +446,97 @@ func _flank_x(x: float, left: float, right: float) -> float:
 	return x
 
 
+## 回访刷怪：人走进一块已经清过场的屏幕（清场以后离开过）时掷一次骰子
+func _check_revisits() -> void:
+	var feet: Array[Vector2] = []
+	for n in get_tree().get_nodes_in_group("player"):
+		feet.append((n as Node2D).global_position)
+	for r in _revisit:
+		var inside := false
+		for f in feet:
+			if (r["rect"] as Rect2).grow(4.0).has_point(f):
+				inside = true
+		var enc: Encounter = r["enc"]
+		if inside and not r["inside"] and enc.cleared and r["left_clear"]:
+			if r["last"]:
+				r["last"] = false
+			elif randf() < revisit_chance:
+				r["last"] = true
+				_revisit_spawn(r, feet[0] if not feet.is_empty() else (r["rect"] as Rect2).get_center())
+		if not inside and r["inside"] and enc.cleared:
+			r["left_clear"] = true
+		r["inside"] = inside
+
+
+## 刷 1～3 只：先在落点闪一下雪花（0.7 秒），再把怪放出来。离人至少 70，不落在洞口
+func _revisit_spawn(r: Dictionary, player_at: Vector2) -> void:
+	var rect: Rect2 = r["rect"]
+	var fy: float = r["floor"]
+	var n := randi_range(1, 3)
+	var xs: Array[float] = []
+	for k in n:
+		for _try in 16:
+			var x := _off_hole(randf_range(rect.position.x + 24.0, rect.end.x - 24.0), fy)
+			if absf(x - player_at.x) >= 70.0 and xs.all(func(o): return absf(o - x) >= 20.0):
+				xs.append(x)
+				break
+	for x in xs:
+		var kind: String = r["smalls"][randi() % r["smalls"].size()]
+		var flash := _StaticFlash.new()
+		flash.position = Vector2(x, fy)
+		flash.add_to_group("revisit_flash")
+		add_child(flash)
+		Game.sfx("static", -16.0, 1.4, 0.1)
+		_after(REVISIT_WARN, func() -> void:
+			if is_instance_valid(flash):
+				flash.queue_free()
+			if _leaving:
+				return
+			var e := _make_mob(kind, r["tint"])
+			e.position = Vector2(x, fy - (30.0 if e is Moth else 0.0))
+			add_child(e)
+			(e as CollisionObject2D).collision_mask |= MOB_WALL_LAYER
+			_screen_mobs.append({"node": e, "rect": Rect2(rect.position.x, rect.position.y, rect.size.x, rect.size.y + 2)}))
+
+
+## 过一会儿再做某事。用挂在关卡下面的 Timer，不用 SceneTree 的计时器：
+## 人死了重来、走出关卡时 Timer 跟着关卡一起没了，不会在关卡释放以后再回调
+func _after(sec: float, fn: Callable) -> void:
+	var t := Timer.new()
+	t.one_shot = true
+	t.wait_time = sec
+	add_child(t)
+	t.timeout.connect(func() -> void:
+		fn.call()
+		t.queue_free())
+	t.start()
+
+
+## 回访刷怪的出场预兆：落点上一块一闪一闪的雪花
+class _StaticFlash:
+	extends Node2D
+
+	var _t := 0.0
+
+	func _ready() -> void:
+		z_index = 7
+		var unshaded := CanvasItemMaterial.new()
+		unshaded.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+		material = unshaded
+
+	func _process(delta: float) -> void:
+		_t += delta
+		queue_redraw()
+
+	func _draw() -> void:
+		var h := int(minf(_t * 60.0, 18.0))
+		for y in h:
+			for x in range(-7, 7):
+				if randf() < 0.45:
+					var v := randf_range(0.5, 1.0)
+					draw_rect(Rect2(x, -y - 1, 1, 1), Color(v, v, v, 0.85))
+
+
 func _place_hints() -> void:
 	var jump_key := Controls.key_name(Run.players[0]["input"], "jump")
 	var first: Array = D.SCREENS[0]["rect"]
@@ -495,6 +633,7 @@ func _process(delta: float) -> void:
 	if _wake_t <= 0.0:
 		_wake_t = 0.15
 		_wake_mobs()
+		_check_revisits()
 	var cam := get_viewport().get_camera_2d()
 	if cam == null:
 		return

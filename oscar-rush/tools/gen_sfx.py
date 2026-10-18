@@ -127,7 +127,9 @@ def land():
 
 # 喷气靴：气阀放气的"嘶——"，圆滑不刺耳。2 秒，首尾交叉淡化，可以无缝循环。
 # 2026-10-17 试玩：原来的"突突突"太吵，换成这个。
-def jet():
+# 主角喷气背包：柔和的中频气流，2 秒无缝循环（player.gd 用）。
+# 10-18 以前怪物也用这个，作者嫌吵、中低频太多，怪物改用下面的 jet（沙沙的高频短喷气）
+def jetpack():
     d, fade_d = 2.0, 0.3
     n, f = int(SR * d), int(SR * fade_d)
     raw = rng.uniform(-1, 1, n + f)
@@ -417,12 +419,30 @@ def tvon():
 
 # 铆钉枪：短促的"哒"，金属撞针 + 一点气声。一秒十几发，要短、不刺耳
 def rivet_shot():
-    d = 0.07
+    # 10-18 作者："声音有点吵"，照合金弹头重机枪改：短、低沉、有颗粒感的"哒"。
+    # 去掉原来 1850Hz 的尖"叮"（吵的主要来源），主体是 110Hz 往下掉的闷声 + 低通过的粗颗粒噪声
+    d = 0.06
     n = int(SR * d)
-    click = highpass(noise(d), 0.4) * decay(n, 90)
-    ping = np.sin(2 * np.pi * 1850 * t(d)) * decay(n, 60) * 0.5
-    thump = np.sin(2 * np.pi * 180 * t(d)) * decay(n, 50) * 0.6
-    return click * 0.8 + ping + thump
+    body = np.sin(2 * np.pi * np.geomspace(140, 70, n) * t(d)) * decay(n, 45)
+    grit = lowpass(noise(d), 0.25) * decay(n, 70)
+    crack = highpass(noise(d), 0.5) * decay(n, 260) * 0.25
+    return body * 0.9 + grit * 0.6 + crack
+
+
+# 铆钉打中怪：短促的"噗"，比开枪声更闷、更短，和开枪声一听就分得开
+def rivet_hit():
+    d = 0.05
+    n = int(SR * d)
+    thud = np.sin(2 * np.pi * np.geomspace(220, 90, n) * t(d)) * decay(n, 70)
+    puff = lowpass(noise(d), 0.15) * decay(n, 90)
+    return thud * 0.8 + puff * 0.6
+
+
+# 弹壳落地：很轻的一声金属"叮"
+def casing():
+    d = 0.12
+    n = int(SR * d)
+    return (np.sin(2 * np.pi * 3150 * t(d)) + 0.6 * np.sin(2 * np.pi * 4700 * t(d))) * decay(n, 40) * 0.5
 
 
 # 蒸汽锤：一声闷砸 + 一大团蒸汽"嘶——"往外喷
@@ -446,10 +466,91 @@ def blast_ready():
     return lowpass(noise(d), 0.3) * env(n, 0.005, 0.12) * 0.6 + np.sin(2 * np.pi * 880 * t(d)) * decay(n, 25) * 0.4
 
 
+# 怪物喷气（汽壶喷汽、吸尘器喷碎屑、压路机、守夜人、精英……都用这个）。
+# 10-18 作者："怪物喷气攻击的声音很吵，中低频太多，沙沙的喷气就可以了"。
+# 原来是 2 秒、300~900Hz 的气流声（现在给主角背包用，见 jetpack）。改成：
+# 1.2kHz 以下用 4 阶高通砍掉，7kHz 以上柔一点，再乱抖一下响度出"沙沙"的颗粒感，0.38 秒就散掉。
+# 用自己的随机数，不动上面那些音效的随机序列（全部重跑时别的声音不变）
+def jet():
+    from scipy.signal import butter, sosfilt
+    r = np.random.default_rng(1018)
+    d = 0.38
+    n = int(SR * d)
+    x = r.uniform(-1, 1, n)
+    x = sosfilt(butter(4, 1200, "highpass", fs=SR, output="sos"), x)
+    x = sosfilt(butter(2, 7000, "lowpass", fs=SR, output="sos"), x)
+    # 沙沙：每 4~5 毫秒随机一个响度，平滑一下
+    grain = np.repeat(r.uniform(0.55, 1.0, n // 100 + 1), 100)[:n]
+    grain = np.convolve(grain, np.ones(40) / 40, mode="same")
+    tt = t(d)
+    e = np.minimum(tt / 0.008, 1.0) * np.exp(-np.maximum(tt - 0.04, 0.0) * 11.0)
+    e[-int(SR * 0.03):] *= np.linspace(1, 0, int(SR * 0.03))
+    return x * grain * e
+
+
+# 吸尘器一口气吸 2.5 秒的长气流：和 jet 一样的沙沙高频，持续 2 秒（vacuum.gd 放慢到 0.8 倍）
+def jet_long():
+    from scipy.signal import butter, sosfilt
+    r = np.random.default_rng(1019)
+    d = 2.0
+    n = int(SR * d)
+    x = r.uniform(-1, 1, n)
+    x = sosfilt(butter(4, 1200, "highpass", fs=SR, output="sos"), x)
+    x = sosfilt(butter(2, 6500, "lowpass", fs=SR, output="sos"), x)
+    grain = np.repeat(r.uniform(0.6, 1.0, n // 110 + 1), 110)[:n]
+    grain = np.convolve(grain, np.ones(50) / 50, mode="same")
+    tt = t(d)
+    sway = 1.0 + 0.15 * np.sin(2 * np.pi * 3.1 * tt) + 0.08 * np.sin(2 * np.pi * 7.3 * tt + 1.0)
+    e = np.minimum(tt / 0.15, 1.0) * np.minimum((d - tt) / 0.35, 1.0) * (1.0 - 0.25 * tt / d)
+    return x * grain * sway * e
+
+
+# —— 10-18 打击感（作者："更有打击感，更爽"）——用自己的随机数，不动上面那些音效的随机序列
+def _rn(d, seed):
+    return np.random.default_rng(seed).uniform(-1, 1, int(SR * d))
+
+
+# 击杀：一声脆的金属爆裂（闷的底 + 碎响 + 一点金属余音）。连杀时游戏里把音高往上抬
+def kill_pop():
+    d = 0.24
+    n = int(SR * d)
+    thump = np.sin(2 * np.pi * np.geomspace(170, 50, n) * t(d)) * decay(n, 22)
+    crunch = highpass(lowpass(_rn(d, 1810), 0.5), 0.2) * decay(n, 28) * 0.9
+    ring = (np.sin(2 * np.pi * 1780 * t(d)) + 0.7 * np.sin(2 * np.pi * 2630 * t(d))) * decay(n, 30) * 0.22
+    return thump + crunch + ring
+
+
+# 闪光灯蓄满出手：低沉的"轰"+ 一道往下扫的电弧
+def flash_boom():
+    d = 0.28
+    n = int(SR * d)
+    boom = np.sin(2 * np.pi * np.geomspace(130, 50, n) * t(d)) * decay(n, 16)
+    ph = np.cumsum(np.geomspace(2600, 500, n)) / SR
+    zap = (2.0 * (ph % 1.0) - 1.0) * decay(n, 38) * 0.28
+    puff = lowpass(_rn(d, 1811), 0.2) * decay(n, 45) * 0.7
+    return boom + zap + puff
+
+
+# 蒸汽锤砸地：很低的"咚"+ 地面碎响 + 铁锤一声闷"当"
+def hammer_boom():
+    d = 0.5
+    n = int(SR * d)
+    boom = np.sin(2 * np.pi * np.geomspace(75, 34, n) * t(d)) * decay(n, 7)
+    rubble = lowpass(_rn(d, 1812), 0.12) * decay(n, 16) * 0.9
+    clank = (np.sin(2 * np.pi * 380 * t(d)) + 0.6 * np.sin(2 * np.pi * 745 * t(d))) * decay(n, 20) * 0.3
+    return boom + rubble + clank
+
+
 if __name__ == "__main__":
-    for fn in [charge, ready, shoot, hit, scrap, jump, land, jet, lantern_pick, lantern_drop, hurt, crack,
+    import sys
+    # 只重写指定的几个：python3 tools/gen_sfx.py jet jet_long。照样全部算一遍，保证随机序列不变
+    only = set(sys.argv[1:])
+    for fn in [charge, ready, shoot, hit, scrap, jump, land, jetpack, lantern_pick, lantern_drop, hurt, crack,
                ui_move, ui_confirm, ui_back, title_on, join, leave,
                whistle, boom, rivets, embers, vent, scrape, suction, clang, ding, alarm,
                bell, dial, buzz, busy, voice, tvclick, static, tvoff, tvon,
-               rivet_shot, steam_blast, blast_ready]:
-        write(fn.__name__, fn())
+               rivet_shot, rivet_hit, casing, steam_blast, blast_ready, jet, jet_long,
+               kill_pop, flash_boom, hammer_boom]:
+        x = fn()
+        if not only or fn.__name__ in only:
+            write(fn.__name__, x)

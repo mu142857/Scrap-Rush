@@ -235,7 +235,13 @@ static func _tier_for(e: float, _cur: int) -> int:
 
 func _in_level() -> bool:
 	var root := get_tree().current_scene
-	return root != null and not root is ShopRoom and not get_tree().get_nodes_in_group("player").is_empty()
+	return root != null and not _is_shop(root) and not get_tree().get_nodes_in_group("player").is_empty()
+
+
+## 是不是在商店。按脚本路径认，不写 ShopRoom 类名，少一条类之间的依赖
+const SHOP_SCRIPT := "res://scripts/shop/shop_room.gd"
+static func _is_shop(n: Node) -> bool:
+	return n != null and n.get_script() != null and (n.get_script() as Script).resource_path == SHOP_SCRIPT
 
 
 func _process(delta: float) -> void:
@@ -297,7 +303,7 @@ func _process(delta: float) -> void:
 			# -10：混音给警报统一降了 8.4 dB，实际约 -22 dB，和失控心跳差不多、比战斗声低（10-18 对过）
 			Game.sfx("alarm", -10.0)
 	elif not level:
-		state = "PAUSED" if get_tree().current_scene is ShopRoom else ""
+		state = "PAUSED" if _is_shop(get_tree().current_scene) else ""
 	elif _dark:
 		state = "IN THE DARK x1.5"
 		state_col = Color(0.62, 0.66, 0.8)
@@ -355,7 +361,7 @@ func _process(delta: float) -> void:
 		if aura:
 			aura.healing = _heal_t > 0.0
 	_bar_fx.queue_redraw()
-	_parts.visible = not get_tree().current_scene is ShopRoom
+	_parts.visible = not _is_shop(get_tree().current_scene)
 	# 变异图标：起作用就跳一下；名字只在开头亮几秒
 	if Mutations.proc_frame != _mut_seen:
 		_mut_seen = Mutations.proc_frame
@@ -607,7 +613,8 @@ class LanternAura:
 		var crystal := get_parent() as Crystal
 		if crystal == null:
 			return
-		draw_set_transform(crystal.global_position.round() - crystal.global_position)
+		# 和马灯本体一样不取整（游戏细节讨论会话 10-18 去掉了马灯的整数像素对齐，两边要一致，不然光环、红边会和灯错开 1 像素）
+		draw_set_transform(Vector2.ZERO)
 		if Upgrades.mutation == "slave" and crystal.carrier == null and int(_t * 3.0) % 2 == 0:
 			draw_rect(Rect2(-1, -13, 3, 1), Mutations.SLAVE_COLOR)
 			draw_rect(Rect2(0, -14, 1, 1), Color.WHITE)

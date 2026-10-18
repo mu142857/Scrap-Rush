@@ -235,7 +235,7 @@ func _ready() -> void:
 	add_child(_jet_light)
 
 	# 喷气声：无缝循环，起停时淡入淡出
-	var jet_stream := Game.load_sound("jet").duplicate() as AudioStreamWAV
+	var jet_stream := Game.load_sound("jetpack").duplicate() as AudioStreamWAV
 	jet_stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
 	jet_stream.loop_begin = 0
 	jet_stream.loop_end = jet_stream.data.size() / 2
@@ -505,12 +505,21 @@ func _update_jet_sound(delta: float) -> void:
 		_jet_sound.stop()
 
 
+## 自己手里那把（双人各拿各的，存在 Run.players 里）
 func weapon() -> String:
-	return Upgrades.weapon
+	return Upgrades.weapon_for(input_prefix)
+
+
+## 商店里换武器（shop_room.gd 调）
+func set_weapon(w: String) -> void:
+	_cancel_charge()
+	Upgrades.set_weapon_for(input_prefix, w)
+	_muzzle = 0.0
 
 
 func _attack(delta: float) -> void:
-	_muzzle = maxf(_muzzle - delta / 0.06, 0.0)
+	# 枪口火光只亮 1~2 帧（合金弹头式的"一帧一闪"）
+	_muzzle = maxf(_muzzle - delta / 0.035, 0.0)
 	match weapon():
 		"rivet":
 			_attack_rivet(delta)
@@ -580,7 +589,10 @@ func _attack_rivet(delta: float) -> void:
 		dir = (_aim_point(_target) - muzzle).normalized()
 		if signf(dir.x) != 0.0:
 			facing = int(signf(dir.x))
-	dir = dir.rotated(deg_to_rad(randf_range(-RIVET_SPREAD, RIVET_SPREAD)))
+	# 散布照合金弹头重机枪：不是乱散，而是有规律地上下来回扫开（加一点小抖动）
+	# 扫的幅度取散布的 75%：正弦扫在两头停得久，用满 ±9° 打矮个子小怪会掉不少伤害
+	var sweep := sin(_rivet_n * 0.9) * RIVET_SPREAD * 0.75 + randf_range(-1.5, 1.5)
+	dir = dir.rotated(deg_to_rad(sweep))
 	var r := Rivet.new()
 	r.setup(muzzle, dir, strip_color)
 	get_parent().add_child(r)
@@ -589,9 +601,16 @@ func _attack_rivet(delta: float) -> void:
 	_muzzle = 1.0
 	_release_flash = maxf(_release_flash, 0.35)
 	velocity.x -= dir.x * RIVET_RECOIL
-	Game.sfx("rivet_shot", -9.0, 1.0, 0.08)
+	# 10-18 作者"声音有点吵"：换成低沉的"哒"、音量压低、每发音高随机一点
+	Game.sfx("rivet_shot", -13.0, 1.0, 0.12)
 	if _rivet_n % 3 == 0:
-		Game.add_shake(0.6)
+		Game.add_shake(0.4)
+	# 弹壳往身后上方抛出去，落地弹一下
+	var c := Casing.new()
+	c.position = global_position + Vector2(facing * 2, -10)
+	c.velocity = Vector2(-facing * randf_range(30.0, 60.0), -randf_range(70.0, 110.0))
+	c.ground_y = global_position.y - 1.0
+	get_parent().add_child(c)
 
 
 func hammer_cooldown() -> float:
@@ -763,7 +782,10 @@ func _animate(delta: float) -> void:
 	# 无敌期间三拍轮着来：藏起来 → 高亮 → 正常，比只隐藏显眼，一看就知道自己现在不会挨打
 	var blink_phase := int(_invuln / BLINK_STEP) % 3 if _invuln > 0.0 else -1
 	var blink_hidden := blink_phase == 0
-	_snap = global_position.round() - global_position
+	# 不再把图片对齐到整数世界像素（2026-10-18，游戏细节讨论会话，作者反馈"角色略微颤抖"）：
+	# 镜头是平滑移动的（位置带小数），图片取整反而一格一格地跳；真实窗口实测主角在屏幕上
+	# 每帧 +0.52、+0.52、+0.52、-1.55 这样锯齿抖。不取整以后图片跟着插值后的位置平滑走，像素照样是方的
+	_snap = Vector2.ZERO
 	# 缩一下：先猛地压扁，再带一点回弹恢复
 	var k := _squash
 	var sq := Vector2.ONE.lerp(SQUASH_SCALE, k * k) if k > 0.35 else Vector2.ONE.lerp(Vector2(0.92, 1.1), sin(k / 0.35 * PI))
@@ -831,13 +853,23 @@ func _draw_weapon() -> void:
 				_px(p, col)
 		"rivet":
 			if _muzzle > 0.0:
-				# 枪口火光：一个十字小星
+				# 枪口火光（大一点，两种形状一发一换）：十字星 / 往前喷的尖火
 				var m := Vector2(facing * 8, -10)
-				var col := Color(1.0, 0.9, 0.6, _muzzle)
-				_px(m, Color(1, 1, 1, _muzzle))
-				for d in [Vector2.LEFT, Vector2.RIGHT, Vector2.UP, Vector2.DOWN]:
-					_px(m + d, col)
-				_px(m + Vector2(facing * 2, 0), col)
+				var hot := Color(1.0, 0.95, 0.75)
+				var warm := Color(1.0, 0.7, 0.3)
+				draw_rect(Rect2(m + Vector2(-1, -1) + _snap, Vector2(2, 2)), Color.WHITE)
+				if _rivet_n % 2 == 0:
+					for d in [Vector2.LEFT, Vector2.RIGHT, Vector2.UP, Vector2.DOWN]:
+						_px(m + d * 2, hot)
+						_px(m + d * 3, warm)
+					_px(m + Vector2(facing * 4, 0), warm)
+				else:
+					for i in range(2, 6):
+						_px(m + Vector2(facing * i, 0), hot if i < 4 else warm)
+					_px(m + Vector2(facing * 2, -1), warm)
+					_px(m + Vector2(facing * 2, 1), warm)
+					_px(m + Vector2(facing * 3, -2), warm)
+					_px(m + Vector2(facing * 3, 2), warm)
 		"hammer":
 			if _hammer_cd > 0.0:
 				# 冷却圈：脚下一道弧，冷却完就补满

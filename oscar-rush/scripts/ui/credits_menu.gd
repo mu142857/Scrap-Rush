@@ -1,181 +1,406 @@
 class_name CreditsMenu
 extends Control
-## 制作人员和授权页（标题菜单的 CREDITS）。两页：
-##   1. 制作人员 + 用到的第三方资源（中文像素字体的 GPLv2 + 字体嵌入例外、Godot 的 MIT）
-##   2. 授权全文：Godot 的 MIT 原文 + 引擎里自带的第三方组件清单（Engine.get_copyright_info）
-## 左右切页，上下滚动，Esc / B / 确认键返回。和设置界面同一套样式（UiStyle 卡片、暖黄标题）。
-## 名字是 2026-10-17 夜里先填的，等作者确认（见 夜间打磨/游戏细节讨论_报告.md）。
+## 制作人员（开始菜单的"制作人员"）。作者 10-18 要的：照 Linger 的片尾（Linger/linger_bilibili/Shared/credits_roll.gd）
+## 做成电影片尾的样子：黑底，一页一页地出现，每页的字一行一行慢慢淡入，停一会儿再淡出，中间留一段黑。
+## 背后有几点很淡的火星慢慢往上飘，环境声换成空旷的风加很远的炉火（Ambience.override = "credits"）。
+##   第一页：木木
+##   第二页：奥斯卡 + 小奥斯卡
+##   第三页：梧桐（补充美术）、本2兔 + Rouri（音乐）
+##   最后一页：制作于 2026 年 10 月，底下小字：制作工具、字体和 Godot 的授权。按 L / 手柄 Y / 点小字看授权全文
+## 确认键 / 鼠标左键：跳到下一页；Esc / B / 右键：直接回开始菜单。放完自己回去。
+## 用法照旧：var page := CreditsMenu.new(); 加到 UI 层; await page.closed（关掉时自己 queue_free）。
+## 名字的中英文写法照 Linger（NAMES）；本2兔、小奥斯卡 Linger 里没有，先这样写，等作者确认（见报告）。
 
 signal closed
 
-const WARM := Color8(255, 211, 138)
-const TEXT := Color(0.82, 0.8, 0.78)
-const DIM := Color(0.55, 0.55, 0.6)
-## 11 号字一行 15 像素；框高正好 11 行，滚动一次一行，最底下不会切掉半行字
-const LINE := 15.0
-const BODY := Rect2(36, 54, 408, LINE * 11)
-const SCROLL_STEP := LINE
+## 像素字是 11 像素一格：只有 11 / 22 / 33 号是清楚的
+const SMALL := 11
+const NAME := 22
+const BIG := 33
+const ROW := {11: 15.0, 22: 28.0, 33: 40.0}
+const HEAD_COLOR := Color(0.62, 0.6, 0.58)
+const ROLE_COLOR := Color(0.78, 0.76, 0.73)
+const FOOT_COLOR := Color(0.46, 0.44, 0.42)
+const SCREEN := Vector2(480, 270)
 
-## 制作人员：[小标题, 内容]。小标题会翻译，内容里的人名不翻
-const CREW := [
-	["GAME BY", "Aaron Mumu"],
-	["ART", "Oscar Li  -  characters, level 1, intro animation"],
-	["CODE, SOUND AND ADDITIONAL ART", "made together with Claude (Anthropic)"],
-	["MADE FOR", "Ludum Dare 60  -  theme: Old Tech"],
+const BLACK_IN := 1.0      # 开始界面上盖下黑
+const FIRST_WAIT := 0.8    # 黑了以后先空一会儿
+const LINE_IN := 0.9       # 每一行淡入
+const LINE_GAP := 0.35     # 下一行比上一行晚这么久
+const HOLD := 4.5          # 字全出来以后停多久
+const WORDS_OUT := 0.7
+const BETWEEN := 0.8       # 两页之间留的黑
+const BLOCK_GAP := 18.0    # 一页里两组之间空多少
+const BOTTOM := 18.0       # 最后一页的小字离底边
+
+## 每个名字在各语言里的写法（只有写法不同的才写）。照 Linger 的 credits_roll.gd / title.gd
+const NAMES := {
+	"Mumu": {"zh": "木木"},
+	"Oscar": {"zh": "Zpbrqols"},
+	"Little Oscar": {"zh": "小奥斯卡"},
+	"Wutong": {"zh": "梧桐"},
+	"Ben2tu": {"en": "本2兔", "zh": "本2兔"},
+	"Rouri": {},
+}
+
+## 每页：blocks = 一组一组的 [小标题, 名字们, 职能们]，竖着排在屏幕中间；颜色是名字的颜色（Linger 里各人的颜色）。
+## big：一行大字代替小标题和名字。then：底下一行一行的小字。hold：这页停多久（默认 HOLD）
+const SLIDES := [
+	{"blocks": [{"head": "Created by", "names": ["Mumu"], "color": "39e47a",
+		"roles": ["Game Design / Programming"]}]},
+	{"blocks": [{"head": "Art", "names": ["Oscar", "Little Oscar"], "color": "c8b83b",
+		"roles": ["Illustration / Animation / Environment Design"]}], "hold": 5.0},
+	{"blocks": [
+		{"head": "Additional Art", "names": ["Wutong"], "color": "e08638", "roles": []},
+		{"head": "Music", "names": ["Ben2tu", "Rouri"], "color": "3bbcc8", "roles": []},
+	]},
+	{"big": "Made in October 2026", "sub": "for Ludum Dare 60  /  Old Tech", "color": "d8d4cc", "hold": 7.0,
+		"then": [
+			["Built with", "Godot Engine / Aseprite / Claude"],
+			["Engine", "Godot Engine, MIT License"],
+			["Font", "Uranus Pixel 11Px, GPL v2 + font exception"],
+		]},
 ]
 
-var _page := 0
-var _scroll := 0.0
-var _clip: Control
-var _body: Label
-var _title: Label
+var _black: ColorRect
+var _embers: Control
+var _words: Control
+var _lines: Array[Label] = []
 var _hint: Label
-var _ready_for_input := false
-var _frame: Control
+var _license_hint: Label
+var _license: Control
+var _skip := false
+var _leaving := false
+var _last := false
+var _sparks: Array = []
+var _time := 0.0
 
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	size = Vector2(480, 270)
+	size = SCREEN
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	var back := ColorRect.new()
-	back.color = Color(0.02, 0.02, 0.035, 0.95)
-	back.size = Vector2(480, 270)
-	back.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(back)
-	var frame := Control.new()
-	frame.size = Vector2(480, 270)
-	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	frame.draw.connect(func() -> void:
-		UiStyle.panel(frame, BODY.grow(6), false, 0.0)
-		# 下面还有字：框右下角一个小三角
-		if _scroll < _max_scroll() - 0.5:
-			var tip := Vector2(BODY.end.x - 2, BODY.end.y + 2)
-			for y in 3:
-				for x in range(y, 5 - y):
-					frame.draw_rect(Rect2(tip + Vector2(x - 2, y - 2), Vector2.ONE), WARM))
-	add_child(frame)
-	_frame = frame
-	_title = _label(0, 18, 480, 22, WARM, 3, HORIZONTAL_ALIGNMENT_CENTER)
-	_clip = Control.new()
-	_clip.position = BODY.position
-	_clip.size = BODY.size
-	_clip.clip_contents = true
-	_clip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_clip)
-	_body = Label.new()
-	var st := Hud.small_text(TEXT)
-	_body.label_settings = st
-	_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_body.size = Vector2(BODY.size.x, 10)
-	_body.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_clip.add_child(_body)
-	_hint = _label(0, 246, 480, 11, DIM, 2, HORIZONTAL_ALIGNMENT_CENTER)
-	_show_page(0)
-	Controls.device_changed.connect(_on_device_changed)
-	await get_tree().process_frame
-	_ready_for_input = true
+	_black = ColorRect.new()
+	_black.color = Color.BLACK
+	_black.size = SCREEN
+	_black.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_black.modulate.a = 0.0
+	add_child(_black)
+	_embers = Control.new()
+	_embers.size = SCREEN
+	_embers.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_embers.modulate.a = 0.0
+	_embers.draw.connect(_draw_embers)
+	add_child(_embers)
+	for i in 26:
+		_sparks.append(_new_spark(true))
+	_words = Control.new()
+	_words.size = SCREEN
+	_words.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_words)
+	# 第一页时底下一行很淡的按键说明，过几秒自己淡掉
+	_hint = _label(tr("%s next    %s back") % [Controls.label("confirm"), Controls.label("back")], SMALL, FOOT_COLOR,
+			SCREEN.y - BOTTOM - ROW[SMALL], self)
+	Ambience.override = "credits"
+	_play()
 
 
-func _label(x: float, y: float, w: float, font_size: int, color: Color, outline: int, align: HorizontalAlignment) -> Label:
+func _exit_tree() -> void:
+	Ambience.override = ""
+
+
+func _process(delta: float) -> void:
+	_time += delta
+	for s in _sparks:
+		s["p"] += s["v"] * delta
+		s["life"] -= delta
+		if s["life"] <= 0.0 or s["p"].y < -4.0:
+			s.merge(_new_spark(false), true)
+	_embers.queue_redraw()
+
+
+## 一点火星：从下面三分之一随机一处出来，慢慢往上飘、左右晃，忽明忽暗
+func _new_spark(anywhere: bool) -> Dictionary:
+	return {
+		"p": Vector2(randf_range(10, SCREEN.x - 10), randf_range(20, SCREEN.y) if anywhere else randf_range(SCREEN.y * 0.6, SCREEN.y + 4)),
+		"v": Vector2(randf_range(-2.0, 2.0), -randf_range(4.0, 11.0)),
+		"life": randf_range(6.0, 16.0), "phase": randf() * TAU, "warm": randf(),
+	}
+
+
+func _draw_embers() -> void:
+	for s in _sparks:
+		var a := 0.18 + 0.22 * (0.5 + 0.5 * sin(_time * 2.3 + s["phase"]))
+		a *= clampf(s["life"] / 2.0, 0.0, 1.0)
+		var col := Color8(255, 160, 80).lerp(Color8(255, 220, 150), s["warm"])
+		var p: Vector2 = s["p"]
+		p.x += sin(_time * 0.7 + s["phase"]) * 3.0
+		_embers.draw_rect(Rect2(p.round(), Vector2.ONE), Color(col, a))
+
+
+func _play() -> void:
+	await _fade(_black, 1.0, BLACK_IN)
+	_fade(_embers, 1.0, 2.0)
+	await _wait(FIRST_WAIT, false)
+	_fade(_hint, 0.7, 1.0)
+	for i in SLIDES.size():
+		if _leaving:
+			return
+		_last = i == SLIDES.size() - 1
+		await _show(SLIDES[i])
+		if i == 0:
+			_fade(_hint, 0.0, 1.0)
+	_close(false)
+
+
+func _show(slide: Dictionary) -> void:
+	_build(slide)
+	for i in _lines.size():
+		var l := _lines[i]
+		var tw := l.create_tween()
+		tw.tween_interval(i * LINE_GAP)
+		tw.tween_property(l, "modulate:a", 1.0, LINE_IN)
+	await _wait((_lines.size() - 1) * LINE_GAP + LINE_IN, true)
+	if _skip:
+		for l in _lines:
+			l.modulate.a = 1.0
+	await _wait(slide.get("hold", HOLD), true)
+	await _fade(_words, 0.0, WORDS_OUT)
+	await _wait(BETWEEN, false)
+
+
+## 这一页的字：都先透明，_show 里一行一行淡出来
+func _build(slide: Dictionary) -> void:
+	for c in _words.get_children():
+		c.queue_free()
+	_lines.clear()
+	_license_hint = null
+	_words.modulate.a = 1.0
+	var col := Color(slide.get("color", "d8d4cc"))
+	var rows: Array = []   # [文字, 字号, 颜色] 或 null（组之间的空）
+	if slide.has("big"):
+		rows.append([tr(slide["big"]), BIG, col])
+		rows.append([tr(slide["sub"]), SMALL, HEAD_COLOR])
+	for b: Dictionary in slide.get("blocks", []):
+		if not rows.is_empty():
+			rows.append(null)
+		rows.append([tr(b["head"]), SMALL, HEAD_COLOR])
+		rows.append([_names(b["names"]), NAME, Color(b["color"])])
+		for r: String in b["roles"]:
+			rows.append([tr(r), SMALL, ROLE_COLOR])
+	var height := 0.0
+	for r in rows:
+		height += BLOCK_GAP if r == null else ROW[r[1]]
+	var foot: Array = slide.get("then", [])
+	# 有小字的页，大字整体往上挪一点，给底下的小字留地方
+	var top := roundf((SCREEN.y - height) * 0.5 - (ROW[SMALL] * (foot.size() + 1) * 0.5 if not foot.is_empty() else 0.0))
+	var y := top
+	for r in rows:
+		if r == null:
+			y += BLOCK_GAP
+			continue
+		_lines.append(_label(r[0], r[1], r[2], y))
+		y += ROW[r[1]]
+	y = SCREEN.y - BOTTOM - ROW[SMALL] * (foot.size() + 1)
+	for f: Array in foot:
+		_lines.append(_label(tr(f[0]) + "   " + tr(f[1]), SMALL, FOOT_COLOR, y))
+		y += ROW[SMALL]
+	if not foot.is_empty():
+		_license_hint = _label(tr("%s full license text") % _license_key(), SMALL, HEAD_COLOR, y)
+		_lines.append(_license_hint)
+
+
+func _label(text: String, font_size: int, color: Color, y: float, parent: Node = null) -> Label:
 	var l := Label.new()
-	var s := Hud.small_text(color)
-	s.font_size = font_size
-	s.outline_size = outline
-	l.label_settings = s
-	l.horizontal_alignment = align
-	l.position = Vector2(x, y)
-	l.size = Vector2(w, font_size + 6)
+	var st := Hud.small_text(color)
+	st.font_size = font_size
+	st.outline_size = 0
+	st.shadow_color = Color(0, 0, 0, 0.85)
+	st.shadow_offset = Vector2.ONE * (font_size / SMALL)
+	l.label_settings = st
+	l.text = text
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.position = Vector2(0, roundf(y))
+	l.size = Vector2(SCREEN.x, ROW[font_size])
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(l)
+	l.modulate.a = 0.0
+	(parent if parent else _words).add_child(l)
 	return l
 
 
-func _show_page(i: int) -> void:
-	_page = i
-	_scroll = 0.0
-	if i == 0:
-		_title.text = tr("CREDITS")
-		_body.text = _credits_text()
-	else:
-		_title.text = tr("LICENSES")
-		_body.text = _license_text()
-	# 自动换行的 Label：先定宽，再按宽度量出高度
-	_body.size = Vector2(BODY.size.x, 0)
-	_body.size.y = _body.get_minimum_size().y
-	_apply_scroll()
-	_show_hint()
+func _names(names: Array) -> String:
+	var shown: PackedStringArray = []
+	var lang := "zh" if Lang.is_zh() else "en"
+	for who: String in names:
+		shown.append(NAMES.get(who, {}).get(lang, who))
+	return "   ".join(shown)
 
 
-func _on_device_changed(_pad: bool) -> void:
-	_show_hint()
+func _license_key() -> String:
+	return "Y" if Controls.using_pad else "L"
 
 
-func _show_hint() -> void:
-	_hint.text = tr("%s scroll    %s page    %s back") % [Controls.label("scroll"), Controls.label("page"), Controls.label("back")] + "    %d / 2" % (_page + 1)
+func _fade(item: CanvasItem, to: float, time: float) -> void:
+	var tw := item.create_tween()
+	tw.tween_property(item, "modulate:a", to, time)
+	await tw.finished
 
 
-func _credits_text() -> String:
-	var lines: PackedStringArray = []
-	for row in CREW:
-		lines.append(tr(row[0]))
-		lines.append("    " + tr(row[1]))
-		lines.append("")
-	lines.append(tr("THIRD-PARTY"))
-	lines.append("    " + tr("Pixel font: Uranus Pixel 11Px, based on WenQuanYi Bitmap Song 11px."))
-	lines.append("    " + tr("License: GNU GPL v2 with font embedding exception."))
-	lines.append("    " + tr("Engine: Godot Engine, MIT License. Full text on the next page."))
-	lines.append("")
-	lines.append(tr("Thanks for playing."))
-	return "\n".join(lines)
-
-
-func _license_text() -> String:
-	var names: PackedStringArray = []
-	for c in Engine.get_copyright_info():
-		names.append(str(c["name"]))
-	return "Godot Engine\n\n" + Engine.get_license_text() + "\n\n" \
-		+ tr("Godot also includes these third-party components, each under its own license:") + "\n" \
-		+ ", ".join(names) + "\n\n" \
-		+ "Uranus Pixel 11Px / WenQuanYi Bitmap Song\n" \
-		+ tr("GNU General Public License v2, with the font embedding exception: embedding the font in a document or game does not by itself make that work covered by the GPL.")
-
-
-func _max_scroll() -> float:
-	return maxf(0.0, ceilf((_body.size.y - BODY.size.y) / LINE) * LINE)
-
-
-func _apply_scroll() -> void:
-	_scroll = clampf(_scroll, 0.0, _max_scroll())
-	_body.position.y = -roundf(_scroll)
-	if _frame:
-		_frame.queue_redraw()
+## 等 seconds 秒；skippable 时按确认 / 点一下就提前结束。看授权全文的时候不走
+func _wait(seconds: float, skippable: bool) -> void:
+	_skip = false
+	var left := seconds
+	while (left > 0.0 or is_instance_valid(_license)) and not _leaving:
+		if skippable and _skip:
+			break
+		await get_tree().process_frame
+		if not is_instance_valid(_license):
+			left -= get_process_delta_time()
+	if not skippable:
+		_skip = false
 
 
 func _input(event: InputEvent) -> void:
-	if not _ready_for_input:
+	if _leaving or is_instance_valid(_license):
 		return
 	var handled := true
-	if event.is_action_pressed("ui_down", true):
-		_scroll += SCROLL_STEP
-		_apply_scroll()
-	elif event.is_action_pressed("ui_up", true):
-		_scroll -= SCROLL_STEP
-		_apply_scroll()
-	elif event.is_action_pressed("ui_left") or event.is_action_pressed("ui_right"):
-		_show_page(1 - _page)
-		Game.sfx("ui_move", -10.0)
-	elif event is InputEventMouseButton and event.pressed and event.button_index in [MOUSE_BUTTON_WHEEL_DOWN, MOUSE_BUTTON_WHEEL_UP]:
-		_scroll += SCROLL_STEP * (1.0 if event.button_index == MOUSE_BUTTON_WHEEL_DOWN else -1.0)
-		_apply_scroll()
-	elif event.is_action_pressed("ui_cancel") or event.is_action_pressed("ui_accept") \
-			or (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT) \
-			or (event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_ESCAPE):
-		_ready_for_input = false
-		Game.sfx("ui_back", -8.0)
-		closed.emit()
-		queue_free()
+	if event.is_action_pressed("ui_cancel") \
+			or (event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_ESCAPE) \
+			or (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT):
+		_close()
+	elif _last and _license_hint != null and (
+			(event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_L)
+			or (event is InputEventJoypadButton and event.pressed and event.button_index == JOY_BUTTON_Y)
+			or (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT
+				and Rect2(_license_hint.position, _license_hint.size).grow(3).has_point(get_local_mouse_position()))):
+		_open_license()
+	elif event.is_action_pressed("ui_accept") \
+			or (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT):
+		_skip = true
+	elif event is InputEventMouseMotion and _license_hint != null:
+		handled = false
+		var over := Rect2(_license_hint.position, _license_hint.size).grow(3).has_point(get_local_mouse_position())
+		_license_hint.label_settings.font_color = UiStyle.WARM if over else HEAD_COLOR
 	else:
 		handled = false
 	if handled:
 		get_viewport().set_input_as_handled()
+
+
+func _open_license() -> void:
+	Game.sfx("ui_confirm", -8.0)
+	_license = LicensePage.new()
+	add_child(_license)
+
+
+## sound = false：放完了自己回去，不响返回声
+func _close(sound := true) -> void:
+	if _leaving:
+		return
+	_leaving = true
+	if sound:
+		Game.sfx("ui_back", -8.0)
+	Ambience.override = ""
+	var tw := create_tween()
+	tw.tween_property(self, "modulate:a", 0.0, 0.6)
+	await tw.finished
+	closed.emit()
+	queue_free()
+
+
+## 授权全文：Godot 的 MIT 原文 + 引擎自带的第三方组件清单（Engine.get_copyright_info）+ 字体的 GPL 说明。
+## 上下 / 滚轮滚动，Esc / B / 确认 / 点一下回到片尾。样式和设置界面一样（UiStyle 卡片）
+class LicensePage extends Control:
+	const LINE := 15.0
+	const BODY := Rect2(36, 54, 408, 15.0 * 11)
+
+	var _scroll := 0.0
+	var _body: Label
+	var _frame: Control
+	var _ready_for_input := false
+
+	func _ready() -> void:
+		size = Vector2(480, 270)
+		mouse_filter = Control.MOUSE_FILTER_STOP
+		var back := ColorRect.new()
+		back.color = Color(0.02, 0.02, 0.035)
+		back.size = size
+		back.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(back)
+		_frame = Control.new()
+		_frame.size = size
+		_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_frame.draw.connect(func() -> void:
+			UiStyle.panel(_frame, BODY.grow(6), false, 0.0)
+			if _scroll < _max_scroll() - 0.5:
+				var tip := Vector2(BODY.end.x - 2, BODY.end.y + 2)
+				for y in 3:
+					for x in range(y, 5 - y):
+						_frame.draw_rect(Rect2(tip + Vector2(x - 2, y - 2), Vector2.ONE), UiStyle.WARM))
+		add_child(_frame)
+		var title := UiStyle.label(tr("LICENSES"), UiStyle.WARM, Vector2(0, 18), 480, HORIZONTAL_ALIGNMENT_CENTER)
+		title.label_settings.font_size = 22
+		title.label_settings.outline_size = 3
+		add_child(title)
+		var clip := Control.new()
+		clip.position = BODY.position
+		clip.size = BODY.size
+		clip.clip_contents = true
+		clip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(clip)
+		_body = Label.new()
+		_body.label_settings = Hud.small_text(UiStyle.TEXT)
+		_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_body.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_body.text = _text()
+		_body.size = Vector2(BODY.size.x, 0)
+		clip.add_child(_body)
+		_body.size.y = _body.get_minimum_size().y
+		var hint := UiStyle.label(tr("%s scroll    %s back") % [Controls.label("scroll"), Controls.label("back")], UiStyle.DIM,
+				Vector2(0, 246), 480, HORIZONTAL_ALIGNMENT_CENTER)
+		add_child(hint)
+		await get_tree().process_frame
+		_ready_for_input = true
+
+	func _text() -> String:
+		var names: PackedStringArray = []
+		for c in Engine.get_copyright_info():
+			names.append(str(c["name"]))
+		return "Godot Engine\n\n" + Engine.get_license_text() + "\n\n" \
+			+ tr("Godot also includes these third-party components, each under its own license:") + "\n" \
+			+ ", ".join(names) + "\n\n" \
+			+ "Uranus Pixel 11Px / WenQuanYi Bitmap Song\n" \
+			+ tr("GNU General Public License v2, with the font embedding exception: embedding the font in a document or game does not by itself make that work covered by the GPL.")
+
+	func _max_scroll() -> float:
+		return maxf(0.0, ceilf((_body.size.y - BODY.size.y) / LINE) * LINE)
+
+	func _apply() -> void:
+		_scroll = clampf(_scroll, 0.0, _max_scroll())
+		_body.position.y = -roundf(_scroll)
+		_frame.queue_redraw()
+
+	func _input(event: InputEvent) -> void:
+		if not _ready_for_input:
+			return
+		var handled := true
+		if event.is_action_pressed("ui_down", true):
+			_scroll += LINE
+			_apply()
+		elif event.is_action_pressed("ui_up", true):
+			_scroll -= LINE
+			_apply()
+		elif event is InputEventMouseButton and event.pressed and event.button_index in [MOUSE_BUTTON_WHEEL_DOWN, MOUSE_BUTTON_WHEEL_UP]:
+			_scroll += LINE * (1.0 if event.button_index == MOUSE_BUTTON_WHEEL_DOWN else -1.0)
+			_apply()
+		elif event.is_action_pressed("ui_cancel") or event.is_action_pressed("ui_accept") \
+				or (event is InputEventMouseButton and event.pressed and event.button_index in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT]) \
+				or (event is InputEventKey and event.pressed and not event.echo and event.physical_keycode in [KEY_ESCAPE, KEY_L]) \
+				or (event is InputEventJoypadButton and event.pressed and event.button_index == JOY_BUTTON_Y):
+			_ready_for_input = false
+			Game.sfx("ui_back", -8.0)
+			queue_free()
+		else:
+			handled = false
+		if handled:
+			get_viewport().set_input_as_handled()

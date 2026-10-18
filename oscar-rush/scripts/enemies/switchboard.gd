@@ -25,6 +25,9 @@ const PLUG_WARN := 0.7
 const PLUG_HOLD := 0.9
 ## 线最远甩多远
 const PLUG_REACH := 200.0
+## 双插：第二根落在主角身后多远（两段通电地面中间留 DOUBLE_GAP - 2*HALF 的空，站中间也躲得掉）、比第一根晚多久扔
+const DOUBLE_GAP := 74.0
+const DOUBLE_DELAY := 0.2
 const PULL_WARN := 0.7
 const PULL_TIME := 0.6
 const RECOVER_TIME := 0.5
@@ -58,6 +61,16 @@ var _move_time := 1.4
 var _next := 0
 var _attack_dir := -1
 var _cord: CordPlug = null
+## 双插的第二根（落在主角身后，堵退路）
+var _cord2: CordPlug = null
+## 放过几次插线：第 2、4、6……次是双插（10-18：出招变密以后同一招要放五六次，加个变化）
+var _plugs := 0
+## 这一次是不是双插、第二根扔出去没有
+var _double := false
+var _thrown2 := false
+## 第二根的落点 x、找地面的起点 y（扔第一根时就定下来，和预警最后那一刻标的一样）
+var _x2 := NAN
+var _y2 := 0.0
 var _summons: Array[Node2D] = []
 
 
@@ -121,6 +134,10 @@ func _tick(delta: float) -> void:
 		State.PLUG:
 			_brake(delta)
 			set_frame(3)
+			if _double and not _thrown2 and _state_t >= DOUBLE_DELAY:
+				_thrown2 = true
+				if not is_nan(_x2):
+					_cord2 = _throw_at(_x2, _y2)
 			if _state_t >= PLUG_HOLD:
 				_enter(State.RECOVER)
 		State.PULL_WARN:
@@ -153,7 +170,7 @@ func _start_attack(p: Player) -> void:
 	_face(p)
 	_attack_dir = dir
 	var can_pull := _alive_summons() < MAX_SUMMONS
-	var can_plug := not is_instance_valid(_cord)
+	var can_plug := not is_instance_valid(_cord) and not is_instance_valid(_cord2)
 	var pull := (_next == 1 and can_pull) or (not can_plug and can_pull)
 	if not pull and not can_plug:
 		_enter(State.MOVE)                  # 线还插着、甲虫也满了：再挪一会儿
@@ -165,6 +182,9 @@ func _start_attack(p: Player) -> void:
 		_next = 0
 	else:
 		_aim_target = p
+		_plugs += 1
+		_double = _plugs % 2 == 0
+		_thrown2 = false
 		warn(PLUG_WARN)
 		_enter(State.PLUG_WARN)
 		Game.sfx("ready", -12.0, 0.7)
@@ -211,19 +231,49 @@ func _throw() -> void:
 	if p:
 		tx = clampf(p.global_position.x, global_position.x - PLUG_REACH, global_position.x + PLUG_REACH)
 		from_y = p.global_position.y - 20.0
+	_cord = _throw_at(tx, from_y)
+	_x2 = _second_x(p) if _double else NAN
+	_y2 = from_y
+
+
+## 往 x 那一列往下找地面，甩一根线过去；找不到地面就不甩，返回 null
+func _throw_at(tx: float, from_y: float) -> CordPlug:
 	var q := PhysicsRayQueryParameters2D.create(Vector2(tx, from_y), Vector2(tx, from_y + 140.0), 1)
 	var hit := get_world_2d().direct_space_state.intersect_ray(q)
 	if hit.is_empty() or (hit.normal as Vector2).y > -0.5:
-		return
+		return null
 	var c := CordPlug.new()
 	c.elite = self
 	c.target = (hit.position as Vector2).round()
 	c.from = cord_root()
 	get_parent().add_child(c)
 	c.global_position = c.from
-	_cord = c
 	Game.sfx("jump", -6.0, 0.6)
 	Game.sfx("scrape", -10.0, 1.6)
+	return c
+
+
+## 双插第二根落在哪（世界 x）：主角背后 DOUBLE_GAP；那边是墙、坑、闸门或者够不着，就不扔（返回 NAN）
+func _second_x(p: Player) -> float:
+	if p == null:
+		return NAN
+	var px := clampf(p.global_position.x, global_position.x - PLUG_REACH, global_position.x + PLUG_REACH)
+	var away := 1.0 if px >= global_position.x else -1.0
+	var x := px + away * DOUBLE_GAP
+	if absf(x - global_position.x) > PLUG_REACH + DOUBLE_GAP:
+		return NAN
+	var space := get_world_2d().direct_space_state
+	var y := p.global_position.y
+	# 主角和落点之间不能隔墙（闸门也在第 1 层）
+	var wall := PhysicsRayQueryParameters2D.create(Vector2(px, y - 8.0), Vector2(x + away * CordPlug.HALF, y - 8.0), 1)
+	if not space.intersect_ray(wall).is_empty():
+		return NAN
+	# 落点那段地面要和主角脚下差不多高
+	var down := PhysicsRayQueryParameters2D.create(Vector2(x, y - 20.0), Vector2(x, y + 12.0), 1)
+	var hit := space.intersect_ray(down)
+	if hit.is_empty() or absf((hit.position as Vector2).y - y) > 6.0:
+		return NAN
+	return roundf(x)
 
 
 ## 拔线：两根线头落地变成甲虫
@@ -290,6 +340,8 @@ func _die() -> void:
 	_contact.set_deferred("monitoring", false)
 	if is_instance_valid(_cord):
 		_cord.cut()
+	if is_instance_valid(_cord2):
+		_cord2.cut()
 	Game.sfx("buzz", -6.0, 0.6)
 	Game.sfx("tvoff", -8.0, 0.8)
 	Game.hitstop(0.08)
@@ -317,6 +369,8 @@ func _tick_dying(delta: float) -> void:
 func _on_die() -> void:
 	if is_instance_valid(_cord):
 		_cord.cut()
+	if is_instance_valid(_cord2):
+		_cord2.cut()
 	# 召出来的甲虫跟着断电：冒一下火花、碎掉就没了。不走甲虫自己的死法（烧熔丝再炸、地面带电），
 	# 不然打赢的那一刻主角脚边还会被电一下（夜间打磨）。遭遇战不数它们，直接拿掉不影响清场
 	for e in _summons:
@@ -358,6 +412,15 @@ func _draw_aim() -> void:
 	var c := Color(0.6, 0.85, 1.0, 0.5 + 0.4 * k)
 	var x := roundf(clampf(p.global_position.x, global_position.x - PLUG_REACH, global_position.x + PLUG_REACH))
 	var y := roundf(p.global_position.y)
+	_draw_bracket(x, y, c)
+	# 双插：主角背后那一段也先标出来
+	if _double:
+		var x2 := _second_x(p)
+		if not is_nan(x2):
+			_draw_bracket(x2, y, c)
+
+
+func _draw_bracket(x: float, y: float, c: Color) -> void:
 	var half := CordPlug.HALF
 	for side in [-1.0, 1.0]:
 		var ex: float = x + side * half

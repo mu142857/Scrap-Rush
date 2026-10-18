@@ -14,7 +14,7 @@ signal hp_changed(hp: float, max_hp: float)
 signal phase_changed(phase: int)
 signal defeated
 
-const BASE_HP := 7500.0  # 夜间打磨：武器加强后站桩 26 秒就能打死，+20%；10-18 作者：再翻一倍多，三把武器 60～90 秒
+const BASE_HP := 5200.0  # 夜间打磨 3000 → 3600；10-18 调到 7500 太肉（作者：第一关要脆），→ 5200，站桩 45～60 秒左右
 const CONTACT_DAMAGE := 10.0
 ## 画布 84×96，原点在画布底边中间 (42, 95)
 const CANVAS_ORIGIN := Vector2(42, 95)
@@ -791,6 +791,7 @@ func _blast_smoke() -> void:
 
 func _die() -> void:
 	dead = true
+	Bestiary.count_kill("boss_stoker")   # 怪物图鉴：击杀数
 	active = false
 	_door_open = false
 	_suction.stop()

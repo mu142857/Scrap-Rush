@@ -73,6 +73,7 @@ func _process(delta: float) -> void:
 		var p := global_position.lerp(chase.global_position + FOCUS_OFFSET * 0.5, 1.0 - exp(-12.0 * delta))
 		global_position = _clamp_to_bounds(p, h)
 		offset = Game.shake_offset(zoom.x)
+		force_update_scroll()
 		return
 	if not scrolling:
 		super._process(delta)
@@ -81,3 +82,4 @@ func _process(delta: float) -> void:
 	var y := lerpf(global_position.y, scroll_y, 1.0 - exp(-SCROLL_Y_SPEED * delta))
 	global_position = _clamp_to_bounds(Vector2(scroll_x, y), half)
 	offset = Game.shake_offset(zoom.x)
+	force_update_scroll()

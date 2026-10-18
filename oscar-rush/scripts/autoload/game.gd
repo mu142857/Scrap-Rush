@@ -36,7 +36,15 @@ var _last_start := {}
 const SFX_TRIM := {
 	"alarm": -8.4, "voice": -5.1, "charge": -3.0, "tvoff": -4.8, "busy": -2.0, "tvon": -2.0,
 	"ding": -1.4, "buzz": -3.1, "boom": -0.5, "whistle": -2.7, "static": -3.3,
+	# 怪物喷气（10-18 改成沙沙的高频短喷气）：高频听着比同样分贝的低频响，再压一点
+	"jet": -5.0, "jet_long": -6.0,
 }
+## 个别音效同时最多响几个（比 SFX_MAX_VOICES 更少）。怪物喷气一群怪一起喷时只留两个，不叠成一片
+const SFX_VOICES := {"jet": 2, "jet_long": 1}
+## 个别音效的音高限制在这个范围里：怪物喷气各处调用写了 0.45~1.8 倍，太低又变回闷闷的中低频、拖得很长
+const SFX_PITCH := {"jet": Vector2(0.85, 1.3)}
+## 个别音效"隔多久内又响算叠在一起"（毫秒，默认 SFX_STACK_MS）
+const SFX_STACK := {"jet": 150}
 ## 同一个音效同时最多响几个（一群怪同时挨打时不叠成一团），多了就停掉最早的
 const SFX_MAX_VOICES := 4
 ## 同一个音效隔这么短又响，后一个压低一点，免得两个一样的声音叠在一起发冲
@@ -170,16 +178,19 @@ func sfx(name: String, volume_db := 0.0, pitch := 1.0, pitch_jitter := 0.0) -> A
 	p.stream = _sounds[name]
 	p.volume_db = volume_db + SFX_TRIM.get(name, 0.0)
 	var now := Time.get_ticks_msec()
-	if now - int(_last_start.get(name, -1000)) < SFX_STACK_MS:
+	if now - int(_last_start.get(name, -1000)) < SFX_STACK.get(name, SFX_STACK_MS):
 		p.volume_db += SFX_STACK_DB
 	_last_start[name] = now
 	p.pitch_scale = pitch * (1.0 + randf_range(-pitch_jitter, pitch_jitter))
+	if SFX_PITCH.has(name):
+		var r: Vector2 = SFX_PITCH[name]
+		p.pitch_scale = clampf(p.pitch_scale, r.x, r.y)
 	# 菜单音效走 UI 总线（暂停时不被低通闷掉，见 Settings.set_muffled）
 	if name.begins_with("ui_"):
 		p.bus = &"UI"
 	var list: Array = _playing.get(name, [])
 	list = list.filter(func(q): return is_instance_valid(q))
-	while list.size() >= SFX_MAX_VOICES:
+	while list.size() >= SFX_VOICES.get(name, SFX_MAX_VOICES):
 		(list.pop_front() as AudioStreamPlayer).queue_free()
 	list.append(p)
 	_playing[name] = list

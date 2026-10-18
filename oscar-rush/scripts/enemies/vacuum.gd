@@ -72,7 +72,7 @@ func _setup() -> void:
 	frame_size = Vector2i(46, 20)
 	body_rect = Rect2(-22, -19, 44, 19)
 	led_pixel = Vector2i(20, 4)
-	max_hp = 2300.0  # 10-18 作者：血不够，三把武器 20～35 秒
+	max_hp = 1220.0  # 10-18 作者：第一关太肉（没买科技，要比后两关脆），三把武器站桩 12～18 秒
 	contact_damage = 10.0
 	_move_time = 1.6
 
@@ -176,8 +176,8 @@ func _enter(s: State) -> void:
 		_suck_fx.direction = Vector2(-_suck_dir, 0)
 		_suck_fx.initial_velocity_min = 55.0
 		_suck_fx.initial_velocity_max = 75.0
-		# 一口气吸 2.5 秒：喷气声（2 秒一圈）放慢到 0.8 倍正好 2.5 秒
-		_sound = Game.sfx("jet", -8.0, 0.8)
+		# 一口气吸 2.5 秒：长气流声（2 秒）放慢到 0.8 倍正好 2.5 秒。10-18 换成沙沙的高频版（作者嫌原来的中低频吵）
+		_sound = Game.sfx("jet_long", -8.0, 0.8)
 	else:
 		if is_instance_valid(_sound):
 			_sound.stop()

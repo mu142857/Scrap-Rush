@@ -27,7 +27,7 @@ func _configure() -> void:
 	darkness_hot = Color(0.42, 0.3, 0.22)
 	boss_tip = "Watch the red shadow: it drops on you. Benches give cover"
 	# 蒸汽锤的圈够不到吊着的总机（插孔板离地约 100 像素）：站上长凳或桌子就够得着（自动化测试：每秒 83~96）
-	if Upgrades.weapon == "hammer":
+	if Upgrades.anyone_has("hammer"):
 		boss_tip = "Steam hammer: stand on a bench or the desk to reach it"
 	boss_name = "THE OPERATOR"
 	card_sub = "It keeps every voice it ever heard."

@@ -67,7 +67,7 @@ func _setup() -> void:
 	body_rect = Rect2(-18, -25, 36, 25)
 	contact_rect = Rect2(-16, -22, 32, 22)
 	led_pixel = Vector2i(6, 6)
-	max_hp = 2400.0  # 10-18 作者：血不够，三把武器 20～35 秒
+	max_hp = 1230.0  # 10-18 作者：第一关太肉（没买科技，要比后两关脆），三把武器站桩 12～18 秒
 	contact_damage = 10.0
 
 

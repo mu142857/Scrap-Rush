@@ -736,6 +736,7 @@ func _phase_roar() -> void:
 
 func _die() -> void:
 	dead = true
+	Bestiary.count_kill("boss_set")   # 怪物图鉴：击杀数
 	active = false
 	_warn_t = 0.0
 	_shadow_t = 0.0

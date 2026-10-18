@@ -6,6 +6,7 @@ extends CanvasLayer
 ##   （关卡列表在 LEVELS；场景文件还没有的，按了只提示一下。不开面板时数字键哪儿都不跳关，开始界面也一样）
 ##   P 零件 +5   H 马灯回满   G 马灯打不碎（开/关）   K 杀掉画面里所有怪
 ##   U 装备全满级   [ ] 情绪 -25 / +25   T 慢动作（0.25 倍，开/关）
+##   B 怪物图鉴全部点亮（写进存档）   N 连按两下清空图鉴（立绘添加会话 10-18 加，作者要的）
 ## 挂在 Game 下面，换场景也一直在。
 
 ## 跳关：[按键, 显示的名字, 场景, 商店出口去哪（只对商店有用）]
@@ -19,7 +20,7 @@ const LEVELS := [
 	[KEY_7, "Shop", "res://scenes/shop.tscn", "res://scenes/title.tscn"],
 	[KEY_0, "Title", "res://scenes/title.tscn", ""],
 ]
-const HELP := "F1 invincible   1 Level 1   2 Level 2   3 Level 3   4 Boss 1   5 Boss 2   6 Boss 3   7 Shop   0 Title\nP +5 parts   H fill lantern   G unbreakable lantern\nK kill all   U max gear   [ ] emotion -/+   T slow-mo"
+const HELP := "F1 invincible   1 Level 1   2 Level 2   3 Level 3   4 Boss 1   5 Boss 2   6 Boss 3   7 Shop   0 Title\nP +5 parts   H fill lantern   G unbreakable lantern\nK kill all   U max gear   [ ] emotion -/+   T slow-mo\nB unlock bestiary   N N clear bestiary"
 
 var on := false
 var god := false
@@ -27,6 +28,8 @@ var slow := false
 
 var _note := ""
 var _note_t := 0.0
+## 清空图鉴要 2 秒内连按两下 N，这是第一下之后还剩多久
+var _clear_t := 0.0
 var _panel: ColorRect
 var _label: Label
 var _badge: Label
@@ -94,6 +97,21 @@ func _input(event: InputEvent) -> void:
 		KEY_T:
 			slow = not slow
 			Engine.time_scale = 0.25 if slow else 1.0
+		KEY_B:
+			Bestiary.unlock_all()
+			BestiaryMenu.refresh_open(get_tree())
+			_note = "Bestiary: all unlocked (saved)"
+			_note_t = 2.0
+		KEY_N:
+			if _clear_t > 0.0:
+				_clear_t = 0.0
+				Bestiary.clear()
+				BestiaryMenu.refresh_open(get_tree())
+				_note = "Bestiary: cleared"
+			else:
+				_clear_t = 2.0
+				_note = "Press N again to clear the bestiary"
+			_note_t = 2.0
 		_:
 			used = false
 	if used:
@@ -134,6 +152,7 @@ func _fill_lantern() -> void:
 
 func _process(delta: float) -> void:
 	_note_t -= delta
+	_clear_t -= delta
 	if god and Run.crystal_hp < Run.crystal_max:
 		_fill_lantern()
 	if not on:

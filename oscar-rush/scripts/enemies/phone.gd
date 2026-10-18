@@ -36,7 +36,7 @@ func _setup() -> void:
 	body_rect = Rect2(-5, -18, 10, 18)
 	led_pixel = Vector2i(8, 7)
 	led_by_frame = {0: Vector2i(-1, -1)}
-	max_hp = 100.0
+	max_hp = 100.0  # 10-18 重平衡时没动：保持一发蓄满（100）打得死，"先一枪打掉放哨的电话"这招要留着
 	contact_damage = 10.0
 
 

@@ -41,7 +41,7 @@ func _setup() -> void:
 	led_pixel = Vector2i(8, 6)
 	led_by_frame = {1: Vector2i(8, 5), 2: Vector2i(8, 5), 4: Vector2i(9, 6), 5: Vector2i(7, 6), 6: Vector2i(9, 6),
 			7: Vector2i(8, 18)}
-	max_hp = 200.0
+	max_hp = 130.0  # 10-18 按每场同屏怪数重平衡（作者：一关比一关难），原来 200；表见 夜间打磨/商店经济压力马灯_报告.md 第 27 节
 	contact_damage = 10.0
 	knockback = Vector2(60.0, 25.0)
 	# 活人：死的时候是倒地的闷响，溅出来的是灰紫的袍子碎片和灰（不是金属碎屑）

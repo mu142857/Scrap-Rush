@@ -33,7 +33,6 @@ var _target: Player = null
 
 func _setup() -> void:
 	L3Mob.apply_cfg(self, cfg)
-	max_hp = 100.0
 	contact_damage = 8.0
 
 

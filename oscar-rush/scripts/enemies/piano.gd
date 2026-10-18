@@ -73,7 +73,7 @@ func _setup() -> void:
 	frame_size = Vector2i(42, 30)
 	body_rect = Rect2(-19, -28, 38, 28)
 	led_pixel = Vector2i(20, 7)
-	max_hp = 2600.0  # 10-18 作者：血不够，三把武器 20～35 秒
+	max_hp = 1230.0  # 10-18 作者：第一关太肉（没买科技，要比后两关脆），三把武器站桩 12～18 秒
 	contact_damage = 8.0
 	_idle_time = 0.6
 

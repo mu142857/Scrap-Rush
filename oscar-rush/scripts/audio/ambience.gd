@@ -46,6 +46,8 @@ const ZONES := {
 	"boss3": {"loops": [["tv", -24.0]], "bits": []},
 	"shop": {"loops": [["fire", -14.0], ["factory", -30.0]], "bits": []},
 	"results": {"loops": [["wind", -24.0]], "bits": []},
+	# 制作人员（CreditsMenu）：空旷的风，底下一点很远的炉火
+	"credits": {"loops": [["wind", -22.0], ["fire", -32.0]], "bits": []},
 	"": {"loops": [], "bits": []},
 }
 const SCENE_ZONES := {
@@ -57,6 +59,8 @@ const SCENE_ZONES := {
 }
 
 var zone := ""
+## 不按场景、强行用这个区域（制作人员页叠在开始界面上时用）。空 = 照常按场景
+static var override := ""
 ## 循环名 → AudioStreamPlayer
 var _loops := {}
 ## 循环名 → 现在的音量（dB）。按分贝匀速变化，听起来是均匀的淡入淡出
@@ -87,6 +91,8 @@ func _process(_delta: float) -> void:
 
 
 func _current_zone() -> String:
+	if override != "":
+		return override
 	var cur := get_tree().current_scene
 	if cur == null:
 		return ""

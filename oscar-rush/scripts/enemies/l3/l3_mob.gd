@@ -89,6 +89,30 @@ static func apply_cfg(e: EnemyBase, cfg: Dictionary) -> void:
 	e.led_by_frame = cfg["leds"]
 	e.led_pixel = cfg["leds"].get(0, Vector2i(-1, -1))
 	e.respawn_time = 0.0
+	if cfg["kind"] != "elite":
+		e.max_hp = small_hp(cfg)
+
+
+## 小怪血量（2026-10-18 作者："都是 100 生命值……不如从 90 到 120，有些差异化"）：
+## 每一种固定一个值，按打法定底子（小而快的剃须刀、飞怪低，跳的、开枪的高），按贴图大小 ±7，
+## 再按名字固定偏一档（-5 / 0 / +5），取整到 5，夹在 115～140（10-18 原来 90～120）。同一种怪永远一样，图鉴显示得对。
+## 10-18 作者："有必要可以提升，比如部分第三关的小怪的血量"：按每场同屏怪数重平衡，整体加约 22，范围 90～120 → 115～140
+## （第三关每场只有 4～5 只小怪，原来每场清场比第二关还快）。原来 dash 94、fly 97、hop 108、shoot 113
+const HP_BASE := {"dash": 117.0, "fly": 120.0, "hop": 130.0, "shoot": 135.0}
+## 每种打法贴图面积的中位数（level3_mobs.gd 里量的）
+const HP_AREA := {"dash": 364.0, "fly": 350.0, "hop": 400.0, "shoot": 380.0}
+
+
+static func small_hp(cfg: Dictionary) -> float:
+	var kind: String = cfg["kind"]
+	var fs: Vector2i = cfg["frame_size"]
+	var size := clampf((fs.x * fs.y / HP_AREA.get(kind, 370.0) - 1.0) * 1.5, -1.0, 1.0) * 7.0
+	var code := 0
+	var tex: String = cfg["texture"]
+	for c in tex.get_file().get_basename().to_utf8_buffer():
+		code += c
+	var jitter := float(code % 3 - 1) * 5.0
+	return clampf(roundf((HP_BASE.get(kind, 100.0) + size + jitter) / 5.0) * 5.0, 115.0, 140.0)
 
 
 ## 子类的 _after_ready() 里调：换上屏幕色调的着色器（保留受击白闪的 flash 参数）

@@ -41,7 +41,7 @@ func _setup() -> void:
 	frame_size = Vector2i(36, 14)
 	body_rect = Rect2(-6, -10, 12, 10)
 	led_pixel = Vector2i(13, 6)
-	max_hp = 200.0
+	max_hp = 120.0  # 10-18 按每场同屏怪数重平衡（作者：一关比一关难），原来 200；表见 夜间打磨/商店经济压力马灯_报告.md 第 27 节
 	contact_damage = 10.0
 
 

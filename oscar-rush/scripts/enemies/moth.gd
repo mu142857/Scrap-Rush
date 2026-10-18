@@ -31,7 +31,7 @@ func _setup() -> void:
 	# 飞的怪原点也放在"脚底"（贴图最下面一行的中间），碰撞框在身子那一块
 	body_rect = Rect2(-4, -9, 8, 7)
 	led_pixel = Vector2i(5, 4)
-	max_hp = 100.0
+	max_hp = 85.0  # 10-18 按每场同屏怪数重平衡（作者：一关比一关难），原来 100；表见 夜间打磨/商店经济压力马灯_报告.md 第 27 节
 	contact_damage = 10.0
 	flying = true
 	knockback = Vector2(110.0, 60.0)

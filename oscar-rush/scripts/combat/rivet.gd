@@ -61,15 +61,17 @@ func _on_body_entered(body: Node) -> void:
 			return
 		_hit.append(body)
 		body.call("hurt", damage, velocity.normalized(), false)
-		Game.sfx("hit", -16.0, 1.4, 0.15)
-		Game.sparks(get_parent(), global_position, Color(1.0, 0.85, 0.6), 3, 70.0, -velocity.normalized())
+		# 打中的声音是短促的"噗"，和开枪的"哒"分得开；每次命中冒一小撮暖色火花
+		Game.sfx("rivet_hit", -11.0, 1.0, 0.15)
+		Game.sparks(get_parent(), global_position, Color(1.0, 0.85, 0.6), 4, 80.0, -velocity.normalized())
 		if _pierce > 0:
 			_pierce -= 1
 			return
 		_done = true
 	else:
 		_done = true
-		Game.sparks(get_parent(), global_position, Color(0.8, 0.75, 0.7), 2, 40.0, -velocity.normalized())
+		# 打在墙上、地上冒火星
+		Game.sparks(get_parent(), global_position, Color(1.0, 0.75, 0.4), 3, 60.0, -velocity.normalized())
 	queue_free()
 
 

@@ -23,7 +23,7 @@ func _setup() -> void:
 	frame_size = Vector2i(15, 9)
 	body_rect = Rect2(-6, -8, 12, 8)
 	led_pixel = Vector2i(2, 3)
-	max_hp = 200.0
+	max_hp = 155.0  # 10-18 重平衡：原来 200；要高过连锁爆炸伤害 150，不然一只炸了挨着的满血甲虫全跟着没（电线蛇会话提醒）。表见 夜间打磨/商店经济压力马灯_报告.md 第 27 节
 	contact_damage = 10.0
 
 

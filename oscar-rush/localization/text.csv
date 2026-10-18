@@ -4,7 +4,7 @@ CO-OP,合作
 SETTINGS,设置
 QUIT,退出
 One player. Carry the lantern home.,一个人。把马灯带回家。
-"2-4 players, one screen. Keyboard halves or gamepads.",2~4 人同屏。一人半边键盘，或者用手柄。
+"2-4 players, one screen. Keyboard halves or gamepads.",2~4 人同屏。\n一人半边键盘，或用手柄。
 "Volume, fullscreen, pixel scaling, screen shake, controls.",音量、全屏、像素缩放、震屏、语言、按键。
 LUDUM DARE 60  /  OLD TECH,LUDUM DARE 60  /  旧科技
 W/S select    Space / C / A confirm    F11 fullscreen,W/S 选择    空格 / C / A 确认    F11 全屏
@@ -392,7 +392,6 @@ Seen %d / %d,已遇见 %d / %d
 Not encountered yet.,还没遇到。
 Not in the game yet,未登场
 DEV: all revealed,开发者：全部点亮
-%s move    %s page    %s back,%s 选择    %s 翻页    %s 返回
 Crawled out of the %s screen.,从%s屏幕里爬出来的。
 Elite.,精英。
 Flutters toward light. Hit it before it dives.,会朝亮光扑过来，在它俯冲前打掉。
@@ -559,3 +558,91 @@ Ghost,雪花幽灵
 Static Ears,雪花天线
 Coax Cable,同轴电缆
 Vacuum Tube,电子管
+replaces your %s,会换掉你现在的 %s
+you already have it,你手上就是这把
+%s AGAIN: SWAP,再按 %s 确认更换
+NEW,新
+NOW,现在
+Power cut!,停电了！
+Weather channel: gale warning,天气频道：大风预警
+Signal fading - clear the screen fast,信号越来越弱，快清场！
+Shopping channel: limited-time offers!,购物频道：限时特卖！
+"Each player: LEFT/RIGHT choose, ATTACK lock in      %s  back",每人用自己的左右选、攻击确认      %s  返回
+%dP,%dP
+EQUIPPED,已装备
+WEAPON GUIDE,武器图鉴
+MUTATIONS & GEAR,变异与升级
+%s move    %s chapter    %s back,%s 选择    %s 换册    %s 返回
+Pick one before level 1. Swap at the shop for 3 parts.,开局三选一，商店里花 3 个零件可以换。
+Glows: moths chase the light,会发光：扑灯蛾会追过来
+No light: moths ignore it,不发光：扑灯蛾不理它
+"Hold, then release. Auto-aims and homes in a little.",按住蓄力，松手发射。自动瞄准，还会稍微追踪。
+Tap to blast all around you. Best when surrounded.,按一下朝四周炸一圈。被围住的时候最好用。
+MUTATIONS,变异
+"2 parts, one at a time",2 个零件，同时只能带一个
+GEAR,装备升级
+"1 part a level, up to Lv3",每级 1 个零件，最多 3 级
+2 PARTS,2 个零件
+1 PART PER LEVEL,每级 1 个零件
+"Damage x1 when calm, up to x2 in panic. Shots turn redder the angrier you get.",平静时伤害 x1，失控时 x2。越生气，打出去的东西越红。
+"While the lantern sits on the ground, it fires a small orb at the nearest enemy within 150 each time you attack.",马灯放在地上时，你每出一招，灯就朝 150 以内最近的怪补一发小光球。
+"Orb damage: Flash 40, Rivet 25 (every 4th rivet), Hammer 55.",小光球伤害：闪光灯 40、铆钉枪 25（每 4 颗补一发）、蒸汽锤 55。
+"0.3 s after each attack, it plays again from where you stand, at 50% damage.",每出一招，0.3 秒后在你现在的位置再放一次，伤害 50%。
+The Rivet Gun echoes every 3rd rivet. Echoes never echo.,铆钉枪每 3 颗回一次。回声不会再回声。
+Every 10 kills: lantern +5.,每杀 10 只怪：马灯 +5。
+"The 10 notches under the lantern bar show your progress. More enemies, more healing.",马灯血条下面的 10 小格是进度。怪越多，回得越多。
+"Per level: the Flash Lamp charges 0.08 s faster, the Rivet Gun fires 0.01 s faster, the Steam Hammer cools down 0.2 s faster.",每级：闪光灯蓄力快 0.08 秒，铆钉枪每发快 0.01 秒，蒸汽锤冷却短 0.2 秒。
+"Charge never drops below 0.35 s, cooldown never below 1.0 s.",蓄力最快 0.35 秒，冷却最短 1.0 秒。
+Per level: +0.35 s of rocket boot fuel.,每级：火箭靴油量 +0.35 秒。
+"Base fuel is 1.0 s, or 0.7 s while you carry the lantern.",原本能喷 1.0 秒，提着马灯时 0.7 秒。
+Blocks one hit on the lantern every 20 / 15 / 10 s (Lv1 / Lv2 / Lv3).,每 20 / 15 / 10 秒（1 / 2 / 3 级）替马灯挡一次伤害。
+Per level: emotion rises 20% slower over time.,每级：情绪随时间上涨慢 20%。
+At Lv3 it climbs at 40% speed.,3 级时只按 40% 的速度涨。
+CHOOSE A MODE,选择模式
+SOLO,单人
+"Play alone or together, then pick a level.",一个人玩或者一起玩，然后选关卡。
+"Codex: monsters, weapons and mutations.",图鉴：怪物、武器、变异。
+%s choose    %s confirm    %s back,%s 选择    %s 确认    %s 返回
+Created by,主创
+Art,美术
+Additional Art,补充美术
+Music,音乐
+Game Design / Programming,策划　程序
+Illustration / Animation / Environment Design,插画　动画　场景设计
+Made in October 2026,制作于2026年10月
+for Ludum Dare 60  /  Old Tech,Ludum Dare 60  /  主题：旧科技
+Built with,制作工具
+Godot Engine / Aseprite / Claude,Godot Engine　Aseprite　Claude
+Engine,引擎
+"Godot Engine, MIT License",Godot Engine，MIT 许可证
+Font,字体
+"Uranus Pixel 11Px, GPL v2 + font exception",Uranus Pixel 11Px，GPL v2 + 字体嵌入例外
+%s full license text,%s 查看授权全文
+%s next    %s back,%s 下一页    %s 返回
+%s scroll    %s back,%s 滚动    %s 返回
+"Partial: 35-80 dmg, drops down",没蓄满：35~80，会往下掉
+Charge time: %s s,蓄力时间：%s 秒
+"Sweeps up and down, no pierce",上下来回扫，不穿透
+Range: about %s,射程：约 %s
+Blows away boss bullets,吹散圈里 Boss 的子弹
+Cooldown: %s s,冷却：%s 秒
+End of the list,到底了
+%d moves,%d 招
+"Full: %d dmg, pierces a row",蓄满：%d 伤害，穿透一整排
+"%d dmg a rivet, %d a second",每颗 %d 伤害，一秒 %d 颗
+You walk at %d%% while firing,开火时走路慢到 %d%%
+%d dmg to all within %d,%d 伤害，半径 %d 内的全中
+Wind-up: %s s,出招前蓄 %s 秒
+Hold to fire nonstop. Rivets fade out at the end of their range.,按住一直连发。铆钉飞到射程尽头会慢慢变淡消失。
+"At full panic, every hit does double damage.",完全失控时，每一下都是双倍伤害。
+No.,编号
+HP,生命值
+KILLS,击杀数
+TYPE,类型
+FIRST SEEN,首次遇见
+ALL,全部
+ELITES & BOSSES,精英和 Boss
+DEV,开发者
+Killed %d,击杀 %d
+%s move  %s sort  %s reverse  %s filter  %s back,%s 选择  %s 排序  %s 反序  %s 筛选  %s 返回
+%s move  %s sort  %s reverse  %s filter  %s chapter  %s back,%s 选择  %s 排序  %s 反序  %s 筛选  %s 换册  %s 返回

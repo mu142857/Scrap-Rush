@@ -32,6 +32,9 @@ var _look := 0.0
 var _look_down := 0.0
 var _ground_y := 0.0
 var _has_ground := false
+## 上一帧的跟随目标（_follow 用来算目标速度）
+var _last_target := Vector2.ZERO
+var _has_last_target := false
 ## 合作时镜头往外拉 / 推回去的快慢
 const COOP_ZOOM_SPEED := 3.0
 ## 合作时所有人四周至少留这么多（游戏像素）：左右、上（头顶）、下（脚下）
@@ -76,6 +79,8 @@ func snap() -> void:
 	_has_ground = false
 	_process(0.0)
 	global_position = _target_position()
+	_last_target = global_position
+	_has_last_target = true
 
 
 func _process(delta: float) -> void:
@@ -101,9 +106,13 @@ func _process(delta: float) -> void:
 
 	var target := _target_position()
 	var pos := global_position
-	pos.x = lerpf(pos.x, target.x, 1.0 - exp(-FOLLOW_X_SPEED * delta))
+	if not _has_last_target:
+		_last_target = target
+		_has_last_target = true
+	pos.x = _follow(pos.x, target.x, _last_target.x, FOLLOW_X_SPEED, delta)
 	var y_speed := FOLLOW_Y_SPEED * (2.0 if falling else 1.0)
-	pos.y = lerpf(pos.y, target.y, 1.0 - exp(-y_speed * delta))
+	pos.y = _follow(pos.y, target.y, _last_target.y, y_speed, delta)
+	_last_target = target
 
 	# 保底：不管镜头追得多慢，玩家都不能出画面
 	var half := get_viewport_rect().size * 0.5 / zoom
@@ -114,6 +123,22 @@ func _process(delta: float) -> void:
 	global_position = _clamp_to_bounds(pos, half)
 	# 震屏按屏幕像素算，放大以后除回去，力度和以前一样
 	offset = Game.shake_offset(zoom.x)
+	# 当场把新位置用到这一帧的画面上：Camera2D 自己的更新在脚本 _process 之前，
+	# 不然画面用的是上一帧的镜头，帧长一变主角就一抖（2026-10-18 真实窗口实测，见夜间打磨报告）
+	force_update_scroll()
+
+
+## 跟随：和"每帧往目标插 1 - exp(-k·dt)"一样平滑，但把目标在这一帧里的匀速移动算进去（精确解）。
+## 普通插值在帧长变来变去时（掉帧、ProMotion 变刷新率）落后目标的距离会跟着变，主角在屏幕上一抖一抖；
+## 这样匀速走时落后距离恒等于 速度 / k，和帧长无关。目标一下跳很远（瞬移、转身看前方）照样平滑追。
+## 2026-10-18 作者反馈"角色略微颤抖"后加的，实测见 夜间打磨/游戏细节讨论_报告.md
+func _follow(cur: float, target: float, last_target: float, k: float, dt: float) -> float:
+	if dt <= 0.0:
+		return cur
+	var a := exp(-k * dt)
+	var v := (target - last_target) / dt
+	var err := (last_target - cur) * a + v / k * (1.0 - a)
+	return target - err
 
 
 func _target_position() -> Vector2:

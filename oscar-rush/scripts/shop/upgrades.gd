@@ -22,6 +22,8 @@ static var implemented_mutations: Array[String] = ["rage", "slave", "echo", "dyn
 
 static var levels := {"charge": 0, "fuel": 0, "plating": 0, "damping": 0}
 ## 身上的武器（开局在 weapon_select 里选，默认闪光灯）和变异（"" 没有）
+## 双人各拿各的武器（作者 10-18）：每个人的武器存在 Run.players[i]["weapon"]，用 weapon_for / set_weapon_for 读写。
+## weapon 一直等于 1P 的那把：HUD、新手提示、结算这些只认 1P 的地方照旧读它
 static var weapon := "flash"
 static var mutation := ""
 static var _plating_ready := 0.0
@@ -31,9 +33,39 @@ static func reset() -> void:
 	for k in levels:
 		levels[k] = 0
 	weapon = "flash"
+	for e in Run.players:
+		e.erase("weapon")
 	mutation = ""
 	_plating_ready = 0.0
 	Mutations.dynamo_kills = 0
+
+
+## 这个输入方案（"solo"、"kb_left"、"pad0"……）的玩家拿的武器；没单独选过就是全局那把
+static func weapon_for(input: String) -> String:
+	for e in Run.players:
+		if e["input"] == input:
+			return e.get("weapon", weapon)
+	return weapon
+
+
+static func set_weapon_for(input: String, w: String) -> void:
+	for i in Run.players.size():
+		if Run.players[i]["input"] == input:
+			Run.players[i]["weapon"] = w
+			if i == 0:
+				weapon = w
+			return
+	weapon = w
+
+
+## 有没有人拿着这把武器（Boss 房按武器给提示时用）
+static func anyone_has(w: String) -> bool:
+	if Run.players.is_empty():
+		return weapon == w
+	for e in Run.players:
+		if e.get("weapon", weapon) == w:
+			return true
+	return false
 
 
 static func level(id: String) -> int:

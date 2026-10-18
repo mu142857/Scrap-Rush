@@ -43,7 +43,7 @@ func _setup() -> void:
 	led_pixel = Vector2i(1, 5)
 	# 开火帧镜头往后坐了一格，而且镜头口整圈是白的
 	led_by_frame = {3: Vector2i(-1, -1)}
-	max_hp = 200.0
+	max_hp = 140.0  # 10-18 按每场同屏怪数重平衡（作者：一关比一关难），原来 200；表见 夜间打磨/商店经济压力马灯_报告.md 第 27 节
 	contact_damage = 10.0
 
 

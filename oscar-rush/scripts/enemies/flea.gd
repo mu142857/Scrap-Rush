@@ -34,7 +34,7 @@ func _setup() -> void:
 	frame_size = Vector2i(11, 18)
 	body_rect = Rect2(-4, -14, 8, 14)
 	led_by_frame = {0: Vector2i(3, 10), 1: Vector2i(3, 13), 2: Vector2i(3, 4), 3: Vector2i(3, 4)}
-	max_hp = 100.0
+	max_hp = 95.0  # 10-18 按每场同屏怪数重平衡（作者：一关比一关难），原来 100；表见 夜间打磨/商店经济压力马灯_报告.md 第 27 节
 	contact_damage = 10.0
 	gravity = JUMP_GRAVITY
 

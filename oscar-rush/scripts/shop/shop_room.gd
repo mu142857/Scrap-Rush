@@ -93,6 +93,16 @@ var _card_pop := 0.0
 var _card_deny := 0.0
 var _key := "V"
 var _counter: PartsCounter
+## 换武器 / 换变异要按两次（作者 10-18 试玩："买武器的时候要提示会丢掉之前的武器"）：
+## 第一次按只是"预备"，信息卡写"再按 V 确认更换"；CONFIRM_TIME 秒内在同一件货前再按一次才换，走开或超时就取消
+const CONFIRM_TIME := 2.5
+var _confirm_st: ShopStand = null
+var _confirm_t := 0.0
+## 是谁按的预备：只有同一个人再按才算确认（双人时 2P 不能替 1P 确认，夜间质检报的）
+var _confirm_p: Player = null
+## 信息卡上武器对比用：货架上那把、按的人现在拿着的那把
+var _card_item := ""
+var _card_cur := ""
 var _ui: CanvasLayer
 ## 进门小演出：篝火噗地亮一下、冒一把火星，围着火坐的船员挨个抬头看你（时间从进门算）
 var _intro_t := 0.0
@@ -265,7 +275,9 @@ func _stand(id: String, pos: Vector2) -> ShopStand:
 ## 武器只有 3 把，去掉身上的正好剩 2 把，所以武器格刷新只是补货（买走的那格补回来）。
 ## 变异去掉身上的剩 3 个、摆 2 个：刷新时先放刚才没摆出来的，保证至少换出一个新的，不会花了零件还是原样
 func _restock() -> void:
-	var w := Upgrades.WEAPONS.filter(func(x): return x != Upgrades.weapon)
+	# 双人各拿各的武器时（Run.players 里存了 "weapon"），只去掉所有人都有的那把；单人就是去掉身上那把
+	var owned: Array = Run.players.map(func(e): return e.get("weapon", Upgrades.weapon))
+	var w := Upgrades.WEAPONS.filter(func(x): return owned.count(x) < maxi(owned.size(), 1))
 	var m := Upgrades.MUTATIONS.filter(func(x): return x != Upgrades.mutation)
 	w.shuffle()
 	var shown: Array = []
@@ -325,12 +337,13 @@ func _info(st: ShopStand) -> Dictionary:
 			if not ready:
 				return {"title": n[0], "detail": "COMING SOON", "dim": true}
 			var price: int = Upgrades.PRICE[st.id]
-			var swap := ""
+			var detail: String = n[1]
 			if st.id == "weapon":
-				swap = tr("  (drops %s)") % tr(NAMES[Upgrades.weapon][0])
+				detail = tr("replaces your %s") % tr(NAMES[_weapon_of(_buyer(st))][0])
 			elif st.id == "mutation" and Upgrades.mutation != "":
-				swap = tr("  (drops %s)") % tr(NAMES[Upgrades.mutation][0])
-			return {"title": tr(n[0]) + swap, "detail": n[1], "price": price, "can_buy": parts >= price}
+				detail = tr("replaces your %s") % tr(NAMES[Upgrades.mutation][0])
+			return {"title": n[0], "detail": detail, "price": price, "can_buy": parts >= price,
+					"swap": st.id == "weapon" or Upgrades.mutation != ""}
 	return {}
 
 
@@ -350,6 +363,22 @@ func _on_buy(st: ShopStand, p: Player) -> void:
 			_counter.deny()
 		Game.sfx("ui_back", -8.0)
 		return
+	if st.id == "weapon" and _weapon_of(p) == st.item:
+		st.deny()
+		_card_deny = 1.0
+		Game.sfx("ui_back", -8.0)
+		return
+	# 会换掉身上东西的货：第一次按只预备，再按一次才换
+	if info.get("swap", false) and (_confirm_st != st or _confirm_t <= 0.0 or _confirm_p != p):
+		_confirm_st = st
+		_confirm_p = p
+		_confirm_t = CONFIRM_TIME
+		_card_pop = 0.6
+		Game.sfx("ui_move", -6.0, 0.8)
+		return
+	_confirm_st = null
+	_confirm_p = null
+	_confirm_t = 0.0
 	var price: int = info.get("price", 0)
 	match st.id:
 		"charge", "fuel", "plating", "damping":
@@ -362,7 +391,11 @@ func _on_buy(st: ShopStand, p: Player) -> void:
 		"refresh":
 			_refresh_used = true
 		"weapon":
-			Upgrades.weapon = st.item
+			# 双人各拿各的武器：换按的那个人自己的（游戏设计会话的 Player.set_weapon）；还没有时就是全局那一把
+			if p.has_method("set_weapon"):
+				p.call("set_weapon", st.item)
+			else:
+				Upgrades.weapon = st.item
 			st.item = ""
 		"mutation":
 			Upgrades.mutation = st.item
@@ -439,6 +472,20 @@ func _show_intro() -> void:
 			[UiStyle.WARM, UiStyle.TEXT, UiStyle.WARM])
 
 
+## 这个人现在拿着哪把武器（双人各拿各的以后，Player.weapon() 会返回他自己的）
+func _weapon_of(p: Player) -> String:
+	return p.weapon() if p else Upgrades.weapon
+
+
+## 站在这件货前面的人（双人都站着时取第一个）
+func _buyer(st: ShopStand) -> Player:
+	for n in get_tree().get_nodes_in_group("player"):
+		var p := n as Player
+		if p and st.near(p):
+			return p
+	return null
+
+
 ## 站到哪件前面就显示哪件；都没站时，进门那几秒显示提示，之后收起来
 func _update_info_box(delta: float) -> void:
 	_card_pop = maxf(_card_pop - delta * 4.0, 0.0)
@@ -450,6 +497,9 @@ func _update_info_box(delta: float) -> void:
 			break
 	if focus != _info_focus and focus != null:
 		Game.sfx("ui_move", -12.0)
+	_confirm_t = maxf(_confirm_t - delta, 0.0)
+	if _confirm_st != null and (focus != _confirm_st or _confirm_t <= 0.0):
+		_confirm_st = null
 	if focus:
 		# 第一次进店：站到货前面先看货，走开后接着翻引导，不清掉
 		if not _guide:
@@ -473,8 +523,28 @@ func _update_info_box(delta: float) -> void:
 			price_line = (tr("NEED %d PARTS  (YOU HAVE %d)") if price > 1 else tr("NEED %d PART  (YOU HAVE %d)")) % [price, Run.parts] \
 					if price > 0 else ""
 			price_col = UiStyle.POOR
-		_set_info([info.get("title", ""), info.get("detail", ""), price_line],
-				[UiStyle.WARM, UiStyle.TEXT, price_col])
+		var detail: String = info.get("detail", "")
+		var detail_col := UiStyle.TEXT
+		_card_item = focus.item
+		_card_cur = ""
+		if focus.id == "weapon" and focus.item != "" and tag != "SOON":
+			_card_cur = _weapon_of(_buyer(focus))
+			if _card_cur == focus.item:
+				# 双人各拿各的武器时，货架上可能摆着按的人手上那把：写"已装备"，按了也不扣零件（_on_buy 里挡掉）
+				detail = tr("you already have it")
+				detail_col = UiStyle.DIM
+				price_line = "EQUIPPED"
+				price_col = UiStyle.DIM
+			else:
+				detail = tr("replaces your %s") % tr(NAMES[_card_cur][0])
+				detail_col = UiStyle.POOR
+		elif focus.id == "mutation" and info.get("swap", false):
+			detail_col = UiStyle.POOR
+		if _confirm_st == focus:
+			price_line = tr("%s AGAIN: SWAP") % _key
+			price_col = UiStyle.WARM if int(_time * 6.0) % 2 == 0 else UiStyle.POOR
+		_set_info([info.get("title", ""), detail, price_line],
+				[UiStyle.WARM, detail_col, price_col])
 		_card_icon = focus.icon
 		_card_kind = focus.id
 		_info_box.visible = true
@@ -513,14 +583,48 @@ func _draw_card() -> void:
 	var y := 43.0
 	match _card_kind:
 		"weapon":
+			# 对比：每项数值名字后面竖着叠两条，上面暖黄是货架上这把（新），下面灰的是你手上那把（现在）；
+			# 新的比现在多出来的格子一闪一闪。第三行右边一个小图例
+			var new_c: Array = []
+			var cur_c: Array = []
 			for c in WEAPON_CARDS:
-				if c[0] == _card_icon:
-					for k in 3:
-						var x := 60.0 + k * 74.0
-						var lab: String = tr(["POWER", "RATE", "REACH"][k])
-						var lw := Hud.font().get_string_size(lab, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
-						box.draw_string(Hud.font(), Vector2(x, y + 5), lab, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, UiStyle.DIM)
-						UiStyle.bars(box, Vector2(x + lw + 4.0, y), c[4 + k], 5, 5.0, 3.0, 1.0)
+				if c[0] == _card_item:
+					new_c = c
+				if c[0] == _card_cur:
+					cur_c = c
+			if new_c.is_empty():
+				return
+			var compare := not cur_c.is_empty() and cur_c != new_c
+			var y1 := 41.0 if compare else 43.0
+			var y2 := 46.0
+			var font := Hud.font()
+			if compare:
+				# 图例从卡片右边往左排，按当前语言的字宽算位置，中英文都不挤
+				var now_t: String = tr("NOW")
+				var new_t: String = tr("NEW")
+				var xr := 283.0 - roundf(font.get_string_size(now_t, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x)
+				box.draw_string(font, Vector2(xr, 35), now_t, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, UiStyle.DIM)
+				box.draw_rect(Rect2(xr - 7, 31, 5, 3), UiStyle.DIM)
+				xr -= 13.0 + roundf(font.get_string_size(new_t, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x)
+				box.draw_string(font, Vector2(xr, 35), new_t, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, UiStyle.DIM)
+				box.draw_rect(Rect2(xr - 7, 31, 5, 3), UiStyle.WARM)
+			var labs: Array = [tr("POWER"), tr("RATE"), tr("REACH")]
+			var lw := 0.0
+			for l in labs:
+				lw = maxf(lw, font.get_string_size(l, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x)
+			for k in 3:
+				var x := 60.0 + k * 76.0
+				box.draw_string(font, Vector2(x, 48), labs[k], HORIZONTAL_ALIGNMENT_LEFT, -1, 11, UiStyle.DIM)
+				var bx := x + roundf(lw) + 3.0
+				var nv: int = new_c[4 + k]
+				if not compare:
+					UiStyle.bars(box, Vector2(bx, y1), nv, 5, 5.0, 3.0, 1.0)
+					continue
+				var cv: int = cur_c[4 + k]
+				UiStyle.bars(box, Vector2(bx, y1), mini(nv, cv), 5, 5.0, 3.0, 1.0)
+				for j in range(cv, nv):
+					box.draw_rect(Rect2(bx + j * 6.0, y1, 5, 3), UiStyle.BAR_OFF.lerp(UiStyle.WARM, 0.5 + 0.5 * sin(_time * 8.0)))
+				UiStyle.bars(box, Vector2(bx, y2), cv, 5, 5.0, 3.0, 1.0, UiStyle.DIM)
 		"charge", "fuel", "plating", "damping":
 			var lv := Upgrades.level(_card_kind)
 			box.draw_string(Hud.font(), Vector2(60, y + 5), tr("LEVEL"), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, UiStyle.DIM)

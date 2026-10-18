@@ -60,6 +60,7 @@ func _process(delta: float) -> void:
 		var half := get_viewport_rect().size * 0.5 / zoom
 		global_position.x = clampf(global_position.x, rect.position.x + half.x - MARGIN.x, maxf(rect.position.x + half.x - MARGIN.x, rect.end.x - half.x + MARGIN.x))
 		global_position.y = clampf(global_position.y, rect.position.y + half.y - MARGIN.y, maxf(rect.position.y + half.y - MARGIN.y, rect.end.y - half.y + MARGIN.y))
+		force_update_scroll()
 		return
 	# 屏幕贴着关卡边时（harbor、classroom、study……）居中会露出关卡外面几像素到 27 像素，夹回关卡里
 	var target := _clamp_to_bounds(rect.get_center(), get_viewport_rect().size * 0.5 / Vector2(_zoom_target, _zoom_target))
@@ -67,6 +68,7 @@ func _process(delta: float) -> void:
 	if global_position.distance_to(target) < 0.25:
 		global_position = target
 	offset = Game.shake_offset(zoom.x)
+	force_update_scroll()
 
 
 func _apply_zoom(delta: float) -> void:

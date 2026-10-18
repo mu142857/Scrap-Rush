@@ -30,7 +30,8 @@ static func maybe_drop(enemy: Node2D) -> void:
 	if enemy == null or not enemy.is_inside_tree():
 		return
 	var n := 0
-	if enemy is EliteBase:
+	# 精英按"有没有 in_intro"认（和 EnemyBase 一样），不直接写 EliteBase，少一条类之间的依赖
+	if enemy.has_method("in_intro"):
 		n = ELITE_DROPS
 	elif enemy.get("big"):
 		n = 1 if randf() < CHANCE_BIG else 0

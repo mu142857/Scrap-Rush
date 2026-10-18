@@ -174,6 +174,7 @@ func _die() -> void:
 	Run.add_emotion(-3.0 if big else -1.0)
 	LampOil.maybe_drop(self)
 	Mutations.on_kill(self)
+	Bestiary.count_kill(Bestiary.id_for_texture(texture_path))   # 怪物图鉴：击杀数
 	_on_die()
 	if respawn_time > 0.0:
 		await get_tree().create_timer(respawn_time, false).timeout

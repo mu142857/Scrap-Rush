@@ -62,9 +62,7 @@ func _ready() -> void:
 		var name := _label(tr(LEVELS[i][1]), x, CARD_Y + 70, CARD_W, 11, UiStyle.WARM if open else UiStyle.DIM, 2)
 		var sub := _label(tr(LEVELS[i][2]), x, CARD_Y + 86, CARD_W, 11, UiStyle.DIM, 2)
 		var info := _label(tr("Start here") if open else tr("Reach level %d to unlock") % lv, x + 6, CARD_Y + 112, CARD_W - 12, 11,
-				UiStyle.TEXT if open else UiStyle.DIM, 2)
-		info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		info.size.y = 30
+				UiStyle.TEXT if open else UiStyle.DIM, 2, true)
 		num.visible = open
 		_labels.append([num, name, sub, info])
 	_hint = _label("", 0, 246, 480, 11, UiStyle.DIM, 2)
@@ -76,8 +74,11 @@ func _ready() -> void:
 	_ready_for_input = true
 
 
-func _label(text: String, x: float, y: float, w: float, font_size: int, color: Color, outline: int) -> Label:
+## wrap：自动换行（两行高）。要在加进场景之前开，不然 Label 已经按一整行撑宽、缩不回来
+func _label(text: String, x: float, y: float, w: float, font_size: int, color: Color, outline: int, wrap := false) -> Label:
 	var l := Label.new()
+	if wrap:
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART   # 中文也按词折，标点不会落到行首
 	var st := Hud.small_text(color)
 	st.font_size = font_size
 	st.outline_size = outline
@@ -85,7 +86,7 @@ func _label(text: String, x: float, y: float, w: float, font_size: int, color: C
 	l.text = text
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	l.position = Vector2(x, y)
-	l.size = Vector2(w, font_size + 6)
+	l.size = Vector2(w, (font_size + 6) * (2 if wrap else 1))
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(l)
 	return l
