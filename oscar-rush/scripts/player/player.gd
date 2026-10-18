@@ -144,6 +144,9 @@ var _muzzle := 0.0
 var _hammer_cd := 0.0
 var _hammer_windup := 0.0
 var _hammer_buffer := 0.0
+## 新武器（WeaponRegistry 里有 handler 的）的出招脚本：每个主角一份，换武器时重建（见 _weapon_handler）
+var _handler: WeaponHandler = null
+var _handler_id := ""
 ## 闪光灯出手的枪口火光（比铆钉枪的大、亮 3~4 帧），蓄满的另画一种
 var _flash_muzzle := 0.0
 var _flash_muzzle_full := false
@@ -337,7 +340,10 @@ func _move_x(axis: float, delta: float, on_floor: bool) -> void:
 		facing = 1 if axis > 0.0 else -1
 	var top := CARRY_SPEED if crystal else RUN_SPEED
 	if charging:
-		top *= RIVET_MOVE_MULT if weapon() == "rivet" else CHARGE_MOVE_MULT
+		if _handler != null:
+			top *= _handler.move_mult()
+		else:
+			top *= RIVET_MOVE_MULT if weapon() == "rivet" else CHARGE_MOVE_MULT
 	var accel := RUN_SPEED / ACCEL_TIME
 	var decel := RUN_SPEED / DECEL_TIME
 	var rate: float
@@ -528,6 +534,11 @@ func _attack(delta: float) -> void:
 	# 枪口火光只亮 1~2 帧（合金弹头式的"一帧一闪"）
 	_muzzle = maxf(_muzzle - delta / 0.035, 0.0)
 	_flash_muzzle = maxf(_flash_muzzle - delta / 0.06, 0.0)
+	# 新武器：出招全在 handler 里（scripts/combat/weapons/）
+	var h := _weapon_handler()
+	if h != null:
+		h.attack(delta)
+		return
 	match weapon():
 		"rivet":
 			_attack_rivet(delta)
@@ -679,11 +690,90 @@ func _blast() -> void:
 
 
 func _cancel_charge() -> void:
+	if _handler != null:
+		_handler.cancel()
 	charging = false
 	charge_full = false
 	charge = 0.0
 	_target = null
 	_charge_sound.stop()
+
+
+## 当前武器的出招脚本（老三把返回 null）。武器换了就把旧的停掉、按注册表建新的
+func _weapon_handler() -> WeaponHandler:
+	var w := weapon()
+	if w == _handler_id:
+		return _handler
+	if _handler != null:
+		_handler.cancel()
+	_handler_id = w
+	_handler = null
+	var path := WeaponRegistry.handler_path(w)
+	if path != "" and ResourceLoader.exists(path):
+		_handler = (load(path) as GDScript).new() as WeaponHandler
+		if _handler != null:
+			_handler.p = self
+			_handler.id = w
+	return _handler
+
+
+# —— 给新武器用的公开接口（WeaponHandler 里的 p 调这些；说明见 weapon_handler.gd）——
+
+func _exit_tree() -> void:
+	if _handler != null:
+		_handler.cancel()
+
+
+## 某个动作（"down"、"jump"……）现在按着没有（自己这套键）
+func action_held(a: String) -> bool:
+	return Input.is_action_pressed(_act(a))
+
+
+func attack_held() -> bool:
+	return _stun <= 0.0 and Input.is_action_pressed(_act("attack"))
+
+
+func attack_pressed() -> bool:
+	return _stun <= 0.0 and Input.is_action_just_pressed(_act("attack"))
+
+
+func find_target() -> Node2D:
+	_target = _find_target()
+	return _target
+
+
+func clear_target() -> void:
+	_target = null
+
+
+func aim_dir(from: Vector2) -> Vector2:
+	var dir := Vector2(facing, 0)
+	if _target != null and is_instance_valid(_target):
+		dir = (_aim_point(_target) - from).normalized()
+		if signf(dir.x) != 0.0:
+			facing = int(signf(dir.x))
+	return dir
+
+
+func target_point(n: Node2D) -> Vector2:
+	return _aim_point(n)
+
+
+func muzzle(dx := 6.0, dy := -10.0) -> Vector2:
+	return global_position + Vector2(facing * dx, dy)
+
+
+func recoil(v: Vector2) -> void:
+	velocity += v
+
+
+func pop(squash := 0.3, light := 0.5) -> void:
+	_squash = maxf(_squash, squash)
+	_release_flash = maxf(_release_flash, light)
+
+
+func quick_level() -> int:
+	return charge_level
 
 
 func _aim_point(n: Node2D) -> Vector2:
@@ -822,6 +912,8 @@ func _animate(delta: float) -> void:
 		s.visible = not blink_hidden
 
 	var glow := charge if (charging and weapon() == "flash") else 0.0
+	if _handler != null:
+		glow = _handler.glow()
 	var pulse := 0.0
 	if charge_full:
 		pulse = 0.08 + 0.08 * sin(_anim_time * 10.0)
@@ -853,6 +945,9 @@ func _draw() -> void:
 
 
 func _draw_weapon() -> void:
+	if _handler != null and _handler_id == weapon():
+		_handler.draw(self)
+		return
 	match weapon():
 		"flash":
 			if _flash_muzzle > 0.0:

@@ -12,6 +12,11 @@ static var _count := 0
 
 var velocity := Vector2.ZERO
 var ground_y := 0.0
+## 颜色和大小（10-18：霰弹枪抛的是大红弹壳，每颗都"叮"）
+var brass := Color(0.86, 0.68, 0.32)
+var dark := Color(0.55, 0.4, 0.18)
+var big := false
+var ding_always := false
 var _t := 0.0
 var _bounces := 0
 var _spin := 0
@@ -32,8 +37,8 @@ func _process(delta: float) -> void:
 			position.y = ground_y
 			_bounces += 1
 			velocity = Vector2(velocity.x * 0.45, -absf(velocity.y) * 0.35)
-			if _bounces == 1 and _count % SOUND_EVERY == 0:
-				Game.sfx("casing", -24.0, 1.0, 0.12)
+			if _bounces == 1 and (ding_always or _count % SOUND_EVERY == 0):
+				Game.sfx("casing", -24.0 if not big else -18.0, 1.0 if not big else 0.75, 0.12)
 			if _bounces >= 2:
 				velocity = Vector2.ZERO
 	if _t > LIFE:
@@ -44,12 +49,13 @@ func _process(delta: float) -> void:
 
 func _draw() -> void:
 	var a := clampf((LIFE - _t) / 0.3, 0.0, 1.0)
-	var brass := Color(0.86, 0.68, 0.32, a)
-	var dark := Color(0.55, 0.4, 0.18, a)
-	# 飞着的时候横竖交替（在转），落地以后横躺
+	var b := Color(brass, a)
+	var d := Color(dark, a)
+	var l := 3 if big else 2
+	# 飞着的时候横竖交替（在转），落地以后横躺；大弹壳 3 格长、一头是黄铜底
 	if _bounces < 2 and _spin / 3 % 2 == 1:
-		draw_rect(Rect2(0, -1, 1, 2), brass)
-		draw_rect(Rect2(0, 0, 1, 1), dark)
+		draw_rect(Rect2(0, -1, 1, l), b)
+		draw_rect(Rect2(0, l - 2, 1, 1), d)
 	else:
-		draw_rect(Rect2(-1, 0, 2, 1), brass)
-		draw_rect(Rect2(0, 0, 1, 1), dark)
+		draw_rect(Rect2(-1, 0, l, 1), b)
+		draw_rect(Rect2(l - 2, 0, 1, 1), d)

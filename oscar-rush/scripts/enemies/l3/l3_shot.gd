@@ -41,6 +41,9 @@ const STYLES := {
 		"shape": [["12", "23"], ["21", "32"]], "trail": 4, "trail_col": 2},
 	"rain": {"move": "fall", "cols": [Color(0.85, 0.95, 1.0), Color(0.5, 0.75, 1.0), Color(0.3, 0.5, 0.85)],
 		"shape": [["1", "2", "3"]], "trail": 2},
+	## 斜着飞的雨丝：风暴云扇射用（雨点是往下掉的，不管瞄哪；扇射要照预警的射线飞，10-18 自查）
+	"drizzle": {"move": "line", "speed": 1.1, "cols": [Color(0.85, 0.95, 1.0), Color(0.5, 0.75, 1.0), Color(0.3, 0.5, 0.85)],
+		"shape": [["3..", ".2.", "..1"]], "trail": 3, "orient": true},
 	"bubble": {"move": "rise", "cols": [Color(1, 1, 1), Color(0.55, 0.9, 1.0), Color(0.3, 0.6, 0.8)],
 		"shape": [[".2.", "2.1", ".2."], [".2.", "1.2", ".3."]], "trail": 0},
 	"dust": {"move": "wave", "speed": 0.75, "cols": [Color(0.85, 0.83, 0.78), Color(0.62, 0.6, 0.56), Color(0.42, 0.4, 0.38)],

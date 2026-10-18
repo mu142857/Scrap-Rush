@@ -52,6 +52,13 @@ const NAMES := {
 	"dynamo": ["DYNAMO", "every 10 kills: lantern +5"],
 }
 
+## 名字和一行说明：武器从武器登记表（WeaponRegistry）读，别的从 NAMES 读（游戏设计会话 10-18，7 把武器）
+func _names(id: String) -> Array:
+	if WeaponRegistry.has(id):
+		return [WeaponRegistry.name_of(id), str(WeaponRegistry.value(id, "shop", ""))]
+	return NAMES[id]
+
+
 ## 出口通往哪里
 static var next_scene := "res://scenes/title.tscn"
 
@@ -59,8 +66,15 @@ static var next_scene := "res://scenes/title.tscn"
 ## 挡不到货（货的图标在屏幕 y 70 以下），也让开了左上角的马灯血条和零件数
 ## 高 56：底边在屏幕 y 58，洞洞板那排卡片顶在 y 60 左右，选中的角标不会碰到
 const INFO_RECT := Rect2(96, 2, 288, 56)
-## 选武器界面那三把的数值（POWER / RATE / REACH），信息卡上照样画格子条；没有的武器不画
-const WEAPON_CARDS := preload("res://scripts/ui/weapon_select.gd").CARDS
+## 每把武器的数值（POWER / RATE / REACH），信息卡上照样画格子条。10-18 起从武器登记表读（游戏设计会话：7 把武器），
+## 格式和原来选武器界面的 CARDS 一样：[id, 名字, 图标, 说明, 威力, 射速, 射程]
+static func _weapon_cards() -> Array:
+	var out := []
+	for w in WeaponRegistry.LIST:
+		var st: Array = w["stats"]
+		out.append([w["id"], w["name"], w["icon"], w["card"], st[0], st[1], st[2]])
+	return out
+
 const INTRO_TIME := 6.0
 ## 第一次进店：进门提示多两页（零件是什么、买什么划算、拉杆是刷新），每页 4 秒。
 ## 站到货前面时照常显示那件货，走开后接着翻没看完的页
@@ -302,7 +316,7 @@ func _update_all() -> void:
 		match st.id:
 			"weapon", "mutation":
 				# 闪光灯没有单独的货架图标，借快充的灯泡
-				st.icon = ("charge" if st.item == "flash" else st.item) if st.item != "" else "part"
+				st.icon = str(WeaponRegistry.value(st.item, "icon", "part")) if st.item != "" else "part"
 				st.get_child(0).visible = st.item != ""
 			"charge", "fuel", "plating", "damping":
 				st.pips = Upgrades.level(st.id)
@@ -333,14 +347,14 @@ func _info(st: ShopStand) -> Dictionary:
 		"weapon", "mutation":
 			if st.item == "":
 				return {"title": "SOLD", "detail": ""}
-			var n: Array = NAMES[st.item]
+			var n: Array = _names(st.item)
 			var ready := st.item in (Upgrades.implemented_weapons if st.id == "weapon" else Upgrades.implemented_mutations)
 			if not ready:
 				return {"title": n[0], "detail": "COMING SOON", "dim": true}
 			var price: int = Upgrades.PRICE[st.id]
 			var detail: String = n[1]
 			if st.id == "weapon":
-				detail = tr("replaces your %s") % tr(NAMES[_weapon_of(_buyer(st))][0])
+				detail = tr("replaces your %s") % tr(_names(_weapon_of(_buyer(st)))[0])
 			elif st.id == "mutation" and Upgrades.mutation != "":
 				detail = tr("replaces your %s") % tr(NAMES[Upgrades.mutation][0])
 			return {"title": n[0], "detail": detail, "price": price, "can_buy": parts >= price,
@@ -540,7 +554,7 @@ func _update_info_box(delta: float) -> void:
 				price_line = "EQUIPPED"
 				price_col = UiStyle.DIM
 			else:
-				detail = tr("replaces your %s") % tr(NAMES[_card_cur][0])
+				detail = tr("replaces your %s") % tr(_names(_card_cur)[0])
 				detail_col = UiStyle.POOR
 		elif focus.id == "mutation" and info.get("swap", false):
 			detail_col = UiStyle.POOR
@@ -591,7 +605,7 @@ func _draw_card() -> void:
 			# 新的比现在多出来的格子一闪一闪。第三行右边一个小图例
 			var new_c: Array = []
 			var cur_c: Array = []
-			for c in WEAPON_CARDS:
+			for c in _weapon_cards():
 				if c[0] == _card_item:
 					new_c = c
 				if c[0] == _card_cur:

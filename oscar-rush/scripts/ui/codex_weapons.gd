@@ -1,7 +1,8 @@
 class_name CodexWeapons
 extends Control
-## 总图鉴的"武器图鉴"一册（codex_menu.gd 里用）：闪光灯、铆钉枪、蒸汽锤。
-## 左上三格选武器，左下是出招示意（主角对着三只齿轮爬虫打），右边是名字、发不发光、三条数值格（和选武器界面同一套）、
+## 总图鉴的"武器图鉴"一册（codex_menu.gd 里用）：开局 7 把武器（闪光灯、铆钉枪、蒸汽锤、废铁霰弹枪、显像管激光、
+## 唱片回旋镖、特斯拉电钳；顺序和 WeaponRegistry 一样）。新四把的打法一句话直接用登记表的 card + trait。
+## 左上一排格子选武器（只放图标，名字在右边大字），左下是出招示意（主角对着三只齿轮爬虫打），右边是名字、发不发光、三条数值格（和选武器界面同一套）、
 ## 实际数值和一句打法。三把开局就能选，所以都直接显示，不按"用没用过"点亮。
 ##
 ## 示意动画照游戏里的真实表现做（作者 10-18："图鉴的武器使用和真实的不符"），对照网页版实拍逐项核过：
@@ -11,6 +12,11 @@ extends Control
 ##   铆钉（2×2 亮头 + 拖尾，射程尽头分三档变淡）、枪口火光（十字星 / 尖火一发一换，只亮一两帧）、
 ##   弹壳（往身后上方抛、落地弹两下）、蒸汽锤（两圈像素环、中心一团白、喷出去的蒸汽方块、脚下冷却弧、冷却好时人身上一圈白）
 ## - 靶子是真的齿轮爬虫（100 血）：挨打发白、往后退，打死冒灰色和橙色碎屑后消失；示意里每一轮开头再放回来
+## - 唱片回旋镖（10-18 加，总机台/留声机会话做的武器）：唱片的飞法、割法、画法照 record.gd / record_disc.gd；
+##   真实射程 130 比舞台（120）长，所以舞台右边立一堵墙，正好演"碰墙弹一次"：去程割、弹回来、停一下、飞回手里再割
+## - 霰弹枪 / 激光 / 电钳（10-18 加）：照 shotgun.gd + shotgun_pellet.gd、laser.gd + laser_beam.gd、tongs.gd + tesla_arc.gd；
+##   霰弹枪贴脸那只会被轰飞（爬虫离地再落下），电钳的电弧每步重折、被电的爬虫发蓝发抖；
+##   激光是第二版（10-18 游戏设计会话改，作者嫌和闪光灯太像）：显像管开机式充能、充满自动开火、一道持续扫的 RGB 扫描线光束、关电视式收束
 ## 放大 2 倍画在舞台里（舞台坐标 0~119 × 0~64），一步一步按 1/60 秒模拟，和游戏里的物理帧一样。
 
 const WARM := UiStyle.WARM
@@ -26,12 +32,18 @@ const WEAPONS := [
 		"Hold to fire nonstop. Rivets fade out at the end of their range."],
 	["hammer", "STEAM HAMMER", "hammer", 5, 1, 2, "No light: moths ignore it",
 		"Tap to blast all around you. Best when surrounded."],
+	["shotgun", "SCRAP SHOTGUN", "shotgun", 4, 3, 2, "No light: moths ignore it", ""],
+	["laser", "CRT LASER", "laser", 5, 1, 5, "Glows: moths chase the light", ""],
+	["record", "RECORD SLINGER", "record", 3, 3, 4, "No light: moths ignore it",
+		"Throw a record. It flies back and cuts both ways."],
+	["tongs", "TESLA TONGS", "tongs", 2, 4, 3, "Glows: moths chase the light", ""],
 ]
 const STAT_NAMES := ["POWER", "RATE", "REACH"]
 
-const TILE_Y := 54.0
-const TILE := Vector2(76, 52)
-const TILE_GAP := 6.0
+const TILE_Y := 58.0
+## 7 格排一行（240 宽）：格子里只放 1 倍的图标，名字在右边大字
+const TILE := Vector2(30, 40)
+const TILE_GAP := 5.0
 const STAGE := Rect2(14, 112, 240, 130)
 const DETAIL := Rect2(268, 54, 200, 188)
 
@@ -45,6 +57,16 @@ const DEMO := {
 	"flash": {"loop": 2.4, "press": 0.25, "release": 0.95, "hero": 14.0, "bugs": [42.0, 66.0, 90.0]},
 	"rivet": {"loop": 2.8, "press": 0.25, "release": 2.2, "hero": 14.0, "bugs": [42.0, 66.0, 90.0]},
 	"hammer": {"loop": 3.4, "press": 0.3, "press2": 2.1, "hero": 50.0, "bugs": [-30.0, 30.0, 62.0], "respawn": 1.5},
+	# 扔两张（最多 2 张在外面），第一张接住后马上扔第三张（接住后 0.2 秒内扔的快 20%）
+	# 按住连喷三发：第一只贴脸（会被轰飞），远的只吃到扇面中间几颗
+	# 按住连喷三发（第二版后坐 120，人站右一点，退三步还在舞台里）：贴脸那只被轰飞；
+	# 远的那只（贴脸距离 48 以外）每发吃满一扇、往后推一点，第二发打死
+	"shotgun": {"loop": 2.6, "press": 0.3, "release": 1.7, "hero": 50.0, "bugs": [10.0, 52.0]},
+	# 充满 0.9 秒、松手一道光束横穿三只
+	"laser": {"loop": 2.3, "press": 0.2, "release": 1.7, "hero": 14.0, "bugs": [42.0, 66.0, 90.0]},
+	# 按住放电：每道从钳口劈最近那只，再一只跳一只
+	"tongs": {"loop": 2.3, "press": 0.25, "release": 1.65, "hero": 14.0, "bugs": [36.0, 64.0, 92.0]},
+	"record": {"loop": 2.1, "press": 0.25, "press2": 0.55, "hero": 14.0, "bugs": [42.0, 66.0, 90.0], "respawn": 1.35, "wall": 112.0},
 }
 
 var embedded := true
@@ -81,6 +103,12 @@ var _sparks: Array = []
 var _puffs: Array = []
 var _blasts: Array = []
 var _pellets: Array = []
+var _discs: Array = []
+var _scrap: Array = []
+var _beams: Array = []
+var _arcs: Array = []
+## 全屏一闪的颜色（电钳是蓝的）
+var _flash_col := Color.WHITE
 ## 10-18 打击感（游戏设计会话加的）：命中星、机油点、击杀碎铁片、扬尘、全屏白闪
 var _stars: Array = []
 var _oil: Array = []
@@ -111,10 +139,6 @@ func _ready() -> void:
 	add_child(_stage)
 	_caption = _label(14, 33, 452, DIM, HORIZONTAL_ALIGNMENT_LEFT)
 	_caption.text = tr("Pick one before level 1. Swap at the shop for 3 parts.")
-	for i in WEAPONS.size():
-		var l := _label(_tile_rect(i).position.x, TILE_Y + 37, TILE.x, DIM, HORIZONTAL_ALIGNMENT_CENTER)
-		l.text = tr(WEAPONS[i][1])
-		_tile_names.append(l)
 	var x := DETAIL.position.x + 8
 	var w := DETAIL.size.x - 16
 	_name = _label(x, DETAIL.position.y + 6, w, WARM, HORIZONTAL_ALIGNMENT_CENTER)
@@ -142,6 +166,13 @@ func _read_constants() -> void:
 	var b: Dictionary = load("res://scripts/combat/steam_blast.gd").get_script_constant_map()
 	var c: Dictionary = load("res://scripts/combat/casing.gd").get_script_constant_map()
 	var cr: Dictionary = load("res://scripts/enemies/crawler.gd").get_script_constant_map()
+	var rh: Dictionary = load("res://scripts/combat/weapons/record.gd").get_script_constant_map()
+	var rd: Dictionary = load("res://scripts/combat/weapons/record_disc.gd").get_script_constant_map()
+	var sg: Dictionary = load("res://scripts/combat/weapons/shotgun.gd").get_script_constant_map()
+	var sp: Dictionary = load("res://scripts/combat/weapons/shotgun_pellet.gd").get_script_constant_map()
+	var lz: Dictionary = load("res://scripts/combat/weapons/laser.gd").get_script_constant_map()
+	var lb: Dictionary = load("res://scripts/combat/weapons/laser_beam.gd").get_script_constant_map()
+	var ta: Dictionary = load("res://scripts/combat/tesla_arc.gd").get_script_constant_map()
 	_k = {
 		"charge_time": p["CHARGE_TIME"], "dots": p["CHARGE_DOTS"], "ring_r": p["CHARGE_RING_R"],
 		"rivet_interval": p["RIVET_INTERVAL"], "rivet_spread": p["RIVET_SPREAD"], "rivet_move": p["RIVET_MOVE_MULT"],
@@ -151,6 +182,20 @@ func _read_constants() -> void:
 		"blast_r": b["RADIUS"], "blast_damage": b["DAMAGE"], "blast_grow": b["GROW_TIME"], "blast_life": b["LIFE"],
 		"casing_gravity": c["GRAVITY"], "casing_life": c["LIFE"],
 		"bug_hp": cr["MAX_HP"],
+		"rec_damage": rh["DAMAGE"], "rec_max": rh["MAX_OUT"], "rec_gap": rh["MIN_GAP"], "rec_boost": rh["CATCH_BOOST"],
+		"rec_window": rh["CATCH_WINDOW"], "rec_dist": rd["OUT_DIST"], "rec_speed": rd["OUT_SPEED"], "rec_back_accel": rd["BACK_ACCEL"],
+		"rec_back_speed": rd["BACK_SPEED"], "rec_turn": rd["BACK_TURN"], "rec_hang": rd["HANG"], "rec_catch": rd["CATCH_R"],
+		"rec_snap": rd["SNAP_R"], "rec_same_gap": rd["SAME_GAP"],
+		"vinyl": rd["VINYL"], "groove": rd["GROOVE"], "shine": rd["SHINE"], "label_dark": rd["LABEL_DARK"], "label": rd["LABEL"],
+		"disc_shape": rd["SHAPE"],
+		"sg_interval": sg["INTERVAL"], "sg_pellets": sg["PELLETS"], "sg_spread": sg["SPREAD"], "sg_damage": sg["PELLET_DAMAGE"],
+		"sg_kick": sg["GROUND_KICK"], "sg_speed_min": sg["SPEED_MIN"], "sg_speed_max": sg["SPEED_MAX"], "sg_life": sp["LIFE"], "sg_fade": sp["FADE"], "sg_point_blank": sp["POINT_BLANK"],
+		"sg_full": sp["FULL_RANGE"], "sg_far": sp["FAR_RANGE"], "sg_far_mult": sp["FAR_MULT"],
+		"lz_charge": lz["CHARGE_TIME"], "lz_cooldown": lz["COOLDOWN"], "lz_damage": lz["TICK_DAMAGE"], "lz_range": lz["RANGE"],
+		"lz_tick": lb["TICK"], "lz_life": lb["MAX_LIFE"], "lz_end": lb["END_TIME"], "lz_half": lb["HALF_WIDTH"],
+		"tg_interval": ta["INTERVAL"], "tg_range": ta["RANGE"], "tg_jump": ta["JUMP"], "tg_jumps": ta["JUMPS"],
+		"tg_damage": ta["DAMAGE"], "tg_stun": ta["STUN"], "tg_hop": ta["HOP_DELAY"], "tg_glow": ta["GLOW"],
+		"tg_edge": ta["EDGE"], "tg_spark": ta["SPARK"], "tg_smoke": ta["SMOKE"],
 	}
 
 
@@ -167,6 +212,30 @@ func _facts_for(id: String) -> PackedStringArray:
 				tr("Sweeps up and down, no pierce"),
 				tr("Range: about %s") % (roundi(k["rivet_speed"] * k["rivet_life"] / 10.0) * 10),
 				tr("You walk at %d%% while firing") % roundi(k["rivet_move"] * 100.0)]
+		"shotgun":
+			return [tr("%d pellets, %d dmg each") % [k["sg_pellets"], k["sg_damage"]],
+				tr("One blast every %s s") % _num(k["sg_interval"]),
+				tr("Range: about %s") % roundi(k["sg_far"]),
+				tr("Full within %d, %d%% at %d") % [k["sg_full"], roundi(k["sg_far_mult"] * 100.0), k["sg_far"]],
+				tr("Point blank: launches small fry")]
+		"laser":
+			return [tr("%d dmg every %s s, pierces all") % [k["lz_damage"], str(snappedf(k["lz_tick"], 0.001))],
+				tr("Charge time: %s s") % _num(k["lz_charge"]),
+				tr("Fires itself when charged"),
+				tr("Beam lasts %s s, then cools %s s") % [_num(k["lz_life"]), _num(k["lz_cooldown"])]]
+		"tongs":
+			var dm: PackedStringArray = []
+			for v in k["tg_damage"]:
+				dm.append(str(roundi(v)))
+			return [tr("%s dmg along the chain") % " / ".join(dm),
+				tr("Jumps up to %d times, %d apart") % [k["tg_jumps"], k["tg_jump"]],
+				tr("Range: about %s") % roundi(k["tg_range"]),
+				tr("Stuns small fry for %s s") % _num(k["tg_stun"])]
+		"record":
+			return [tr("%d dmg a cut, out and back") % k["rec_damage"],
+				tr("Up to %d records out at once") % k["rec_max"],
+				tr("Range: about %s") % roundi(k["rec_dist"]),
+				tr("Bounces off a wall once")]
 		_:
 			return [tr("%d dmg to all within %d") % [k["blast_damage"], k["blast_r"]],
 				tr("Blows away boss bullets"),
@@ -217,15 +286,23 @@ func _select(i: int) -> void:
 	var e: Array = WEAPONS[_sel]
 	_name.text = tr(e[1])
 	_glow.text = tr(e[6])
-	_glow.label_settings.font_color = WARM if _sel == 0 else DIM
+	_glow.label_settings.font_color = WARM if String(e[6]).begins_with("Glows") else DIM
 	for j in _tile_names.size():
 		_tile_names[j].label_settings.font_color = WARM if j == _sel else DIM
 	_facts.text = "\n".join(_facts_for(e[0]))
-	_tip.text = tr(e[7])
+	_tip.text = tr(e[7]) if e[7] != "" else _registry_tip(e[0])
 	_tip.size = Vector2(DETAIL.size.x - 16, 0)
 	_tip.size.y = _tip.get_minimum_size().y
 	_tip.position.y = DETAIL.end.y - 6 - _tip.size.y
 	_reset()
+
+
+## 新几把的打法一句：登记表的 card（选武器界面那三行，换行去掉）+ trait
+func _registry_tip(id: String) -> String:
+	var def := WeaponRegistry.get_def(id)
+	if def.is_empty():
+		return ""
+	return tr(def["card"]).replace("\n", "" if Lang.is_zh() else " ") + ("" if Lang.is_zh() else " ") + tr(def["trait"])
 
 
 ## 截图、测试用：把示意动画快进到第 t 秒
@@ -274,7 +351,8 @@ func _reset() -> void:
 	_freeze = 0.0
 	_rng.seed = 7
 	_hero = {"x": d["hero"], "vx": 0.0, "charging": false, "charge": 0.0, "full": false, "gather": 0.0, "ring": 0.0,
-		"muzzle": 0.0, "fmuzzle": 0.0, "fmuzzle_full": false, "flash": 0.0, "squash": 0.0, "rivet_t": 0.0, "rivet_n": 0, "cd": 0.0, "windup": 0.0, "anim": 0.0}
+		"muzzle": 0.0, "fmuzzle": 0.0, "fmuzzle_full": false, "flash": 0.0, "squash": 0.0, "rivet_t": 0.0, "rivet_n": 0, "cd": 0.0, "windup": 0.0, "anim": 0.0,
+		"fling": 0.0, "catch_t": 0.0, "caught": 0.0, "thrown3": false, "sg_muzzle": 0.0, "tg_t": 0.0, "hold": 0.0, "firing": false}
 	_bugs.clear()
 	for off in d["bugs"]:
 		_bugs.append(_new_bug(d["hero"] + off))
@@ -285,6 +363,11 @@ func _reset() -> void:
 	_puffs.clear()
 	_blasts.clear()
 	_pellets.clear()
+	_discs.clear()
+	_scrap.clear()
+	_beams.clear()
+	_arcs.clear()
+	_flash_col = Color.WHITE
 	_stars.clear()
 	_oil.clear()
 	_chunks.clear()
@@ -297,7 +380,9 @@ func _reset() -> void:
 
 
 func _new_bug(x: float) -> Dictionary:
-	return {"x": x, "home": x, "hp": float(_k["bug_hp"]), "flash": 0.0, "knock": 0.0, "vx": 0.0, "dead": false}
+	# y / vy / lx：被霰弹枪贴脸轰飞时离地（y 往上是负）；stun / shake：被电钳电麻
+	return {"x": x, "home": x, "hp": float(_k["bug_hp"]), "flash": 0.0, "knock": 0.0, "vx": 0.0, "dead": false,
+		"y": 0.0, "vy": 0.0, "lx": 0.0, "stun": 0.0, "shake": 0.0}
 
 
 func _step() -> void:
@@ -329,12 +414,34 @@ func _step() -> void:
 			_step_rivet(d)
 		"hammer":
 			_step_hammer(d)
+		"record":
+			_step_record(d)
+		"shotgun":
+			_step_shotgun(d)
+		"laser":
+			_step_laser(d)
+		"tongs":
+			_step_tongs(d)
 	_step_shots()
+	_step_scrap()
+	_step_arcs()
+	_step_beams()
 	for b in _bugs:
 		b["flash"] = maxf(b["flash"] - STEP * 8.0, 0.0)
 		if b["knock"] > 0.0:
 			b["knock"] -= STEP
 			b["x"] += b["vx"] * STEP
+		# 被轰飞：抛起来再落地
+		if b["y"] < 0.0 or b["vy"] != 0.0:
+			b["vy"] += 600.0 * STEP
+			b["y"] += b["vy"] * STEP
+			b["x"] += b["lx"] * STEP
+			if b["y"] >= 0.0:
+				b["y"] = 0.0
+				b["vy"] = 0.0
+				b["lx"] = 0.0
+		b["stun"] = maxf(b["stun"] - STEP, 0.0)
+		b["shake"] = maxf(b["shake"] - STEP, 0.0)
 	if d.has("respawn") and absf(_t - d["respawn"]) < STEP * 0.5:
 		for i in _bugs.size():
 			if _bugs[i]["dead"]:
@@ -414,6 +521,362 @@ func _step_hammer(d: Dictionary) -> void:
 		if d.has(key) and absf(_t - d[key]) < STEP * 0.5 and h["cd"] <= 0.0:
 			h["windup"] = _k["hammer_windup"]
 			h["squash"] = 0.45
+
+
+## 唱片回旋镖（record.gd 的 attack / _throw / caught）：按一下扔一张，最多 2 张在外面；
+## 第一张接住就马上再扔一张（接住后 CATCH_WINDOW 秒内扔的那张快 CATCH_BOOST 倍）
+func _step_record(d: Dictionary) -> void:
+	var h := _hero
+	h["cd"] = maxf(h["cd"] - STEP, 0.0)
+	h["catch_t"] = maxf(h["catch_t"] - STEP, 0.0)
+	h["fling"] = maxf(h["fling"] - STEP / 0.12, 0.0)
+	h["caught"] = maxf(h["caught"] - STEP / 0.25, 0.0)
+	for key in ["press", "press2"]:
+		if absf(_t - d[key]) < STEP * 0.5:
+			_throw_disc()
+	if h["catch_t"] > 0.0 and not h["thrown3"]:
+		h["thrown3"] = true
+		_throw_disc()
+	for disc in _discs.duplicate():
+		_step_disc(disc, d)
+
+
+func _throw_disc() -> void:
+	var h := _hero
+	if h["cd"] > 0.0 or _discs.size() >= _k["rec_max"]:
+		return
+	h["cd"] = _k["rec_gap"]
+	var speed := 1.0
+	if h["catch_t"] > 0.0:
+		speed = _k["rec_boost"]
+		h["catch_t"] = 0.0
+	var dist: float = _k["rec_dist"] * (1.0 + 0.5 * (speed - 1.0))
+	_discs.append({"p": Vector2(h["x"] + 6, FLOOR_Y - 10), "v": Vector2(_k["rec_speed"] * speed, 0), "v0": _k["rec_speed"] * speed,
+		"dist": dist, "travel": 0.0, "back": false, "hang": -1.0, "bounced": false, "spin": 0.0, "life": 0.0,
+		"trail": [], "cut": {}, "last": {}})
+	h["fling"] = 1.0
+	h["squash"] = maxf(h["squash"], 0.18)
+	h["vx"] += 20.0   # 出手往前一倾（p.recoil）
+
+
+## 一张唱片一步（record_disc.gd 的 _fly_out / _fly_back / _cut_overlaps）
+func _step_disc(disc: Dictionary, d: Dictionary) -> void:
+	var h := _hero
+	disc["life"] += STEP
+	var v: Vector2 = disc["v"]
+	disc["spin"] += STEP * (10.0 + v.length() * 0.06)
+	if disc["hang"] >= 0.0:
+		# 去程到头：停一下（还在转），然后往回飞
+		disc["hang"] -= STEP
+		if disc["hang"] < 0.0:
+			disc["back"] = true
+			disc["cut"] = {}
+			disc["v"] = Vector2.ZERO
+	elif not disc["back"]:
+		# 去程：匀减速，飞满射程就停；碰墙弹一次（第二次就直接往回飞）
+		var decel: float = disc["v0"] * disc["v0"] / (2.0 * disc["dist"])
+		var speed := maxf(v.length() - decel * STEP, 0.0)
+		v = v.normalized() * speed
+		var step := v * STEP
+		var wall: float = d["wall"]
+		if v.x > 0.0 and disc["p"].x + step.x >= wall - 6.0:
+			_spark_burst(Vector2(wall, disc["p"].y), Color(1.0, 0.85, 0.6), 4, 70.0, Vector2.LEFT)
+			if disc["bounced"]:
+				disc["hang"] = 0.0
+			else:
+				disc["bounced"] = true
+				v.x = -v.x
+			disc["v"] = v
+			return
+		disc["p"] += step
+		disc["travel"] += step.length()
+		disc["v"] = v
+		if speed <= 1.0 or disc["travel"] >= disc["dist"]:
+			disc["hang"] = _k["rec_hang"]
+	else:
+		# 回程：朝手里加速飞，快到手边直接飞进去
+		var home := Vector2(h["x"], FLOOR_Y - 10)
+		var to: Vector2 = home - disc["p"]
+		if to.length() < _k["rec_catch"]:
+			# 接住：身上闪一圈白点，接下来 CATCH_WINDOW 秒内扔的那张更快
+			_discs.erase(disc)
+			h["caught"] = 1.0
+			h["catch_t"] = _k["rec_window"]
+			h["cd"] = 0.0
+			return
+		if to.length() < _k["rec_snap"]:
+			v = to.normalized() * maxf(v.length(), 320.0)
+			disc["p"] += v * STEP if (v * STEP).length() < to.length() else to
+		else:
+			var sp := move_toward(v.length(), _k["rec_back_speed"], _k["rec_back_accel"] * STEP)
+			var dir := v.normalized() if v.length() > 1.0 else to.normalized()
+			dir = dir.rotated(clampf(dir.angle_to(to), -_k["rec_turn"] * STEP, _k["rec_turn"] * STEP))
+			v = dir * sp
+			disc["p"] += v * STEP
+		disc["v"] = v
+	disc["trail"].push_front(disc["p"])
+	if disc["trail"].size() > 4:
+		disc["trail"].pop_back()
+	# 割：判定框 10×9；每趟每只一下，同一只两刀至少隔 SAME_GAP 秒；不顿帧，切线方向迸一串火星
+	var hit := Rect2(disc["p"] - Vector2(5, 4.5), Vector2(10, 9))
+	for i in _bugs.size():
+		var b: Dictionary = _bugs[i]
+		if b["dead"] or disc["cut"].has(i) or not hit.intersects(_bug_rect(b)):
+			continue
+		if disc["life"] < float(disc["last"].get(i, -1.0)) + _k["rec_same_gap"]:
+			continue
+		disc["cut"][i] = true
+		disc["last"][i] = disc["life"]
+		var dir2: Vector2 = disc["v"].normalized() if disc["v"].length() > 1.0 else Vector2.RIGHT
+		var keep := _freeze
+		_hurt(b, _k["rec_damage"], signf(dir2.x), false, disc["p"], dir2, 0.3)
+		_freeze = keep   # 唱片一直在飞，割到不顿帧（击杀的短顿帧也不要）
+		_spark_burst(disc["p"], Color(1.0, 0.8, 0.45), 5, 110.0, dir2)
+
+
+## 废铁霰弹枪（shotgun.gd 的 attack / _fire）：按住每 INTERVAL 秒喷一扇 PELLETS 颗（±SPREAD°），地上往后推 GROUND_KICK；
+## 枪口一扇火 3 帧、一团灰烟往前、一颗红色大弹壳往后上方抛
+func _step_shotgun(d: Dictionary) -> void:
+	var h := _hero
+	h["cd"] = maxf(h["cd"] - STEP, 0.0)
+	h["sg_muzzle"] = maxf(h["sg_muzzle"] - STEP / 0.05, 0.0)
+	if _t >= d["press"] and _t < d["release"] and h["cd"] <= 0.0:
+		h["cd"] = _k["sg_interval"]
+		var from := Vector2(h["x"] + 7, FLOOR_Y - 10)
+		var volley := {"total": 0}
+		var n: int = _k["sg_pellets"]
+		for i in n:
+			var a: float = lerpf(-_k["sg_spread"], _k["sg_spread"], float(i) / (n - 1)) + _rng.randf_range(-2.0, 2.0)
+			_scrap.append({"p": from, "start": from, "v": Vector2.RIGHT.rotated(deg_to_rad(a)) * _rng.randf_range(_k["sg_speed_min"], _k["sg_speed_max"]),
+				"life": 0.0, "trail": [], "volley": volley})
+		h["sg_muzzle"] = 1.0
+		h["squash"] = maxf(h["squash"], 0.45)
+		h["flash"] = maxf(h["flash"], 0.9)
+		h["vx"] -= _k["sg_kick"]
+		# 一团灰烟、一把橙色火星往前喷；开火那一下定格一帧
+		_spark_burst(from + Vector2(4, 0), Color(0.62, 0.6, 0.62), 8, 70.0, Vector2.RIGHT)
+		_spark_burst(from + Vector2(6, 0), Color(1.0, 0.75, 0.3), 6, 160.0, Vector2.RIGHT)
+		_freeze = maxf(_freeze, 0.025)
+		_casings.append({"p": Vector2(h["x"] - 2, FLOOR_Y - 10), "v": Vector2(-_rng.randf_range(40.0, 70.0), -_rng.randf_range(90.0, 130.0)),
+			"t": 0.0, "bounces": 0, "spin": 0, "big": true, "brass": Color8(190, 52, 40), "dark": Color8(214, 160, 70)})
+
+
+## 碎铁弹（shotgun_pellet.gd）：直线飞、最后 FADE 秒掉速，LIFE 秒没了；打中一只就没。
+## 同一发里打中的颗数越多顿得越久；贴脸（POINT_BLANK 内）算重击，把小怪轰飞
+func _step_scrap() -> void:
+	var h := _hero
+	for s in _scrap.duplicate():
+		s["life"] += STEP
+		if s["life"] > _k["sg_life"]:
+			_scrap.erase(s)
+			continue
+		if s["life"] > _k["sg_life"] - _k["sg_fade"]:
+			s["v"] *= 1.0 - 8.0 * STEP
+		s["trail"].push_front(s["p"])
+		if s["trail"].size() > 6:
+			s["trail"].pop_back()
+		s["p"] += s["v"] * STEP
+		for i in _bugs.size():
+			var b: Dictionary = _bugs[i]
+			if b["dead"] or not _bug_rect(b).grow(2.5).has_point(s["p"]):
+				continue
+			var vol: Dictionary = s["volley"]
+			var n: int = vol.get(i, 0) + 1
+			vol[i] = n
+			vol["total"] += 1
+			var close: bool = s["p"].distance_to(Vector2(h["x"], FLOOR_Y)) < _k["sg_point_blank"]
+			# 伤害按飞过的距离衰减：FULL_RANGE 内满伤，到 FAR_RANGE 剩 FAR_MULT
+			var flown: float = s["p"].distance_to(s["start"])
+			var fall := 1.0 if flown <= _k["sg_full"] else lerpf(1.0, _k["sg_far_mult"], clampf((flown - _k["sg_full"]) / (_k["sg_far"] - _k["sg_full"]), 0.0, 1.0))
+			_hurt(b, _k["sg_damage"] * fall, 1.0, close or n >= 3, s["p"], s["v"].normalized(), 0.35 + 0.1 * minf(n, 4))
+			_spark_burst(s["p"], Color(1.0, 0.7, 0.3), 3, 90.0, -s["v"].normalized())
+			if not b["dead"]:
+				if close:
+					# 贴脸：整个轰飞（往后上方）
+					b["vy"] = -110.0
+					b["lx"] = 320.0
+					b["knock"] = 0.0
+				else:
+					# 远一点：每颗往后推一点
+					b["knock"] = maxf(b["knock"], 0.06)
+					b["vx"] = maxf(b["vx"], 0.0) + 45.0
+			if vol["total"] >= 2:
+				_freeze = maxf(_freeze, minf(0.012 * vol["total"], 0.07))
+			_scrap.erase(s)
+			break
+
+
+## 显像管激光第二版（laser.gd）：按住充能 CHARGE_TIME 秒，充满自动开火（不用松手）；光束开始收束就进冷却 COOLDOWN
+func _step_laser(d: Dictionary) -> void:
+	var h := _hero
+	var held: bool = _t >= d["press"] and _t < d["release"]
+	var live: Dictionary = {}
+	for bm in _beams:
+		if not bm["ending"]:
+			live = bm
+	if not live.is_empty():
+		# 开火中：松手就收
+		h["charging"] = true
+		h["charge"] = 1.0
+		if not held:
+			live["ending"] = true
+		return
+	if h["firing"]:
+		# 光束刚开始收：进冷却
+		h["firing"] = false
+		h["cd"] = _k["lz_cooldown"]
+		h["charging"] = false
+		h["charge"] = 0.0
+	h["cd"] = maxf(h["cd"] - STEP, 0.0)
+	if held and h["cd"] <= 0.0:
+		h["charging"] = true
+		h["charge"] = minf(h["charge"] + STEP / _k["lz_charge"], 1.0)
+		if h["charge"] >= 1.0:
+			_fire_beam()
+		return
+	h["charging"] = false
+	h["charge"] = 0.0
+
+
+## 开火（laser.gd 的 _fire）：后坐、人压一下；不再全屏白闪
+func _fire_beam() -> void:
+	var h := _hero
+	var from := Vector2(h["x"] + 7, FLOOR_Y - 11)
+	_beams.append({"from": from, "len": minf(_k["lz_range"], 124.0 - from.x), "t": 0.0, "tick_t": 0.0,
+		"ending": false, "end_t": 0.0, "hit_once": {}, "n_first": 0})
+	h["firing"] = true
+	h["vx"] -= 50.0
+	h["squash"] = maxf(h["squash"], 0.3)
+	h["flash"] = maxf(h["flash"], 0.4)
+
+
+## 光束（laser_beam.gd 的 _process）：每 TICK 秒结算一下，最多 MAX_LIFE 秒，然后 END_TIME 秒的"关电视"收束
+func _step_beams() -> void:
+	var h := _hero
+	for bm in _beams.duplicate():
+		bm["t"] += STEP
+		bm["from"] = Vector2(h["x"] + 7, FLOOR_Y - 11)
+		bm["len"] = minf(_k["lz_range"], 124.0 - bm["from"].x)
+		if not bm["ending"]:
+			bm["tick_t"] -= STEP
+			if bm["tick_t"] <= 0.0:
+				bm["tick_t"] += _k["lz_tick"]
+				_beam_tick(bm)
+			if bm["t"] > _k["lz_life"]:
+				bm["ending"] = true
+		else:
+			bm["end_t"] += STEP
+			if bm["end_t"] > _k["lz_end"]:
+				_beams.erase(bm)
+
+
+## 结算一下（laser_beam.gd 的 _tick / _hit）：线上每只各吃 TICK_DAMAGE；第一次扫到的那只闪白、顿帧（一只比一只长），之后每下只冒火星
+func _beam_tick(bm: Dictionary) -> void:
+	var from: Vector2 = bm["from"]
+	var half: float = _k["lz_half"]
+	var hit: Array = []
+	for i in _bugs.size():
+		var r := _bug_rect(_bugs[i])
+		if not _bugs[i]["dead"] and r.end.x > from.x and r.position.y - half <= from.y and r.end.y + half >= from.y:
+			hit.append(i)
+	hit.sort_custom(func(a, b): return _bugs[a]["x"] < _bugs[b]["x"])
+	for i in hit:
+		var b: Dictionary = _bugs[i]
+		var on_line := Vector2(b["x"], from.y)
+		var first: bool = not bm["hit_once"].has(i)
+		_hurt(b, _k["lz_damage"], 1.0, first, on_line, Vector2.RIGHT, 0.6 if first else 0.2)
+		_spark_burst(on_line, [Color(1.0, 0.3, 0.4), Color(0.4, 1.0, 0.5), Color(0.4, 0.6, 1.0)][_rng.randi() % 3], 3, 90.0, Vector2.RIGHT)
+		if first:
+			bm["hit_once"][i] = true
+			bm["n_first"] += 1
+			_freeze = minf(0.03 + 0.015 * (bm["n_first"] - 1), 0.09)
+
+
+## 特斯拉电钳（tongs.gd + tesla_arc.gd）：按住每 INTERVAL 秒放一道，钳口 RANGE 内最近的那只，
+## 再跳 JUMP 内最近的下一只，最多跳 JUMPS 次，伤害一跳降一档；小怪被电麻 STUN 秒
+func _step_tongs(d: Dictionary) -> void:
+	var h := _hero
+	var held: bool = _t >= d["press"] and _t < d["release"]
+	h["charging"] = held
+	h["charge"] = 0.6 if held else 0.0
+	if not held:
+		h["tg_t"] = 0.0
+		h["hold"] = 0.0
+		return
+	h["hold"] += STEP
+	h["tg_t"] -= STEP
+	if h["tg_t"] > 0.0:
+		return
+	h["tg_t"] = _k["tg_interval"]
+	var muzzle := Vector2(h["x"] + 8, FLOOR_Y - 10)
+	var chain: Array = []
+	var at := muzzle
+	for j in _k["tg_jumps"] + 1:
+		var r: float = _k["tg_range"] if j == 0 else _k["tg_jump"]
+		var best := -1
+		var bd := INF
+		for i in _bugs.size():
+			if _bugs[i]["dead"] or chain.has(i):
+				continue
+			var dd := at.distance_to(_bug_aim(_bugs[i]))
+			if dd <= r and dd < bd:
+				best = i
+				bd = dd
+		if best < 0:
+			break
+		chain.append(best)
+		at = _bug_aim(_bugs[best])
+	if chain.is_empty():
+		_spark_burst(muzzle, _k["tg_spark"], 2, 40.0, Vector2.ZERO)
+		return
+	var pts: Array = [muzzle]
+	for i in chain:
+		pts.append(_bug_aim(_bugs[i]))
+	var arc := {"from": muzzle, "targets": chain, "pts": pts, "t": 0.0, "done": 0, "seed": _rng.randi()}
+	_arcs.append(arc)
+	_screen_flash = 1.0
+	_flash_col = Color(0.55, 0.75, 1.0)
+	h["flash"] = maxf(h["flash"], 0.55)
+	_spark_burst(muzzle, _k["tg_spark"], 3, 60.0, (pts[1] - muzzle).normalized())
+	_arc_hit(arc, 0)
+
+
+func _step_arcs() -> void:
+	for arc in _arcs.duplicate():
+		arc["t"] += STEP
+		while arc["done"] < arc["targets"].size() and arc["t"] >= arc["done"] * _k["tg_hop"]:
+			_arc_hit(arc, arc["done"])
+		for i in arc["targets"].size():
+			var b: Dictionary = _bugs[arc["targets"][i]]
+			if not b["dead"]:
+				arc["pts"][i + 1] = _bug_aim(b)
+		if arc["t"] > _k["tg_glow"] + _k["tg_hop"] * arc["targets"].size():
+			_arcs.erase(arc)
+
+
+func _arc_hit(arc: Dictionary, i: int) -> void:
+	arc["done"] = i + 1
+	var b: Dictionary = _bugs[arc["targets"][i]]
+	if b["dead"]:
+		return
+	var pos := _bug_aim(b)
+	var dir: Vector2 = (pos - arc["pts"][i]).normalized()
+	var dmgs: Array = _k["tg_damage"]
+	_hurt(b, dmgs[mini(i, dmgs.size() - 1)], signf(dir.x), false, pos, dir, 0.25)
+	_spark_burst(pos, _k["tg_spark"], 3, 70.0, dir)
+	if i == 0:
+		_freeze = maxf(_freeze, 0.02)
+	if b["dead"]:
+		_spark_burst(pos, _k["tg_smoke"], 5, 30.0, Vector2.UP)
+		return
+	# 麻：原地停住、抖、发蓝
+	b["stun"] = _k["tg_stun"]
+	b["shake"] = 0.08
+	b["knock"] = 0.0
+
+
+func _bug_aim(b: Dictionary) -> Vector2:
+	return Vector2(b["x"], FLOOR_Y - 8 + b["y"])
 
 
 func _blast() -> void:
@@ -559,7 +1022,7 @@ func _step_shots() -> void:
 
 
 func _bug_rect(b: Dictionary) -> Rect2:
-	return Rect2(b["x"] - 12, FLOOR_Y - 15, 24, 15)
+	return Rect2(b["x"] - 12, FLOOR_Y - 15 + b.get("y", 0.0), 24, 15)
 
 
 ## 齿轮爬虫挨打：发白、往后退；血打光了留一个白剪影 3 帧、冒灰色和橙色碎屑后消失（crawler.gd 的 hurt / _die），
@@ -624,7 +1087,7 @@ func _draw_base() -> void:
 		var r := _tile_rect(i)
 		UiStyle.panel(c, r, i == _sel, _time, WARM, LIT_FILL)
 		var idx := maxi(ShopStand.ICON_NAMES.find(WEAPONS[i][2]), 0)
-		UiStyle.icon(c, _icons, idx, Vector2(r.position.x + (r.size.x - 32) / 2, r.position.y + 4), 2)
+		UiStyle.icon(c, _icons, idx, (r.position + (r.size - Vector2(16, 16)) / 2).round(), 1)
 	UiStyle.panel(c, STAGE, false, 0.0)
 	UiStyle.panel(c, DETAIL, true, 0.0)
 	var e: Array = WEAPONS[_sel]
@@ -639,6 +1102,11 @@ func _draw_stage() -> void:
 	c.draw_set_transform(Vector2.ZERO, 0.0, Vector2(DEMO_SCALE, DEMO_SCALE))
 	c.draw_rect(Rect2(0, FLOOR_Y, 120, 20), Color(0.11, 0.1, 0.11))
 	c.draw_rect(Rect2(0, FLOOR_Y, 120, 1), Color(0.24, 0.22, 0.22))
+	var dm := _demo()
+	if dm.has("wall"):
+		var wx: float = dm["wall"]
+		c.draw_rect(Rect2(wx, 0, 120 - wx, FLOOR_Y), Color(0.11, 0.1, 0.11))
+		c.draw_rect(Rect2(wx, 0, 1, FLOOR_Y), Color(0.24, 0.22, 0.22))
 	for p in _pellets:
 		if not p.has("gone"):
 			var drift := Vector2(0, roundf(sin(_t * 3.0 + p["home"].x)))
@@ -655,6 +1123,14 @@ func _draw_stage() -> void:
 		_draw_orb(c, o)
 	for r in _rivets:
 		_draw_rivet(c, r)
+	for disc in _discs:
+		_draw_disc(c, disc)
+	for sc in _scrap:
+		_draw_scrap(c, sc)
+	for bm in _beams:
+		_draw_beam(c, bm)
+	for arc in _arcs:
+		_draw_arc(c, arc)
 	for k in _casings:
 		_draw_casing(c, k)
 	for b in _blasts:
@@ -687,8 +1163,13 @@ func _draw_stage() -> void:
 			var col := Color.WHITE if i <= 1 else Color(1.0, 0.9, 0.7)
 			for d in [Vector2.LEFT, Vector2.RIGHT, Vector2.UP, Vector2.DOWN]:
 				c.draw_rect(Rect2((at + d * (i + 0.5) - Vector2(0.5, 0.5)).round(), Vector2.ONE), col)
+	# 激光开着时整个场景蒙一层冷青色的光（游戏里是光束上的 PointLight2D），亮度跟着抖
+	for bm in _beams:
+		if not bm["ending"]:
+			c.draw_rect(Rect2(0, 0, 120, 70), Color(0.45, 0.95, 0.95, 0.06 + 0.02 * float(int(_time * 60.0) % 2)))
+			break
 	if _screen_flash > 0.0:
-		c.draw_rect(Rect2(0, 0, 120, 70), Color(1, 1, 1, 0.06 * _screen_flash))
+		c.draw_rect(Rect2(0, 0, 120, 70), Color(_flash_col, (0.06 if _flash_col == Color.WHITE else 0.12) * _screen_flash))
 	c.draw_set_transform(Vector2.ZERO)
 
 
@@ -762,6 +1243,14 @@ func _draw_hero(c: CanvasItem) -> void:
 						_px(c, m + Vector2(i, 0), hot if i < 4 else warm)
 					for p in [Vector2(2, -1), Vector2(2, 1), Vector2(3, -2), Vector2(3, 2)]:
 						_px(c, m + p, warm)
+		"record":
+			_draw_record_hand(c)
+		"shotgun":
+			_draw_shotgun_muzzle(c)
+		"laser":
+			_draw_laser_charge(c)
+		"tongs":
+			_draw_tongs_jaw(c)
 		"hammer":
 			if h["cd"] > 0.0:
 				# 冷却：脚下一道弧，冷却完就补满
@@ -824,11 +1313,17 @@ func _draw_bug(c: CanvasItem, b: Dictionary) -> void:
 		# 死的那一下留一个纯白剪影，亮 3 帧
 		if b.get("sil", 0.0) > 0.0:
 			var f2 := int(_t / 0.15) % 4
-			c.draw_texture_rect_region(_bug, Rect2(Vector2(roundf(b["x"]) - 18, FLOOR_Y - 16), Vector2(36, 16)), Rect2(f2 * 36, 0, 36, 16), Color(6, 6, 6))
+			c.draw_texture_rect_region(_bug, Rect2(Vector2(roundf(b["x"]) - 18, roundf(FLOOR_Y - 16 + b["y"])), Vector2(36, 16)), Rect2(f2 * 36, 0, 36, 16), Color(6, 6, 6))
 		return
 	var f := int(_t / 0.15) % 4
-	var at := Vector2(roundf(b["x"]) - 18, FLOOR_Y - 16)
+	var at := Vector2(roundf(b["x"]) - 18, roundf(FLOOR_Y - 16 + b["y"]))
 	var mod := Color.WHITE.lerp(Color(4, 4, 4), b["flash"])
+	# 被电麻：左右抖一格、蓝白一闪一闪（tesla_arc.gd 的 TeslaStun）
+	if b["stun"] > 0.0 or b["shake"] > 0.0:
+		var fr := int(_t * 60.0)
+		at.x += 1.0 if fr % 2 == 0 else -1.0
+		if fr % 4 < 2:
+			mod = Color(0.6, 0.85, 1.6)
 	c.draw_texture_rect_region(_bug, Rect2(at, Vector2(36, 16)), Rect2(f * 36, 0, 36, 16), mod)
 
 
@@ -874,14 +1369,16 @@ func _draw_rivet(c: CanvasItem, r: Dictionary) -> void:
 
 func _draw_casing(c: CanvasItem, k: Dictionary) -> void:
 	var a := clampf((_k["casing_life"] - k["t"]) / 0.3, 0.0, 1.0)
-	var brass := Color(0.86, 0.68, 0.32, a)
-	var dark := Color(0.55, 0.4, 0.18, a)
+	var brass := Color(k.get("brass", Color(0.86, 0.68, 0.32)), a)
+	var dark := Color(k.get("dark", Color(0.55, 0.4, 0.18)), a)
 	var p: Vector2 = k["p"].round()
+	# 霰弹枪的是红色大弹壳：3 格长（casing.gd 的 big）
+	var l := 3 if k.get("big", false) else 2
 	if k["bounces"] < 2 and k["spin"] / 3 % 2 == 1:
-		c.draw_rect(Rect2(p + Vector2(0, -1), Vector2(1, 2)), brass)
+		c.draw_rect(Rect2(p + Vector2(0, -1), Vector2(1, l)), brass)
 		c.draw_rect(Rect2(p, Vector2.ONE), dark)
 	else:
-		c.draw_rect(Rect2(p + Vector2(-1, 0), Vector2(2, 1)), brass)
+		c.draw_rect(Rect2(p + Vector2(-1, 0), Vector2(l, 1)), brass)
 		c.draw_rect(Rect2(p, Vector2.ONE), dark)
 
 
@@ -915,3 +1412,209 @@ func _draw_blast(c: CanvasItem, b: Dictionary) -> void:
 		c.draw_rect(Rect2(center + Vector2(-7, -7), Vector2(14, 14)), w)
 		c.draw_rect(Rect2(center + Vector2(-2, -11), Vector2(4, 22)), w)
 		c.draw_rect(Rect2(center + Vector2(-11, -2), Vector2(22, 4)), w)
+
+
+## 手上的唱片（record.gd 的 draw）：还能扔几张就在手边画几张，出手那一下往前甩；接住时身上闪一圈白点
+func _draw_record_hand(c: CanvasItem) -> void:
+	var h := _hero
+	var foot := Vector2(roundf(h["x"]), FLOOR_Y)
+	var left: int = _k["rec_max"] - _discs.size()
+	if left > 0:
+		var base := foot + Vector2(4 + roundf(3.0 * h["fling"]) - 2, -10)
+		c.draw_rect(Rect2(base, Vector2(5, 1)), _k["vinyl"])
+		c.draw_rect(Rect2(base + Vector2(-1, 1), Vector2(7, 1)), _k["vinyl"])
+		c.draw_rect(Rect2(base + Vector2(0, 2), Vector2(5, 1)), _k["vinyl"])
+		c.draw_rect(Rect2(base + Vector2(2, 1), Vector2.ONE), _k["label"])
+		c.draw_rect(Rect2(base + Vector2(1, 0), Vector2.ONE), _k["shine"])
+		if left > 1:
+			# 第二张叠在后面，只露一条边
+			c.draw_rect(Rect2(base + Vector2(-1, -1), Vector2(5, 1)), _k["groove"])
+	if h["caught"] > 0.0:
+		var r: float = 7.0 + 5.0 * (1.0 - h["caught"])
+		for i in 10:
+			_px(c, foot + Vector2(0, -10) + Vector2.from_angle(TAU * i / 10.0) * r, Color(1, 1, 1, h["caught"]))
+
+
+## 飞着的唱片（record_disc.gd 的 _draw）：11×4 扁椭圆、浅灰边、黑胶、一圈纹路、一道 4 帧扫过的白反光、
+## 中间 3×2 红标签（亮的那格跟着转），身后两道暖色残影
+func _draw_disc(c: CanvasItem, disc: Dictionary) -> void:
+	var at: Vector2 = disc["p"].round()
+	var trail: Array = disc["trail"]
+	for i in range(1, trail.size()):
+		var ca := 0.34 - i * 0.08
+		if ca > 0.0:
+			c.draw_rect(Rect2((trail[i] as Vector2).round() + Vector2(-4, -1), Vector2(9, 2)), Color(1.0, 0.78, 0.55, ca))
+	var rim := Color(_k["shine"], 0.75)
+	c.draw_rect(Rect2(at + Vector2(-4, -3), Vector2(9, 1)), rim)
+	c.draw_rect(Rect2(at + Vector2(-6, -2), Vector2(13, 4)), rim)
+	c.draw_rect(Rect2(at + Vector2(-4, 2), Vector2(9, 1)), rim)
+	for r in _k["disc_shape"]:
+		c.draw_rect(Rect2(at + Vector2(r[0], r[1]), Vector2(r[2], 1)), _k["vinyl"])
+	c.draw_rect(Rect2(at + Vector2(-4, -1), Vector2(1, 2)), _k["groove"])
+	c.draw_rect(Rect2(at + Vector2(4, -1), Vector2(1, 2)), _k["groove"])
+	var f := int(disc["spin"]) % 4
+	c.draw_rect(Rect2(at + Vector2(-4 + f * 2, -2 if f < 2 else 1), Vector2(2, 1)), Color(1.0, 0.97, 0.9, 0.75))
+	for i in 3:
+		c.draw_rect(Rect2(at + Vector2(-1 + i, -1), Vector2(1, 2)), _k["label"] if i == f % 3 else _k["label_dark"])
+	c.draw_rect(Rect2(at + Vector2(0, -1), Vector2.ONE), Color(1.0, 0.9, 0.75))
+
+
+## 霰弹枪枪口火光（shotgun.gd 的 draw，第二版）：一整扇火，第 1 帧 20 格长、白芯 7×7，之后收短；近处白、中间暖黄、外沿橙
+func _draw_shotgun_muzzle(c: CanvasItem) -> void:
+	var h := _hero
+	var mz: float = h["sg_muzzle"]
+	if mz <= 0.0:
+		return
+	var m := Vector2(roundf(h["x"]) + 7, FLOOR_Y - 10)
+	var hot := Color(1.0, 0.97, 0.85)
+	var warm := Color(1.0, 0.78, 0.35)
+	var edge := Color(1.0, 0.5, 0.2)
+	var stage := 0 if mz > 0.66 else (1 if mz > 0.33 else 2)
+	var reach: int = [20, 13, 6][stage]
+	if stage == 0:
+		c.draw_rect(Rect2(m - Vector2(3, 3), Vector2(7, 7)), Color.WHITE)
+	else:
+		c.draw_rect(Rect2(m - Vector2(2, 2), Vector2(5, 5)), Color.WHITE)
+	for i in range(2, reach):
+		var half := int(i * 0.36) + 1
+		for j in range(-half, half + 1):
+			var outer := absi(j) >= half and half > 1
+			if outer and (i + j) % 2 == 0:
+				continue
+			var col := hot if i < reach * 0.35 else (edge if outer or i > reach * 0.8 else warm)
+			c.draw_rect(Rect2(m + Vector2(i, j), Vector2.ONE), col)
+
+
+## 碎铁弹（shotgun_pellet.gd 的 _draw，第二版）：2×2 黄白头（中心一格更白）+ 6 格橙色尾巴；最后掉速时只剩 1 格
+func _draw_scrap(c: CanvasItem, s: Dictionary) -> void:
+	var fading: bool = s["life"] > _k["sg_life"] - _k["sg_fade"]
+	var trail: Array = s["trail"]
+	for i in trail.size():
+		c.draw_rect(Rect2((trail[i] as Vector2).round(), Vector2.ONE), Color(1.0, 0.55 + 0.05 * i, 0.15, (0.85 if not fading else 0.4) - i * 0.13))
+	var p: Vector2 = s["p"].round()
+	if fading:
+		c.draw_rect(Rect2(p, Vector2.ONE), Color(1.0, 0.8, 0.5))
+	else:
+		c.draw_rect(Rect2(p - Vector2(1, 1), Vector2(2, 2)), Color(1.0, 0.85, 0.4))
+		c.draw_rect(Rect2(p, Vector2.ONE), Color(1.0, 1.0, 0.85))
+
+
+## 激光充能 = 显像管开机（laser.gd 的 draw）：前 35% 管口一个白点一闪一闪；之后横着拉成一道线，
+## 红 / 蓝在上下各错开一格，线上隔一格暗一格；快满时前面一条很淡的绿色扫描虚线
+func _draw_laser_charge(c: CanvasItem) -> void:
+	var h := _hero
+	if not h["charging"] or h["firing"]:
+		return
+	var ch: float = h["charge"]
+	var t: float = h["anim"]
+	var m := Vector2(roundf(h["x"]) + 7, FLOOR_Y - 11)
+	if ch < 0.35:
+		if int(t * 20.0) % 2 == 0:
+			c.draw_rect(Rect2(m, Vector2.ONE), Color.WHITE)
+		return
+	var k := (ch - 0.35) / 0.65
+	var half := int(round(lerpf(1.0, 6.0, k)))
+	for i in range(-half, half + 1):
+		var q := m + Vector2(i, 0)
+		var dim := 0.55 if (i + int(t * 30.0)) % 2 == 0 else 1.0
+		c.draw_rect(Rect2(q, Vector2.ONE), Color(1, 1, 1, dim))
+		if k > 0.3:
+			c.draw_rect(Rect2(q + Vector2(0, 1), Vector2.ONE), Color(1.0, 0.25, 0.35, 0.8 * dim))
+			c.draw_rect(Rect2(q - Vector2(0, 1), Vector2.ONE), Color(0.3, 0.55, 1.0, 0.8 * dim))
+	if k > 0.6:
+		for i in range(10, int(120.0 - m.x)):
+			if (i + int(t * 40.0)) % 6 == 0:
+				c.draw_rect(Rect2(m + Vector2(i, 0), Vector2.ONE), Color(0.35, 1.0, 0.5, 0.35))
+
+
+## 光束（laser_beam.gd 的 _draw）：中间白芯，两侧各一格绿，再外侧下红上蓝；沿光束每 5 格暗一格、每帧滚动；
+## 粗细每帧在两档之间跳。收束：往枪口缩成 1 像素线，最后一个 3×3 亮点
+func _draw_beam(c: CanvasItem, bm: Dictionary) -> void:
+	var from: Vector2 = bm["from"].round()
+	var length: float = bm["len"]
+	var roll := int(_time * 60.0)
+	var width := 2 if roll % 2 == 0 else 1
+	if bm["ending"]:
+		var k: float = clampf(bm["end_t"] / _k["lz_end"], 0.0, 1.0)
+		if k > 0.75:
+			c.draw_rect(Rect2(from - Vector2.ONE, Vector2(3, 3)), Color.WHITE)
+			return
+		length *= 1.0 - k / 0.75
+		width = 0
+	for i in int(length):
+		var p := from + Vector2(i, 0)
+		var dim := 0.45 if (i + roll) % 5 == 0 else 1.0
+		c.draw_rect(Rect2(p, Vector2.ONE), Color(1, 1, 1, dim))
+		if width >= 1:
+			c.draw_rect(Rect2(p + Vector2(0, 1), Vector2.ONE), Color(0.35, 1.0, 0.5, 0.9 * dim))
+			c.draw_rect(Rect2(p - Vector2(0, 1), Vector2.ONE), Color(0.35, 1.0, 0.5, 0.9 * dim))
+		var off := float(width + 1)
+		c.draw_rect(Rect2(p + Vector2(0, off), Vector2.ONE), Color(1.0, 0.25, 0.35, 0.85 * dim))
+		c.draw_rect(Rect2(p - Vector2(0, off), Vector2.ONE), Color(0.3, 0.55, 1.0, 0.85 * dim))
+
+
+## 电钳钳口（tongs.gd 的 draw）：两片钳嘴之间跳一两颗小电火花，按着时更多更亮
+func _draw_tongs_jaw(c: CanvasItem) -> void:
+	var h := _hero
+	var m := Vector2(roundf(h["x"]) + 8, FLOOR_Y - 10)
+	var on: bool = h["hold"] > 0.0
+	var r := RandomNumberGenerator.new()
+	r.seed = int(_t * 60.0) * 7919
+	for i in (2 if on else 1):
+		if r.randf() < (0.8 if on else 0.15):
+			_px(c, m + Vector2(r.randi_range(-1, 1), r.randi_range(-2, 2)), Color(0.75, 0.9, 1.0) if i == 0 else Color.WHITE)
+
+
+## 电弧（tesla_arc.gd 的 _draw）：每一步重折一次的锯齿线（每 6 格一折、横偏 ±3），外圈淡蓝、白芯，落点一小团亮，钳口炸亮
+func _draw_arc(c: CanvasItem, arc: Dictionary) -> void:
+	var r := RandomNumberGenerator.new()
+	r.seed = int(arc["seed"]) + int(_t * 60.0)
+	var fade := 1.0 if arc["t"] < _k["tg_glow"] else 0.6
+	var pts: Array = arc["pts"]
+	var edge: Color = _k["tg_edge"]
+	for i in mini(arc["done"], arc["targets"].size()):
+		var a: Vector2 = pts[i]
+		var b: Vector2 = pts[i + 1]
+		var line: Array[Vector2] = [a]
+		var n := maxi(int(a.distance_to(b) / 6.0), 1)
+		var nrm := (b - a).normalized().orthogonal()
+		for k in range(1, n):
+			line.append(a.lerp(b, float(k) / n) + nrm * r.randf_range(-3.0, 3.0))
+		line.append(b)
+		for k in line.size() - 1:
+			_px_line(c, line[k], line[k + 1], Color(edge, 0.55 * fade), true)
+		for k in line.size() - 1:
+			_px_line(c, line[k], line[k + 1], Color(1, 1, 1, fade), false)
+		c.draw_rect(Rect2(b.round() - Vector2(1, 1), Vector2(3, 3)), Color(1, 1, 1, 0.9 * fade))
+	if arc["t"] < 0.06:
+		var f: Vector2 = arc["from"].round()
+		c.draw_rect(Rect2(f - Vector2(2, 2), Vector2(5, 5)), Color(edge, 0.8))
+		c.draw_rect(Rect2(f - Vector2(1, 1), Vector2(3, 3)), Color.WHITE)
+
+
+## 一格一格画直线（Bresenham）；halo = 上下左右各偏一格画外圈
+func _px_line(c: CanvasItem, a: Vector2, b: Vector2, col: Color, halo: bool) -> void:
+	var x0 := int(roundf(a.x))
+	var y0 := int(roundf(a.y))
+	var x1 := int(roundf(b.x))
+	var y1 := int(roundf(b.y))
+	var dx := absi(x1 - x0)
+	var dy := -absi(y1 - y0)
+	var sx := 1 if x0 < x1 else -1
+	var sy := 1 if y0 < y1 else -1
+	var err := dx + dy
+	for _guard in 400:
+		if halo:
+			for o in [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]:
+				c.draw_rect(Rect2(Vector2(x0, y0) + o, Vector2.ONE), col)
+		else:
+			c.draw_rect(Rect2(Vector2(x0, y0), Vector2.ONE), col)
+		if x0 == x1 and y0 == y1:
+			break
+		var e2 := 2 * err
+		if e2 >= dy:
+			err += dy
+			x0 += sx
+		if e2 <= dx:
+			err += dx
+			y0 += sy

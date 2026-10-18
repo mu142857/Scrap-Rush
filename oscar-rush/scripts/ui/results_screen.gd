@@ -43,7 +43,7 @@ func _ready() -> void:
 		["TIME", "%d:%02d" % [t / 60, t % 60]],
 		["LANTERN BROKEN", str(s.get("deaths", 0))],
 		["PARTS COLLECTED", (str(parts) + "   " + tr("(spent %d)") % spent) if spent > 0 else str(parts)],
-		["TOOL", tr(WEAPON_NAMES.get(Upgrades.weapon, Upgrades.weapon.to_upper()))],
+		["TOOL", tr(WeaponRegistry.name_of(Upgrades.weapon))],
 		["MUTATION", tr(MUTATION_NAMES.get(Upgrades.mutation, "NONE")) if Upgrades.mutation != "" else tr("NONE")],
 		["LANTERN LEFT", "%d%%" % roundi(_hp_k * 100.0)],
 	]

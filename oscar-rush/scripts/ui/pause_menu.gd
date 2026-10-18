@@ -136,7 +136,7 @@ func _status_line() -> String:
 	var scene := get_tree().current_scene.scene_file_path
 	if LEVEL_NAMES.has(scene):
 		parts.append(tr(LEVEL_NAMES[scene]))
-	parts.append(tr(WEAPON_NAMES.get(Upgrades.weapon, Upgrades.weapon.to_upper())))
+	parts.append(tr(WeaponRegistry.name_of(Upgrades.weapon)))
 	if Upgrades.mutation != "":
 		parts.append(tr(MUTATION_NAMES.get(Upgrades.mutation, Upgrades.mutation.to_upper())))
 	parts.append(tr("PARTS %d") % Run.parts)

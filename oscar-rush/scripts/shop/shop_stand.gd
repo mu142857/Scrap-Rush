@@ -14,7 +14,7 @@ signal buy_pressed(stand: ShopStand, player: Player)
 const ICONS := preload("res://art/shop/icons.png")
 ## 和 tools/draw_shop.py 的 ICONS 顺序一样
 const ICON_NAMES: Array[String] = ["part", "charge", "fuel", "plating", "damping", "repair", "refresh",
-		"hammer", "tongs", "horn", "rivet", "rage", "slave", "echo", "dynamo"]
+		"hammer", "tongs", "horn", "rivet", "rage", "slave", "echo", "dynamo", "shotgun", "laser", "record"]
 const WARM := Color8(255, 211, 138)
 const DIM := Color(0.62, 0.6, 0.6)
 const POOR := Color8(220, 90, 70)

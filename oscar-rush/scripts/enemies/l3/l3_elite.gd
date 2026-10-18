@@ -37,7 +37,7 @@ const ARCH := {
 	"hb_octopus": {"type": "giant", "shot": "ink"},
 	"fr_stump": {"type": "giant", "shot": "acorn"},
 	"space_rocket": {"type": "flyer", "shot": "flame"},
-	"weather_storm": {"type": "flyer", "shot": "rain"},
+	"weather_storm": {"type": "flyer", "shot": "rain", "air_trim": 6},
 	"aq_angler": {"type": "flyer", "shot": "bubble"},
 	"dustsheet": {"type": "flyer", "shot": "dust"},
 	"tool_chest": {"type": "summoner", "shot": "nail"},
@@ -106,6 +106,8 @@ const DEBRIS_GAP := 34.0
 const HOVER_H := 34.0
 const HOVER_DX := 34.0
 const DIVE_SPEED := 230.0
+## 走路被矮坎挡住时跳多高（约 43 像素）
+const HOP_VY := -280.0
 const DROP_COUNT := 4
 const DROP_GAP := 22.0
 const DODGE_CD := 2.5
@@ -156,6 +158,7 @@ var _tele_end_x := 0.0
 var _tele_start_x := 0.0
 var _tele_pts: Array[Vector2] = []
 var _tele_y := 0.0
+var _drop_y0: Array[float] = []   # 头顶扔一排：每颗从多高开始掉（预警时算好，和标记一致）
 var _fringe: Array[Sprite2D] = []
 var _rage := false
 var _rage_fx: Node2D
@@ -166,6 +169,8 @@ var _block_t := 0.0             # 护盾：刚挡下一下（盾面闪一下）
 var _beam_x := Vector2.ZERO     # 扫描线的左右两头
 var _hover_side := 1.0
 var _takeoff := 0.3
+var _hop_cd := 0.0
+var _hopping := false
 
 
 func _setup() -> void:
@@ -307,6 +312,7 @@ func _tick(delta: float) -> void:
 			flying = true
 			motion_mode = CharacterBody2D.MOTION_MODE_FLOATING
 			velocity = Vector2(0, -60)
+			_trim_air()
 	match _state:
 		WALK:
 			if flying:
@@ -334,7 +340,7 @@ func _tick(delta: float) -> void:
 			set_frame(3)
 			if int(_time / 0.08) != int((_time - delta) / 0.08):
 				Game.dust(get_parent(), global_position + Vector2(-dir * body_rect.size.x * 0.4, 0), 2, -dir)
-			if _timer <= 0.0 or is_on_wall() or not ground_ahead(16.0):
+			if _timer <= 0.0 or is_on_wall() or not _charge_ground():
 				velocity.x = 0.0
 				Game.add_shake(3.0)
 				if _move == "rush" and _leg == 0:
@@ -399,6 +405,62 @@ func _tick(delta: float) -> void:
 		_rage_fx.queue_redraw()
 
 
+## 飞起来以后，碰撞框（也是挨打框、碰人框）去掉身子底下那几行装饰（风暴云的雨点）：打和被碰都只算云身。
+## 站在地上时（出场、俯冲落地）还是用到脚底的框，不然脚会陷进地里
+func _trim_air() -> void:
+	var trim: float = ARCH.get(_key(), {}).get("air_trim", 0.0)
+	if trim <= 0.0:
+		return
+	body_rect = Rect2(body_rect.position, body_rect.size - Vector2(0, trim))
+	for sh in [_shape, _contact.get_child(0) as CollisionShape2D]:
+		if sh and sh.shape is RectangleShape2D:
+			(sh.shape as RectangleShape2D).size = body_rect.size
+			sh.position = body_rect.get_center()
+
+
+## 前面 dist 以内有没有挡路的东西（墙、台阶、第三关的隐形挡怪墙），脚下有没有地。冲撞前用
+func _path_clear(d: int, dist: float) -> bool:
+	var space := get_world_2d().direct_space_state
+	var half := body_rect.size.x / 2.0
+	for h in [3.0, body_rect.size.y * 0.5]:
+		var from := global_position + Vector2(0, -h)
+		var q := PhysicsRayQueryParameters2D.create(from, from + Vector2(d * (half + dist), 0), collision_mask)
+		q.exclude = [get_rid()]
+		if not space.intersect_ray(q).is_empty():
+			return false
+	var g := global_position + Vector2(d * (half + 6.0), -2)
+	return not space.intersect_ray(PhysicsRayQueryParameters2D.create(g, g + Vector2(0, 10), 1)).is_empty()
+
+
+## 前面是不是一道跳得过去的矮坎：贴地被真的地形（第 1 层）挡住，跳起来那么高是空的，坎后面有地。
+## 只被第三关洞口的隐形挡怪墙挡住时不跳（那是不让怪掉进洞的）
+func _can_hop(d: int) -> bool:
+	var space := get_world_2d().direct_space_state
+	var half := body_rect.size.x / 2.0
+	var low := global_position + Vector2(0, -3)
+	var q0 := PhysicsRayQueryParameters2D.create(low, low + Vector2(d * (half + 12.0), 0), 1)
+	q0.exclude = [get_rid()]
+	if space.intersect_ray(q0).is_empty():
+		return false
+	var top := global_position + Vector2(0, -body_rect.size.y - 34.0)
+	var q := PhysicsRayQueryParameters2D.create(top, top + Vector2(d * (half + 24.0), 0), collision_mask)
+	q.exclude = [get_rid()]
+	if not space.intersect_ray(q).is_empty():
+		return false
+	var land := global_position + Vector2(d * (half + 20.0), -44.0)
+	return not space.intersect_ray(PhysicsRayQueryParameters2D.create(land, land + Vector2(0, 60), 1)).is_empty()
+
+
+## 冲撞时前面还有没有地。摇摇马一蹦一蹦地冲，蹦在半空时原来的"脚下 8 像素有没有地"总是没有，
+## 冲一下就停、像撞了墙（10-18 作者："摇摇马会卡墙"）：在空中时往下多看 40 像素
+func _charge_ground() -> bool:
+	if is_on_floor():
+		return ground_ahead(16.0)
+	var from := global_position + Vector2(dir * 16.0, -2.0)
+	var q := PhysicsRayQueryParameters2D.create(from, from + Vector2(0, 40), 1)
+	return not get_world_2d().direct_space_state.intersect_ray(q).is_empty()
+
+
 func cfg_flag(k: String) -> bool:
 	return ARCH.get(_key(), {}).get(k, false)
 
@@ -409,6 +471,13 @@ func _key() -> String:
 
 ## 地上走：远了追、近了退（near 为 0 就不退）；护盾的转身慢
 func _walk(p: Player, delta: float) -> void:
+	_hop_cd -= delta
+	# 正在跳出凹槽：空中保持往前的速度
+	if _hopping:
+		if is_on_floor() and velocity.y >= 0.0:
+			_hopping = false
+		else:
+			return
 	velocity.x = 0.0
 	if p == null:
 		return
@@ -423,6 +492,12 @@ func _walk(p: Player, delta: float) -> void:
 	var spd: float = _tp["walk"] * speed_mult() * _rage_mult()
 	if dist > float(_tp["far"]) and ground_ahead(12.0) and not is_on_wall():
 		velocity.x = dir * spd
+	elif dist > float(_tp["far"]) and is_on_floor() and _hop_cd <= 0.0 and _can_hop(dir):
+		# 前面一道矮坎挡住（生在凹槽里、台阶）：跳过去，不站着干瞪眼（10-18 美术哥试玩"冲不出去"）
+		_hop_cd = 0.8
+		_hopping = true
+		velocity = Vector2(dir * maxf(spd, 50.0), HOP_VY)
+		Game.dust(get_parent(), global_position, 4)
 	elif dist < float(_tp["near"]):
 		# 往后退，但脸还朝着人；背后没地方就站着
 		dir = -dir
@@ -447,6 +522,9 @@ func _hover(p: Player, _delta: float) -> void:
 ## 挑一招，进预警：锁定目标、算好标记
 func _begin(p: Player) -> void:
 	_pick_move()
+	# 冲撞型被地形挡着（生在凹槽里、贴着台阶）：冲不出去就改成跳砸，朝人跳出来（预警照样 0.85 秒，标落点）
+	if (_move == "charge" or _move == "rush" or _move == "bash") and not _path_clear(1 if p.global_position.x > global_position.x else -1, 40.0):
+		_move = "slam"
 	_state = WARN
 	_timer = WARN_TIME
 	if arch != "flyer":
@@ -536,7 +614,9 @@ func _start_move(p: Player) -> void:
 		"drop":
 			for i in _tele_pts.size():
 				var x := _tele_pts[i].x
-				var b := L3Shot.fire(get_parent(), shot if L3Shot.STYLES[shot]["move"] == "fall" else "rock", Vector2(x, global_position.y + 4.0), Vector2(x, _tele_pts[i].y))
+				# 从落点上方 80 像素（顶到天花板为止）开始掉：落 0.5 秒左右，看得见、躲得开（原来从云底只掉 27 像素，一出来就到地）
+				var y0: float = _drop_y0[i] if i < _drop_y0.size() else global_position.y + 4.0
+				var b := L3Shot.fire(get_parent(), shot if L3Shot.STYLES[shot]["move"] == "fall" else "rock", Vector2(x, y0), Vector2(x, _tele_pts[i].y))
 				b.arena = L3Mob.arena
 			Game.sfx("hit", -10.0, 0.8, 0.1)
 			_state = SHOOT
@@ -566,6 +646,8 @@ func _shoot_at(target: Vector2, force_move := "") -> Node2D:
 			style = {"flame": "cinder", "rain": "water", "bubble": "water", "dust": "sand", "nail": "rock",
 				"chalk": "rock", "ice": "snow", "noise": "rock", "bars": "bulb", "moth": "sand", "note": "bulb",
 				"headlight": "cinder"}.get(style, "water")
+	elif L3Shot.STYLES[style]["move"] == "fall":
+		style = "drizzle"           # 往下掉的子弹不管瞄哪：扇射、直射时换成照方向飞的那一种
 	var b := L3Shot.fire(get_parent(), style, _muzzle(), target, BULLET_SPEED)
 	b.arena = L3Mob.arena
 	b.target = focus_player()
@@ -725,7 +807,8 @@ func _plan_tele(p: Player) -> void:
 			var t := CHARGE_TIME * (1.4 if cfg_flag("slide") else 1.0) * (0.5 if _move == "bash" else 1.0)
 			var reach := CHARGE_SPEED * speed_mult() * mult * t
 			var from := global_position + Vector2(0, -6)
-			var q := PhysicsRayQueryParameters2D.create(from, from + Vector2(dir * (reach + body_rect.size.x / 2.0), 0), 1)
+			# 用自己的碰撞层（第三关遭遇战里还有挡怪的隐形墙，在屏幕边上），冲撞真会停在哪就标在哪
+			var q := PhysicsRayQueryParameters2D.create(from, from + Vector2(dir * (reach + body_rect.size.x / 2.0), 0), collision_mask)
 			q.exclude = [get_rid()]
 			var hit := space.intersect_ray(q)
 			_tele_end_x = (hit["position"] as Vector2).x - dir * body_rect.size.x / 2.0 if not hit.is_empty() else global_position.x + dir * reach
@@ -753,8 +836,15 @@ func _plan_tele(p: Player) -> void:
 			_aim = _ground_below(_aim)
 			_tele_pts.append(_aim)
 		"drop":
+			# 雨滴真会落在哪：从它开始掉的地方往下找第一个挡住的面（平台、家具顶），标记就画在那儿（10-18 作者："下雨会被平台挡住"）
+			_drop_y0.clear()
 			for i in DROP_COUNT:
-				_tele_pts.append(_ground_below(_aim + Vector2((i - (DROP_COUNT - 1) / 2.0) * DROP_GAP, 0)))
+				var base := _ground_below(_aim + Vector2((i - (DROP_COUNT - 1) / 2.0) * DROP_GAP, 0))
+				var y0 := minf(global_position.y + 4.0, maxf(_ceiling_above(base) + 2.0, base.y - 80.0))
+				var q := PhysicsRayQueryParameters2D.create(Vector2(base.x, y0), Vector2(base.x, base.y + 4.0), 1)
+				var hit := space.intersect_ray(q)
+				_tele_pts.append(((hit["position"] as Vector2) if not hit.is_empty() else base).round())
+				_drop_y0.append(y0)
 		"flank":
 			for k in [-1, 1]:
 				_tele_pts.append(_ground_below(p.global_position + Vector2(k * 50.0, 0)))

@@ -92,12 +92,8 @@ func _text(tip: String) -> String:
 			return tr("%s  Move      %s  Jump") % [Controls.key_name(s, "move"), Controls.key_name(s, "jump")]
 		"shoot":
 			var k := Controls.key_name(s, "attack")
-			match Upgrades.weapon:
-				"rivet":
-					return tr("Hold %s to fire nonstop") % k
-				"hammer":
-					return tr("Tap %s: steam blast all around you  (it needs to cool down)") % k
-			return tr("Hold %s to charge,  release to shoot.  Watch the ring fill") % k
+			# 每把武器一句，写在武器登记表里（WeaponRegistry 的 coach）
+			return tr(str(WeaponRegistry.value(Upgrades.weapon, "coach", "Hold %s to charge,  release to shoot.  Watch the ring fill"))) % k
 		"lantern":
 			return "Hits crack the lantern. It's your light - and your life"
 		"drop":

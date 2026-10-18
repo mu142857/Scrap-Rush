@@ -23,7 +23,10 @@ signal phase_changed(phase: int)
 signal defeated
 
 const BASE_HP := 7800.0  # 10-18 作者："最终 boss 太弱、太脆"：3600 → 7400；武器打击感加强后闪光灯变快，再到 7800。站桩三把武器 60~80 秒
-const CONTACT_DAMAGE := 10.0
+## 10-18 美术哥试玩「锅炉比电视机难」：Boss3 要明显最难——伤害 ×1.3（子弹走 BossBullet.damage_scale）、出招更密、
+## 三阶段提前、追人更快；预警时长一个都没缩
+const DAMAGE_SCALE := 1.3
+const CONTACT_DAMAGE := 13.0
 const CANVAS_ORIGIN := Vector2(44, 78)
 const SCREEN := Rect2(Vector2(12, 30) - CANVAS_ORIGIN, Vector2(47, 31))
 const KNOBS := [Vector2(72, 36) - CANVAS_ORIGIN, Vector2(72, 46) - CANVAS_ORIGIN]
@@ -32,7 +35,7 @@ const TIPS := [Vector2(24, 3) - CANVAS_ORIGIN, Vector2(66, 1) - CANVAS_ORIGIN]
 ## 四条腿的胯（相对原点），腿长；腿由 _draw_legs 画
 const LEGS_X := [-30.0, -14.0, 14.0, 30.0]
 const HIP_Y := -10.0
-const SLAM_DAMAGE := 14.0
+const SLAM_DAMAGE := 18.0
 const DASH_SPEED := [200.0, 240.0, 280.0]
 const MOVES := ["charge", "hop"]
 const LED_COLOR := Color(1.0, 0.28, 0.18)
@@ -226,6 +229,7 @@ func wake() -> void:
 
 func start_fight() -> void:
 	active = true
+	BossBullet.damage_scale = DAMAGE_SCALE
 	_static.play()
 	_fight_loop()
 
@@ -258,7 +262,8 @@ func hurt(damage: float, from_dir: Vector2, full: bool) -> void:
 	if hp <= 0.0:
 		_die()
 		return
-	var new_phase := 1 if hp > max_hp * 0.66 else (2 if hp > max_hp * 0.33 else 3)
+	# 三阶段（叠招最凶）从剩 33% 提前到剩 40%
+	var new_phase := 1 if hp > max_hp * 0.66 else (2 if hp > max_hp * 0.40 else 3)
 	if new_phase != phase:
 		phase = new_phase
 		phase_changed.emit(phase)
@@ -271,6 +276,7 @@ func hurt(damage: float, from_dir: Vector2, full: bool) -> void:
 func _exit_tree() -> void:
 	dead = true
 	active = false
+	BossBullet.damage_scale = 1.0
 
 # —— 每帧 ——
 
@@ -315,8 +321,8 @@ func _wait(t: float) -> void:
 
 
 func _gap() -> float:
-	# 10-18 加难：1.1 / 0.85 / 0.6 → 0.9 / 0.6 / 0.4（预警时长不变）
-	return [0.9, 0.6, 0.4][phase - 1]
+	# 10-18 加难：1.1 / 0.85 / 0.6 → 0.9 / 0.6 / 0.4 → 0.75 / 0.5 / 0.3（第二次加压，预警时长不变）
+	return [0.75, 0.5, 0.3][phase - 1]
 
 
 func _pool() -> Array[String]:
@@ -428,7 +434,7 @@ func _stroll() -> void:
 		var side := signf(position.x - px)
 		if side == 0.0:
 			side = 1.0
-		await _walk_to(px + side * 50.0, [55.0, 80.0, 100.0][phase - 1], 1.1)
+		await _walk_to(px + side * 50.0, [60.0, 92.0, 115.0][phase - 1], 1.1)
 		return
 	var options: Array[float] = []
 	for x in [_x_min() + 10.0, arena.get_center().x, _x_max() - 10.0]:
@@ -1005,7 +1011,7 @@ class BarPillar:
 
 	const WARN := 0.9
 	const LIVE := 0.6
-	const DAMAGE := 10.0
+	const DAMAGE := 13.0
 	var rect := Rect2()
 	var color := Color.WHITE
 	var _t := 0.0
@@ -1061,7 +1067,7 @@ class Echo:
 
 	const DELAY := 1.2
 	const LIFE := 6.0
-	const DAMAGE := 10.0
+	const DAMAGE := 13.0
 	var target: Player
 	var _trail: Array[Vector2] = []
 	var _t := 0.0
@@ -1124,7 +1130,7 @@ class Bolt:
 
 	const WARN := 0.6
 	const RADIUS := 11.0
-	const DAMAGE := 12.0
+	const DAMAGE := 16.0
 	var from := Vector2.ZERO
 	var to := Vector2.ZERO
 	var _t := 0.0

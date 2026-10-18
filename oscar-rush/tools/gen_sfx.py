@@ -579,6 +579,107 @@ def boot_beep():
     return lowpass(sq, 0.5) * env(n, 0.003, 0.02)
 
 
+# —— 10-18 新武器（游戏设计会话）：霰弹枪、显像管激光。随机种子用 21xx，不和别人的撞 ——
+# 霰弹枪一喷：很低的"轰" + 一大把碎铁的"哗"（中高频噪声），比铆钉枪的"哒"重得多
+def shotgun_blast():
+    d = 0.42
+    n = int(SR * d)
+    boom = np.sin(2 * np.pi * np.geomspace(110, 38, n) * t(d)) * decay(n, 11)
+    crash = highpass(lowpass(_rn(d, 2101), 0.55), 0.12) * decay(n, 14) * 1.1
+    crack = highpass(_rn(d, 2102), 0.5) * decay(n, 120) * 0.6
+    return boom * 1.1 + crash + crack
+
+
+# 泵动上膛：两声金属"咔——嚓"（第二版更脆：频率更高、衰减更快，中间隔 0.13 秒，第二声带一点滑动的沙沙）
+def shotgun_pump():
+    d = 0.26
+    n = int(SR * d)
+    x = np.zeros(n)
+    for at, f, k, seed in [(0.0, 2600, 140, 2103), (0.13, 1900, 110, 2104)]:
+        i = int(SR * at)
+        m = n - i
+        tt = np.arange(m) / SR
+        click = np.sin(2 * np.pi * f * tt) * 0.5 + np.sin(2 * np.pi * f * 1.51 * tt) * 0.3
+        grit = highpass(np.random.default_rng(seed).uniform(-1, 1, m), 0.45) * 0.9
+        x[i:] += (click + grit) * np.exp(-tt * k)
+    slide = highpass(_rn(d, 2105), 0.3) * 0.12
+    slide[: int(SR * 0.04)] = 0
+    slide[int(SR * 0.13):] = 0
+    return x + slide
+
+
+# 霰弹枪开火的低音层："嘭"——很低的一下，叠在 shotgun_blast 下面
+def shotgun_thump():
+    d = 0.3
+    n = int(SR * d)
+    return np.sin(2 * np.pi * np.geomspace(85, 32, n) * t(d)) * decay(n, 13) + lowpass(_rn(d, 2106), 0.06) * decay(n, 30) * 0.6
+
+
+# 显像管激光出手："轰——滋"：低音一下 + 高压放电的嘶声 + 往下滑的电子音
+def laser_fire():
+    d = 0.6
+    n = int(SR * d)
+    boom = np.sin(2 * np.pi * np.geomspace(90, 40, n) * t(d)) * decay(n, 8)
+    ph = np.cumsum(np.geomspace(1800, 220, n)) / SR
+    zap = (2.0 * (ph % 1.0) - 1.0) * decay(n, 6) * 0.35
+    hiss = highpass(_rn(d, 2111), 0.3) * env(n, 0.005, 0.45) * decay(n, 5) * 0.5
+    return boom + zap + hiss
+
+
+# 激光充满："叮"一声高音（像显像管开机那一下）
+def laser_ready():
+    d = 0.25
+    n = int(SR * d)
+    return (np.sin(2 * np.pi * 1760 * t(d)) + 0.5 * np.sin(2 * np.pi * 2640 * t(d))) * decay(n, 16) * 0.6
+
+
+# —— 10-18 唱片回旋镖 RECORD SLINGER（总机台/留声机会话）。随机种子用 23xx，不和别人的撞 ——
+# 扔出去："嗖"（往上扫的风声）+ 唱针划过的"嚓——"（带噼啪的沙沙声）
+def record_throw():
+    d = 0.32
+    n = int(SR * d)
+    whoosh = highpass(lowpass(_rn(d, 2301), 0.35), 0.08) * env(n, 0.03, 0.2) * 1.2
+    scratch = highpass(_rn(d, 2302), 0.35) * env(n, 0.005, 0.25) * 0.5
+    rng = np.random.default_rng(2303)
+    pops = np.zeros(n)
+    for i in rng.integers(0, n - 200, 14):
+        pops[i:i + 60] += rng.uniform(-0.7, 0.7) * np.exp(-np.arange(60) / 8.0)
+    return whoosh + scratch + pops * env(n, 0.005, 0.25)
+
+
+# 转盘的"呜"：一小段带颤音的低音，飞的时候按速度变音高、隔一会儿放一下
+def record_whir():
+    d = 0.16
+    n = int(SR * d)
+    tt = t(d)
+    f = 180 * (1 + 0.03 * np.sin(2 * np.pi * 22 * tt))
+    ph = np.cumsum(f) / SR
+    x = np.sin(2 * np.pi * ph) + 0.35 * np.sin(4 * np.pi * ph)
+    return x * env(n, 0.03, 0.08) * 0.5
+
+
+# 割一下："唰"（很短的亮噪声，往下扫）
+def record_cut():
+    d = 0.11
+    n = int(SR * d)
+    hiss = highpass(_rn(d, 2311), 0.45) * decay(n, 40)
+    tone = np.sin(2 * np.pi * np.cumsum(np.geomspace(2400, 900, n)) / SR) * decay(n, 30) * 0.35
+    return hiss + tone
+
+
+# 接住："咔、哒"两下小金属声
+def record_catch():
+    d = 0.12
+    n = int(SR * d)
+    x = np.zeros(n)
+    for at, f in [(0.0, 1900), (0.045, 1300)]:
+        i = int(SR * at)
+        m = n - i
+        q = np.arange(m) / SR
+        x[i:] += (np.sin(2 * np.pi * f * q) * 0.6 + highpass(_rn(m / SR, 2321 + i), 0.4)[:m] * 0.6) * np.exp(-q * 90)
+    return x
+
+
 if __name__ == "__main__":
     import sys
     # 只重写指定的几个：python3 tools/gen_sfx.py jet jet_long。照样全部算一遍，保证随机序列不变
@@ -588,7 +689,9 @@ if __name__ == "__main__":
                whistle, boom, rivets, embers, vent, scrape, suction, clang, ding, alarm,
                bell, dial, buzz, busy, voice, tvclick, static, tvoff, tvon,
                rivet_shot, rivet_hit, casing, steam_blast, blast_ready, jet, jet_long,
-               kill_pop, flash_boom, hammer_boom, boot_crt, boot_hum, hdd_click, boot_beep]:
+               kill_pop, flash_boom, hammer_boom, boot_crt, boot_hum, hdd_click, boot_beep,
+               shotgun_blast, shotgun_pump, laser_fire, laser_ready,
+               record_throw, record_whir, record_cut, record_catch, shotgun_thump]:
         x = fn()
         if not only or fn.__name__ in only:
             write(fn.__name__, x)

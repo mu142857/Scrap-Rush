@@ -33,6 +33,8 @@ IGNORE = {
     "WASD", "LB/RB", "LT/RT", "Tab", "Q/E",  # 按键名，两种语言一样
     "LEVEL ",  # 图鉴里拼成 "LEVEL 1/2/3" 再 tr，那几条在表里
     "SPEED",  # 图鉴按常量名找怪的速度（SPEED_NAMES），不是界面字
+    "LEVEL %d",  # level_intro 先拼成 "LEVEL 1/2/3" 再 tr，那几条在表里
+    "SCRAP-TEK 86   BIOS v1.986", "%dK",  # 第三关开机画面的品牌行和内存数，画面道具，不翻
 }
 ## 路径、动作名、属性路径、调试输出（"[tube] t=..."）
 SKIP = re.compile(r"^(\[\w+\]|res://|user://|ui_|--|#|%s_|modulate|position|global_position|rotation|scale|color:|self_modulate|offset|parameters/)")

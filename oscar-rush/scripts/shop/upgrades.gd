@@ -5,8 +5,8 @@ extends RefCounted
 
 const MAX_LEVEL := 3
 const GEAR: Array[String] = ["charge", "fuel", "plating", "damping"]
-## 能拿到的武器（开局三选一，商店里摆另外两把可以换）。电击钳、留声机喇叭还没做，先不上架
-const WEAPONS: Array[String] = ["flash", "rivet", "hammer"]
+## 能拿到的武器：从武器登记表（WeaponRegistry）来，开局 7 选 1，商店里摆身上没有的。没做好的（ready=false）不摆
+static var WEAPONS: Array[String] = WeaponRegistry.ids()
 const MUTATIONS: Array[String] = ["rage", "slave", "echo", "dynamo"]
 const PRICE := {"gear": 1, "repair": 1, "mutation": 2, "weapon": 3, "refresh": 1}
 ## 装备按等级涨价（夜间打磨报告第 17 节、拍板清单第 1 条：零件从第二个商店起花不完）：
@@ -25,7 +25,7 @@ const DAMPING_PER_LEVEL := 0.2
 
 ## 已经做进游戏的武器和变异。没做的照样摆出来，但标 COMING SOON、买不了，免得卖出去没效果。
 ## 做好一把就把名字加进来。
-static var implemented_weapons: Array[String] = ["flash", "rivet", "hammer"]
+static var implemented_weapons: Array[String] = WeaponRegistry.ids()
 static var implemented_mutations: Array[String] = ["rage", "slave", "echo", "dynamo"]
 
 static var levels := {"charge": 0, "fuel": 0, "plating": 0, "damping": 0}

@@ -571,7 +571,7 @@ EQUIPPED,已装备
 WEAPON GUIDE,武器图鉴
 MUTATIONS & GEAR,变异与升级
 %s move    %s chapter    %s back,%s 选择    %s 换册    %s 返回
-Pick one before level 1. Swap at the shop for 3 parts.,开局三选一，商店里花 3 个零件可以换。
+Pick one before level 1. Swap at the shop for 3 parts.,开局选一把，商店里花 3 个零件可以换。
 Glows: moths chase the light,会发光：扑灯蛾会追过来
 No light: moths ignore it,不发光：扑灯蛾不理它
 "Hold, then release. Auto-aims and homes in a little.","按住蓄力，松手发射。
@@ -667,3 +667,72 @@ Game Design / Animation / Environment Design / Art Direction,策划　动画　�
 Portraits,立绘
 Tools & Collaboration,工具与协作
 pixel character model,像素角色生成模型
+SCRAP SHOTGUN,废铁散弹枪
+"Tap: a fan of
+scrap. Huge up close.
+Kicks you back.","点一下喷一扇碎铁。
+贴脸最痛。
+后坐力会推你。"
+Shoot down in the air to hop.,空中朝下开火，能往上弹。
+%s: blast (in the air: kick),%s 开火（空中会被后坐力推开）
+Tap %s: blast a fan of scrap.  In the air the kick moves you,按 %s 喷一扇碎铁。在空中，后坐力会把你推开
+"a fan of scrap, kicks you back",喷一扇碎铁，有后坐力
+CRT LASER,显像管激光
+"Hold, release:
+a beam across the
+screen. Slow.","按住充能，松手：
+一道光束横穿屏幕。
+慢。"
+Pierces everything. Burns bullets in its path.,无限穿透，烧掉光束经过的子弹。
+"Hold %s: charge, release: beam",按住 %s 充能，松手发射光束
+"Hold %s until it hums, release: the beam goes through them all",按住 %s 充到“嗡”的一声，松手：光束穿过所有怪
+a beam that pierces everything,无限穿透的光束
+Homes in. Moths chase the light.,会追踪。扑灯蛾会追着光。
+Sweeps up and down like a heavy MG.,像重机枪一样上下扫射。
+Launches small fry. Blows bullets away.,能把小怪掀飞，吹散子弹。
+RECORD SLINGER,唱片回旋镖
+"Throw a record.
+It flies back and
+cuts both ways.","扔出一张唱片。
+它会飞回来，
+来回都伤人。"
+Catch it to throw again.,接住马上能再扔。
+%s: throw a record,%s 扔唱片
+Tap %s: throw a record.  It comes back - catch it,按 %s 扔出唱片。它会飞回来，接住它
+a record that flies back,会飞回来的唱片
+OK,OK
+TESLA TONGS,特斯拉电钳
+"Hold: arcs jump
+from foe to foe.
+No aiming.","按住放电，电弧
+在怪之间乱跳。
+不用瞄准。"
+Stuns small fry. Glows.,小怪被电会麻住。放电时发光。
+Hold %s: arc,按住 %s：放电
+Hold %s: the arc finds them and jumps between them,按住 %s：电弧自己找怪，还会在怪之间跳
+arcs jump between foes,电弧在怪之间跳
+Throw a record. It flies back and cuts both ways.,扔出一张唱片，飞出去再飞回来，去回都割。
+"%d dmg a cut, out and back",每割一下 %d 伤害，去程回程各割一下
+Up to %d records out at once,最多 %d 张同时在外面
+Bounces off a wall once,碰墙会弹一次
+"%d pellets, %d dmg each",一发 %d 颗，每颗 %d 伤害
+One blast every %s s,每 %s 秒一发
+Point blank: launches small fry,贴脸打：把小怪轰飞
+Kicks you back; in the air it lifts you,有后坐力；在空中能把你顶起来
+"%d dmg, pierces everything",%d 伤害，无限穿透
+%s dmg along the chain,顺着链：%s 伤害
+"Jumps up to %d times, %d apart",最多跳 %d 次，每跳最远 %d
+Stuns small fry for %s s,小怪被电麻 %s 秒
+"Hold: the tube warms
+up, then the beam
+sweeps. Pierces all.","按住：显像管先预热，
+然后光束一路扫过去。
+穿透一切。"
+Keep holding to sweep. Burns bullets.,按住不放一直扫，烧掉子弹。
+"Hold %s: warm up, keep holding: sweep",按住 %s 预热，一直按着：扫射
+"Hold %s: the tube lights up, then the beam sweeps through them all",按住 %s：显像管亮起来，光束扫过所有怪
+"a sweeping beam, pierces all",扫射光束，穿透一切
+"%d dmg every %s s, pierces all",每下 %d 伤害（每 %s 秒一下），无限穿透
+Fires itself when charged,充满自动开火
+"Beam lasts %s s, then cools %s s",光束最多 %s 秒，之后冷却 %s 秒
+"Full within %d, %d%% at %d",%d 以内满伤，到最远剩 %d%%（%d）

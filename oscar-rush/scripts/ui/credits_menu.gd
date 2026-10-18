@@ -1,17 +1,21 @@
 class_name CreditsMenu
 extends Control
 ## 制作人员（开始菜单的"制作人员"）。作者 10-18 要的：照 Linger 的片尾（Linger/linger_bilibili/Shared/credits_roll.gd）
-## 做成电影片尾的样子：黑底，一页一页地出现，每页的字一行一行慢慢淡入，停一会儿再淡出，中间留一段黑。
-## 背后有几点很淡的火星慢慢往上飘，环境声换成空旷的风加很远的炉火（Ambience.override = "credits"）。
+## 做成电影片尾的样子：黑底，一页一页地出现，每页的字一行一行慢慢淡入，停一会儿再淡出，胶片往前拉一格换下一页。
+## 背景是老电影胶片（作者 10-18："一律采用本来就有的电影胶卷特效，就像第二个关卡开头一样"）：
+## 整屏是放映出来的一格胶片，上下两条齿孔带，画面忽明忽暗、上下微抖、有划痕和灰点；
+## 开头先放第二关开场的 3、2、1 片头（直接用 art/levels/level2_intro_leader.png，不多一张图），
+## 每换一页，放映机把胶片往前拉一格（横着卷过去）。闪烁、抖动只作用在胶片上，字不跟着闪，保证清楚。
+## 每格胶片里放一张游戏里现成的图（作者 10-18："只有胶片还是太单调了，配上一些画面，用本来就有的美术素材"）：
+## SLIDES 的 picture，压成棕褐色（_sepia_shader）、跟着胶片一起闪，很慢地平移；怪物播它自己的待机帧。
+## 全是现成的图（load 工程里已有的贴图）加画矩形，包体不变。
+## 环境声换成空旷的风加很远的炉火（Ambience.override = "credits"）。
 ## 署名照作者 10-18 凌晨定的全文（监督会话转来）：
 ##   1 木木：导演 程序 光影 特效      2 奥斯卡：策划 动画 场景设计 画风设计
 ##   3 梧桐：立绘                     4 本2兔、Rouri：音乐
 ##   5 工具与协作：Godot、Claude、小奥斯卡（作者："小奥斯卡算是一个工具，写到最后的claude那一页"）
 ##   6：制作于 2026 年 10 月，底下小字：制作工具、字体和 Godot 的授权。按 L / 手柄 Y / 点小字看授权全文
 ## 确认键 / 鼠标左键：跳到下一页；Esc / B / 右键：直接回开始菜单。放完自己回去。
-## 每页名字上面放一段游戏里录的小动画（作者 10-18："显示名字的时候播放一些动画"）：SLIDES 的 clips，
-## 素材是 art/credits/ 的精灵图（CreditsClip，tools/make_credits_clips.py 拼的），一段放完一圈换下一段，跟着字一起淡入淡出。
-## 素材缺了就跳过那一段，一段都没有的页面照旧只有字。
 ## 用法照旧：var page := CreditsMenu.new(); 加到 UI 层; await page.closed（关掉时自己 queue_free）。
 ## 名字的中英文写法照 Linger（NAMES）；本2兔、小奥斯卡 Linger 里没有，先这样写，等作者确认（见报告）。
 
@@ -36,8 +40,21 @@ const WORDS_OUT := 0.7
 const BETWEEN := 0.8       # 两页之间留的黑
 const BLOCK_GAP := 18.0    # 一页里两组之间空多少
 const BOTTOM := 18.0       # 最后一页的小字离底边
-const CLIP_GAP := 12.0     # 动画和底下的字之间空多少
-const CLIP_EDGE := Color(0.22, 0.21, 0.2)  # 动画外面一圈细边
+
+## 胶片
+const LEADER := preload("res://art/levels/level2_intro_leader.png")  # 第二关开场的倒数片头：6 列 × 3 行，每格 160×90
+const LEADER_T := 0.9      # 3、2、1 各 0.3 秒
+const BAND := 14.0         # 上下齿孔带的高
+const GAP := 24.0          # 两格画面之间的黑条
+const PITCH := 480.0 + GAP # 往前拉一格走多远
+const HOLE := Vector2(8, 5)
+const HOLE_STEP := 24.0
+const ROLL := 0.55         # 拉一格用多久
+const FILM_BASE := Color(0.085, 0.062, 0.046)   # 放映出来的画面底色：很暗的暖棕，字在上面清楚
+const FILM_GLOW := Color(0.85, 0.6, 0.35, 0.03) # 中间亮一点（一圈圈叠，像放映机的光斑）
+const FILM_BAND := Color(0.12, 0.088, 0.064)
+const FILM_HOLE := Color(0.42, 0.35, 0.26)
+const PICTURE_BRIGHT := 0.5  # 画面压暗到一半，字在上面清楚
 
 ## 每个名字在各语言里的写法（只有写法不同的才写）。照 Linger 的 credits_roll.gd / title.gd
 const NAMES := {
@@ -53,21 +70,52 @@ const NAMES := {
 ## big：一行大字代替小标题和名字。then：底下一行一行的小字。hold：这页停多久（默认 HOLD）
 const SLIDES := [
 	{"blocks": [{"head": "", "names": ["Mumu"], "color": "39e47a",
-		"roles": ["Director / Programming / Lighting / VFX"]}], "clips": ["mumu_hammer", "mumu_lamp", "mumu_pressure"]},
+		"roles": ["Director / Programming / Lighting / VFX"]}],
+		# 第一关的背景层，前后层走得快慢不一样（视差）。原图很暗，gain 把它提亮
+		"gain": 2.6,
+		"picture": [
+			{"tex": "res://art/levels/scene1_far.png", "pos": Vector2(-300, -160), "vel": Vector2(-3, 0)},
+			{"tex": "res://art/levels/scene1_truss.png", "pos": Vector2(-300, -160), "vel": Vector2(-5, 0)},
+			{"tex": "res://art/levels/scene1_machines.png", "pos": Vector2(-300, -160), "vel": Vector2(-7, 0)},
+			{"tex": "res://art/levels/scene1_beams.png", "pos": Vector2(-300, -160), "vel": Vector2(-8, 0)},
+			{"tex": "res://art/levels/scene1.png", "pos": Vector2(-300, -160), "vel": Vector2(-9, 0)},
+		]},
 	{"blocks": [{"head": "", "names": ["Oscar"], "color": "c8b83b",
 		"roles": ["Game Design / Animation / Environment Design / Art Direction"]}], "hold": 5.0,
-		"clips": ["oscar_run", "oscar_elite"]},
-	{"blocks": [{"head": "", "names": ["Wutong"], "color": "e08638", "roles": ["Portraits"]}],
-		"clips": ["wutong_portraits"]},
+		# 他画的开场：机器垒满的那一格
+		"gain": 1.9,
+		"picture": [{"tex": "res://art/intro/14.png", "pos": Vector2(0, -4), "vel": Vector2(0, -2)}]},
+	{"blocks": [{"head": "", "names": ["Wutong"], "color": "e08638", "roles": ["Portraits"]}], "dy": 52.0,
+		# 她画的三张对话框立绘，偶尔眨一下眼；字往下挪，给立绘留地方
+		"picture": [
+			{"tex": "res://art/chars/red_portrait.png", "alt": "res://art/chars/red_portrait_blink.png", "blink": 2.9, "pos": Vector2(72, 8)},
+			{"tex": "res://art/chars/robot_portrait.png", "alt": "res://art/chars/robot_portrait_blink.png", "blink": 3.7, "pos": Vector2(192, 8)},
+			{"tex": "res://art/chars/dino_portrait.png", "alt": "res://art/chars/dino_portrait_blink.png", "blink": 3.3, "pos": Vector2(312, 8)},
+		]},
 	{"blocks": [{"head": "", "names": ["Ben2tu", "Rouri"], "color": "3bbcc8", "roles": ["Music"]}],
-		"clips": ["music_furnace"]},
+		# 第一关 Boss 的锅炉房，放大两倍慢慢横移
+		"gain": 2.4,
+		"picture": [
+			{"tex": "res://art/boss/room_bg.png", "pos": Vector2(-120, -150), "vel": Vector2(-5, 0), "scale": 2},
+			{"tex": "res://art/boss/room_fg.png", "pos": Vector2(-120, -150), "vel": Vector2(-5, 0), "scale": 2},
+		]},
 	{"blocks": [
 		{"head": "Tools & Collaboration", "names": ["Godot Engine"], "color": "d8d4cc", "roles": []},
 		{"head": "", "names": ["Claude"], "color": "d8d4cc", "roles": ["Anthropic"]},
 		{"head": "", "names": ["Little Oscar"], "color": "d8d4cc", "roles": ["pixel character model"]},
-	]},
+	], "dy": -24.0,
+		# 第一关的小怪排着队从底下走过去，播它们自己的待机帧
+		"gain": 2.4,
+		"picture": [
+			{"tex": "res://art/enemies/crawler.png", "hf": 4, "frames": [0, 1, 2, 3], "pos": Vector2(-60, 204), "vel": Vector2(16, 0), "wrap": true, "scale": 2},
+			{"tex": "res://art/enemies/kettle.png", "hf": 3, "frames": [0, 1, 2], "pos": Vector2(50, 192), "vel": Vector2(16, 0), "wrap": true, "scale": 2},
+			{"tex": "res://art/enemies/flea.png", "hf": 4, "frames": [0, 1], "pos": Vector2(150, 200), "vel": Vector2(16, 0), "wrap": true, "scale": 2},
+			{"tex": "res://art/enemies/shaver.png", "hf": 4, "frames": [0, 1], "pos": Vector2(250, 216), "vel": Vector2(16, 0), "wrap": true, "scale": 2},
+			{"tex": "res://art/enemies/moth.png", "hf": 3, "frames": [0, 1], "pos": Vector2(360, 176), "vel": Vector2(16, 0), "wrap": true, "scale": 2},
+		]},
 	{"big": "Made in October 2026", "sub": "for Ludum Dare 60  /  Old Tech", "color": "d8d4cc", "hold": 7.0,
-		"clips": ["finale"],
+		# 结局的家
+		"picture": [{"tex": "res://art/boss/hometown.png", "pos": Vector2(18, -2), "vel": Vector2(0, -0.4)}],
 		"then": [
 			["Built with", "Godot Engine / Aseprite / Claude"],
 			["Engine", "Godot Engine, MIT License"],
@@ -76,18 +124,24 @@ const SLIDES := [
 ]
 
 var _black: ColorRect
-var _embers: Control
+var _film: Control
+var _pics: Control        # 每格胶片里的画面（Picture），跟着胶片走
+var _film_top: Control    # 盖在画面上的划痕、灰点、齿孔带
 var _words: Control
 var _lines: Array[Label] = []
-var _reel: Reel
 var _hint: Label
 var _license_hint: Label
 var _license: Control
 var _skip := false
 var _leaving := false
 var _last := false
-var _sparks: Array = []
-var _time := 0.0
+var _roll := 0.0          # 胶片一共往前拉了多少像素
+var _leader_t := -1.0     # 片头放到第几秒（< 0 是还没开始）
+var _flick := 1.0
+var _flick_t := 0.0
+var _weave := 0.0
+var _scratch: Array = []
+var _dust: Array = []
 
 
 func _ready() -> void:
@@ -100,14 +154,22 @@ func _ready() -> void:
 	_black.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_black.modulate.a = 0.0
 	add_child(_black)
-	_embers = Control.new()
-	_embers.size = SCREEN
-	_embers.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_embers.modulate.a = 0.0
-	_embers.draw.connect(_draw_embers)
-	add_child(_embers)
-	for i in 26:
-		_sparks.append(_new_spark(true))
+	_film = Control.new()
+	_film.size = SCREEN
+	_film.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_film.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_film.modulate.a = 0.0
+	_film.draw.connect(_draw_film)
+	add_child(_film)
+	_pics = Control.new()
+	_pics.size = SCREEN
+	_pics.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_film.add_child(_pics)
+	_film_top = Control.new()
+	_film_top.size = SCREEN
+	_film_top.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_film_top.draw.connect(_draw_film_top)
+	_film.add_child(_film_top)
 	_words = Control.new()
 	_words.size = SCREEN
 	_words.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -124,43 +186,103 @@ func _exit_tree() -> void:
 
 
 func _process(delta: float) -> void:
-	_time += delta
-	for s in _sparks:
-		s["p"] += s["v"] * delta
-		s["life"] -= delta
-		if s["life"] <= 0.0 or s["p"].y < -4.0:
-			s.merge(_new_spark(false), true)
-	_embers.queue_redraw()
+	if _leader_t >= 0.0:
+		_leader_t += delta
+	# 老胶片：每 0.05~0.1 秒换一次亮度、上下抖一格、划痕和灰点（和第二关开场 level2_intro.gd 一样的做法，淡一些）
+	_flick_t -= delta
+	if _flick_t <= 0.0:
+		_flick_t = randf_range(0.05, 0.1)
+		_flick = 1.0 - randf() * 0.12
+		if randf() < 0.05:
+			_flick = 0.8
+		_weave = 0.0 if randf() < 0.8 else (1.0 if randf() < 0.5 else -1.0)
+		_scratch.clear()
+		for i in randi() % 3:
+			_scratch.append(Vector3(randi() % 480, BAND + randi() % 100, 40 + randi() % 140))
+		_dust.clear()
+		for i in randi() % 5:
+			_dust.append(Vector2(randi() % 480, BAND + randi() % int(SCREEN.y - BAND * 2.0 - 2.0)))
+	for pic: Picture in _pics.get_children():
+		pic.position = Vector2(roundf(pic.frame * PITCH - _roll), BAND + _weave)
+		pic.modulate = Color(_flick * pic.gain, _flick * pic.gain, _flick * pic.gain)
+	_film.queue_redraw()
+	_film_top.queue_redraw()
 
 
-## 一点火星：从下面三分之一随机一处出来，慢慢往上飘、左右晃，忽明忽暗
-func _new_spark(anywhere: bool) -> Dictionary:
-	return {
-		"p": Vector2(randf_range(10, SCREEN.x - 10), randf_range(20, SCREEN.y) if anywhere else randf_range(SCREEN.y * 0.6, SCREEN.y + 4)),
-		"v": Vector2(randf_range(-2.0, 2.0), -randf_range(4.0, 11.0)),
-		"life": randf_range(6.0, 16.0), "phase": randf() * TAU, "warm": randf(),
-	}
+func _draw_film() -> void:
+	var k := _flick
+	var top := BAND + _weave
+	var h := SCREEN.y - BAND * 2.0
+	_film.draw_rect(Rect2(Vector2.ZERO, SCREEN), Color.BLACK)
+	# 屏幕上能看到的那一两格画面（第 n 格在 n * PITCH - _roll）
+	var first := floori(_roll / PITCH)
+	for n in range(first, first + 2):
+		var x := roundf(n * PITCH - _roll)
+		if x >= SCREEN.x or x + PITCH <= 0.0:
+			continue
+		_film.draw_rect(Rect2(x, top, SCREEN.x, h), Color(FILM_BASE.r * k, FILM_BASE.g * k, FILM_BASE.b * k))
+		# 放映机的光斑：几层椭圆叠起来，每 6 像素一行（方方的台阶，保持像素感）
+		var c := Vector2(x + SCREEN.x * 0.5, top + h * 0.5)
+		for r in 4:
+			var rx := 230.0 - r * 44.0
+			var ry := 112.0 - r * 24.0
+			var yy := -ry
+			while yy < ry:
+				var hw := roundf(rx * sqrt(maxf(0.0, 1.0 - pow((yy + 3.0) / ry, 2.0))))
+				_film.draw_rect(Rect2(c.x - hw, roundf(c.y + yy), hw * 2.0, 6.0), FILM_GLOW)
+				yy += 6.0
+		# 第 0 格是片头：3、2、1，各 0.3 秒，每个数字 6 张扇形
+		if n == 0 and _leader_t >= 0.0:
+			var d := mini(int(_leader_t / 0.3), 2)
+			var f := mini(int(fmod(minf(_leader_t, LEADER_T - 0.001), 0.3) / 0.3 * 6.0), 5)
+			_film.draw_texture_rect_region(LEADER, Rect2(x, _weave * 3.0, SCREEN.x, SCREEN.y), Rect2(f * 160, d * 90, 160, 90),
+					Color(k, k * 0.98, k * 0.94))
 
 
-func _draw_embers() -> void:
-	for s in _sparks:
-		var a := 0.18 + 0.22 * (0.5 + 0.5 * sin(_time * 2.3 + s["phase"]))
-		a *= clampf(s["life"] / 2.0, 0.0, 1.0)
-		var col := Color8(255, 160, 80).lerp(Color8(255, 220, 150), s["warm"])
-		var p: Vector2 = s["p"]
-		p.x += sin(_time * 0.7 + s["phase"]) * 3.0
-		_embers.draw_rect(Rect2(p.round(), Vector2.ONE), Color(col, a))
+func _draw_film_top() -> void:
+	var k := _flick
+	# 划痕和灰点只在画面里
+	for sc in _scratch:
+		_film_top.draw_rect(Rect2(sc.x, sc.y + _weave, 1, sc.z), Color(1.0, 0.95, 0.85, 0.14))
+	for p in _dust:
+		_film_top.draw_rect(Rect2(p + Vector2(0, _weave), Vector2(2, 2)), Color(0.02, 0.012, 0.008, 0.55))
+	# 上下齿孔带：齿孔跟着胶片走
+	var band := Color(FILM_BAND.r * k, FILM_BAND.g * k, FILM_BAND.b * k)
+	var hole := Color(FILM_HOLE.r * k, FILM_HOLE.g * k, FILM_HOLE.b * k)
+	for y: float in [0.0, SCREEN.y - BAND]:
+		_film_top.draw_rect(Rect2(0, y, SCREEN.x, BAND), band)
+		var hx := -fposmod(_roll, HOLE_STEP) + 8.0
+		while hx < SCREEN.x:
+			_film_top.draw_rect(Rect2(roundf(hx), y + roundf((BAND - HOLE.y) * 0.5), HOLE.x, HOLE.y), hole)
+			hx += HOLE_STEP
+
+
+## 放映机把胶片往前拉一格：慢起慢停，中间快
+func _advance() -> void:
+	var from := _roll
+	var tw := create_tween()
+	tw.tween_method(func(v: float) -> void: _roll = v, from, from + PITCH, ROLL).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	await tw.finished
 
 
 func _play() -> void:
 	await _fade(_black, 1.0, BLACK_IN)
-	_fade(_embers, 1.0, 2.0)
-	await _wait(FIRST_WAIT, false)
-	_fade(_hint, 0.7, 1.0)
+	await _fade(_film, 1.0, 0.4)
+	_leader_t = 0.0
+	await _wait(LEADER_T + 0.15, false)
 	for i in SLIDES.size():
 		if _leaving:
 			return
 		_last = i == SLIDES.size() - 1
+		# 下一格胶片带着这页的画面卷进来，再出字
+		_add_picture(SLIDES[i], i + 1)
+		await _advance()
+		for pic: Picture in _pics.get_children():
+			if pic.frame < i + 1:
+				pic.queue_free()
+		await _wait(FIRST_WAIT * 0.5 if i == 0 else BETWEEN * 0.25, false)
+		if i == 0:
+			_fade(_hint, 0.7, 1.0)
 		await _show(SLIDES[i])
 		if i == 0:
 			_fade(_hint, 0.0, 1.0)
@@ -169,8 +291,6 @@ func _play() -> void:
 
 func _show(slide: Dictionary) -> void:
 	_build(slide)
-	if _reel:
-		_reel.create_tween().tween_property(_reel, "modulate:a", 1.0, LINE_IN)
 	for i in _lines.size():
 		var l := _lines[i]
 		var tw := l.create_tween()
@@ -180,11 +300,21 @@ func _show(slide: Dictionary) -> void:
 	if _skip:
 		for l in _lines:
 			l.modulate.a = 1.0
-		if _reel:
-			_reel.modulate.a = 1.0
 	await _wait(slide.get("hold", HOLD), true)
 	await _fade(_words, 0.0, WORDS_OUT)
-	await _wait(BETWEEN, false)
+	await _wait(BETWEEN * 0.25, false)
+
+
+func _add_picture(slide: Dictionary, frame: int) -> void:
+	if not slide.has("picture"):
+		return
+	var pic := Picture.new()
+	pic.frame = frame
+	pic.items = slide["picture"]
+	pic.gain = slide.get("gain", 1.0)
+	pic.size = Vector2(SCREEN.x, SCREEN.y - BAND * 2.0)
+	pic.position = Vector2(roundf(frame * PITCH - _roll), BAND)
+	_pics.add_child(pic)
 
 
 ## 这一页的字：都先透明，_show 里一行一行淡出来
@@ -192,7 +322,6 @@ func _build(slide: Dictionary) -> void:
 	for c in _words.get_children():
 		c.queue_free()
 	_lines.clear()
-	_reel = Reel.make(slide.get("clips", []))
 	_license_hint = null
 	_words.modulate.a = 1.0
 	var col := Color(slide.get("color", "d8d4cc"))
@@ -212,13 +341,9 @@ func _build(slide: Dictionary) -> void:
 	for r in rows:
 		height += BLOCK_GAP if r == null else ROW[r[1]]
 	var foot: Array = slide.get("then", [])
-	var reel_h := (_reel.size.y + CLIP_GAP) if _reel else 0.0
 	# 有小字的页，大字整体往上挪一点，给底下的小字留地方
-	var top := roundf((SCREEN.y - height - reel_h) * 0.5 - (ROW[SMALL] * (foot.size() + 1) * 0.5 if not foot.is_empty() else 0.0))
-	if _reel:
-		_reel.position = Vector2(roundf((SCREEN.x - _reel.size.x) * 0.5), maxf(top, 6.0))
-		_words.add_child(_reel)
-		top = _reel.position.y + reel_h
+	var top := roundf((SCREEN.y - height) * 0.5 - (ROW[SMALL] * (foot.size() + 1) * 0.5 if not foot.is_empty() else 0.0))
+	top += slide.get("dy", 0.0)
 	var y := top
 	for r in rows:
 		if r == null:
@@ -431,41 +556,59 @@ class LicensePage extends Control:
 			get_viewport().set_input_as_handled()
 
 
-## 一页的动画：几段 CreditsClip 叠在一起，一次只显示一段，放完一圈换下一段；外面一圈 1 像素的细边
-class Reel extends Control:
-	var _clips: Array[CreditsClip] = []
-	var _at := 0
+## 一格胶片里的画面：items 是一张张现成的图，{tex, pos（左上角，相对这一格）, vel（每秒走几像素）, scale（整数倍）,
+## hf + frames（横排的帧，按 6 帧/秒播）, wrap（走出去从另一边回来）, alt + blink（每隔 blink 秒换成 alt 闪一下，眨眼）}。
+## 整格用棕褐色着色器压暗，像老电影；原图本来就暗的页面用 SLIDES 的 gain 提亮。
+class Picture extends Control:
+	static var _material: ShaderMaterial
 
-	## 一段素材都没有就返回 null
-	static func make(names: Array) -> Reel:
-		var clips: Array[CreditsClip] = []
-		for n: String in names:
-			var c := CreditsClip.make(n)
-			if c:
-				clips.append(c)
-		if clips.is_empty():
-			return null
-		var r := Reel.new()
-		r._clips = clips
-		r.size = Vector2(CreditsClip.FRAME)
-		return r
+	var frame := 0
+	var gain := 1.0   # 画面原来就暗的提亮几倍（乘在 modulate 上，着色器里再压到 PICTURE_BRIGHT）
+	var items: Array = []
+	var _tex: Array = []
+	var _alt: Array = []
+	var _t := 0.0
 
 	func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
-		modulate.a = 0.0
-		for i in _clips.size():
-			_clips[i].visible = i == 0
-			add_child(_clips[i])
+		clip_contents = true
+		texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		if _material == null:
+			_material = ShaderMaterial.new()
+			_material.shader = Shader.new()
+			_material.shader.code = """
+shader_type canvas_item;
+uniform float bright = 0.5;
+void fragment() {
+	vec4 c = texture(TEXTURE, UV) * COLOR;
+	float l = dot(c.rgb, vec3(0.3, 0.59, 0.11));
+	COLOR = vec4(vec3(l * 1.08, l * 0.86, l * 0.6) * bright, c.a);
+}
+"""
+			_material.set_shader_parameter("bright", PICTURE_BRIGHT)
+		material = _material
+		for it: Dictionary in items:
+			_tex.append(load(it["tex"]))
+			_alt.append(load(it["alt"]) if it.has("alt") else null)
 
-	func _process(_delta: float) -> void:
-		if _clips.size() > 1 and _clips[_at].loops() >= 1:
-			_clips[_at].visible = false
-			_at = (_at + 1) % _clips.size()
-			_clips[_at].restart()
-			_clips[_at].visible = true
+	func _process(delta: float) -> void:
+		_t += delta
+		queue_redraw()
 
 	func _draw() -> void:
-		draw_rect(Rect2(-1, -1, size.x + 2, 1), CLIP_EDGE)
-		draw_rect(Rect2(-1, size.y, size.x + 2, 1), CLIP_EDGE)
-		draw_rect(Rect2(-1, 0, 1, size.y), CLIP_EDGE)
-		draw_rect(Rect2(size.x, 0, 1, size.y), CLIP_EDGE)
+		for i in items.size():
+			var it: Dictionary = items[i]
+			var tex: Texture2D = _tex[i]
+			if _alt[i] != null and fmod(_t, it["blink"]) > it["blink"] - 0.15:
+				tex = _alt[i]
+			var k: int = it.get("scale", 1)
+			var hf: int = it.get("hf", 1)
+			var fw := tex.get_width() / hf
+			var src := Rect2(0, 0, fw, tex.get_height())
+			if hf > 1:
+				var frames: Array = it.get("frames", [0])
+				src.position.x = int(frames[int(_t * 6.0) % frames.size()]) * fw
+			var p: Vector2 = it["pos"] + it.get("vel", Vector2.ZERO) * _t
+			if it.get("wrap", false):
+				p.x = fposmod(p.x + fw * k, size.x + fw * k * 2.0) - fw * k
+			draw_texture_rect_region(tex, Rect2(p.round(), src.size * k), src)

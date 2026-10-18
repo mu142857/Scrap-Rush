@@ -225,12 +225,8 @@ func _show_banner_now(text: String, hold := 0.0) -> void:
 func _update_hint() -> void:
 	var s := Run.players[0]["input"] as String
 	var atk := Controls.key_name(s, "attack")
-	var attack_text := tr("Hold %s: charge, release: shoot") % atk
-	match Upgrades.weapon:
-		"rivet":
-			attack_text = tr("Hold %s: fire") % atk
-		"hammer":
-			attack_text = tr("%s: steam blast") % atk
+	# 每把武器一句，写在武器登记表里（WeaponRegistry 的 hint）
+	var attack_text := tr(str(WeaponRegistry.value(Upgrades.weapon, "hint", "Hold %s: charge, release: shoot"))) % atk
 	# 最后一项是"暂停"（Esc / Start）：重开本关在暂停菜单里、要确认。
 	# 作者 10-18："不用重来，R 键都可以删掉，因为容易误触"——R 立刻重来删了
 	var last := tr("%s Pause") % Controls.label("pause")

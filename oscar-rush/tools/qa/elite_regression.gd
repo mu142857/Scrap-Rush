@@ -28,6 +28,7 @@ const ARENA_L := 470.0
 const ARENA_R := 790.0
 const FLOOR_Y := 343.0
 const RANGE := {"flash": 70.0, "rivet": 60.0, "hammer": 26.0}
+## 新武器站多远打：登记表（WeaponRegistry）的 qa_range，没写就 60
 const ELITE_TIME := 100.0
 const BOSS_TIME := 150.0
 const LOG_CASE_LIMIT := 20 * 1024 * 1024
@@ -39,7 +40,8 @@ const BOSSES := {"boss1": "res://scenes/boss1.tscn", "boss2": "res://scenes/boss
 var _only: Array = []
 var _skip_bosses := false
 var _only_bosses := false
-var _weapons: Array = ["flash", "rivet", "hammer"]
+## 默认用武器登记表里所有做好了的（10-18 起 7 把，游戏设计会话改）
+var _weapons: Array = Array(WeaponRegistry.ids())
 var _out := ""
 var _log_path := ""
 var _log_pos := 0
@@ -474,7 +476,7 @@ func _player() -> Player:
 
 ## 主角站到目标左边（左边站不下就右边）这把武器的射程上，面朝目标
 func _aim_player(p: Player, tx: float, weapon: String, lo: float, hi: float) -> void:
-	var rng: float = RANGE[weapon]
+	var rng: float = RANGE.get(weapon, float(WeaponRegistry.value(weapon, "qa_range", 60.0)))
 	var px := tx - rng
 	if px < lo:
 		px = tx + rng
@@ -498,6 +500,25 @@ func _press_attack(act: String, weapon: String, t: float, hold: float, p: Player
 			else:
 				Input.action_release(act)
 			return 0.0
+	# 新武器：照登记表的 qa_press 按——hold 一直按住，tap 隔 0.15 秒点一下，charge 按住到 p.charge 满再松开一下
+	if WeaponRegistry.handler_path(weapon) != "":
+		match str(WeaponRegistry.value(weapon, "qa_press", "hold")):
+			"tap":
+				if int(t / 0.15) != int((t - dt) / 0.15):
+					Input.action_press(act)
+				else:
+					Input.action_release(act)
+				return 0.0
+			"charge":
+				if hold < 0.0:
+					Input.action_release(act)
+					return hold + dt
+				Input.action_press(act)
+				if float(p.get("charge")) >= 1.0:
+					return -dt * 2.0
+				return hold + dt
+		Input.action_press(act)
+		return hold + dt
 	# 闪光灯
 	if hold < 0.0:
 		Input.action_release(act)
@@ -561,8 +582,16 @@ func _cell(r) -> String:
 
 func _report() -> void:
 	var lines: Array[String] = []
-	lines.append("| 关 | 怪 | 结果 | 闪光灯 | 铆钉枪 | 蒸汽锤 | 遭遇战清场 | 红\"!\"次数 / 状态数（Boss：到第几阶段） | 死亡演出（秒） | 脚本错误 |")
-	lines.append("|---|---|---|---|---|---|---|---|---|---|")
+	# 每把武器一列（列名用登记表的中文名，没有就用 id）
+	var wnames := {"flash": "闪光灯", "rivet": "铆钉枪", "hammer": "蒸汽锤", "shotgun": "霰弹枪", "laser": "激光枪",
+			"record": "唱片", "tongs": "电钳"}
+	var head := "| 关 | 怪 | 结果 |"
+	var sep := "|---|---|---|"
+	for w in _weapons:
+		head += " %s |" % wnames.get(w, w)
+		sep += "---|"
+	lines.append(head + " 遭遇战清场 | 红\"!\"次数 / 状态数（Boss：到第几阶段） | 死亡演出（秒） | 脚本错误 |")
+	lines.append(sep + "---|---|---|---|")
 	var bad := 0
 	for row in _rows:
 		if not row.ok:
@@ -575,8 +604,10 @@ func _report() -> void:
 		if row.has("enc"):
 			enc = "✓ 清场" if row.enc.ok else "✗ " + row.enc.why
 		var ws := "%d / %d" % [row.warns, row.states] if row.lv != "Boss" else "第 %d 阶段" % row.states
-		lines.append("| %s | %s | %s | %s | %s | %s | %s | %s | %s | %d |" % [row.lv, row.kind, "过" if row.ok else "不过",
-				_cell(row.get("flash")), _cell(row.get("rivet")), _cell(row.get("hammer")), enc, ws, death, row.errors])
+		var line := "| %s | %s | %s |" % [row.lv, row.kind, "过" if row.ok else "不过"]
+		for w in _weapons:
+			line += " %s |" % _cell(row.get(w))
+		lines.append(line + " %s | %s | %s | %d |" % [enc, ws, death, row.errors])
 	lines.append("")
 	lines.append("共 %d 只，过 %d，不过 %d。" % [_rows.size(), _rows.size() - bad, bad])
 	print("\n".join(lines))

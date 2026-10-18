@@ -23,6 +23,8 @@ extends Area2D
 enum Kind { EMBER, RIVET, COAL, NOTE, WAVE, SNOW, SCAN }
 
 const DAMAGE := 8.0
+## 当前 Boss 的子弹伤害倍率：Boss3 开打时设 1.3、离场时设回 1.0（10-18 美术哥「锅炉比电视机难」，Boss3 加压）
+static var damage_scale := 1.0
 ## 2026-10-17 试玩嫌子弹太快：余烬重力从 230 降到 170（落得更慢更飘），煤块落地后滚动限速
 const EMBER_GRAVITY := 170.0
 const COAL_GRAVITY := 450.0
@@ -142,7 +144,7 @@ func _physics_process(delta: float) -> void:
 func _on_body(body: Node) -> void:
 	if _done:
 		return
-	var dmg := DAMAGE * EnemyBase.damage_mult()
+	var dmg := DAMAGE * EnemyBase.damage_mult() * damage_scale
 	if body is Player:
 		if not (body as Player).hurt(global_position, dmg):
 			return  # 无敌中，子弹穿过去

@@ -55,6 +55,11 @@ const SWEEP_TIME := 0.2
 const SWEEP_RECT := Rect2(-46, -36, 40, 26)
 const SWEEP_DAMAGE := 14.0
 const SWEEP_COOLDOWN := 2.2
+## 10-18 躲避检查（总机台/留声机会话加，布谷鸟钟会话同意）：贴墙时躲不开的两种情况
+## - 扫臂：主角背后要有这么远（从守夜巨人算）的地面、中间没墙才扫，不然退不开；没退路就照常出砸地/跳砸
+## - 跳砸：主角离它比这个近就不跳（落点就在主角脚下，往外跑得穿过它的身子），改成双拳砸地（跳着躲，贴墙也躲得开）
+const SWEEP_ESCAPE := 54.0
+const LEAP_MIN := 60.0
 
 ## _unstick 往下最多探多远（个子高，头顶卡进天花板时要往下挪得多）
 const UNSTICK_REACH := 140.0
@@ -147,13 +152,16 @@ func _tick(delta: float) -> void:
 			_walk(p, delta)
 			if p and is_on_floor():
 				var d := p.global_position - global_position
-				if _sweep_cd <= 0.0 and d.x * dir >= 0.0 and absf(d.x) <= SWEEP_RANGE and absf(d.y) <= SWEEP_HEIGHT:
+				if _sweep_cd <= 0.0 and d.x * dir >= 0.0 and absf(d.x) <= SWEEP_RANGE and absf(d.y) <= SWEEP_HEIGHT \
+						and _room_behind(p):
 					_start(SWEEP_WARN, SWEEP_WARN_TIME)
 					warn(SWEEP_WARN_TIME)
 					Game.sfx("charge", -12.0, 0.6)
 				elif _cool <= 0.0:
 					# 远了跳过去，近了砸地；同一距离段里两招轮着来
 					var leap := _next_leap if absf(d.x) <= 110.0 else true
+					if absf(d.x) < LEAP_MIN:
+						leap = false
 					if leap:
 						_start_leap(pick_focus(p))   # 双人时轮着砸一个人
 					else:
@@ -290,6 +298,21 @@ func _quake(at: Vector2, dist: float, shake: float) -> void:
 
 
 # ---------------------------------------------------------------- 跳砸
+## 主角背后（离守夜巨人 SWEEP_ESCAPE 的地方）有没有地、中间有没有墙：有，扫臂才躲得开
+func _room_behind(p: Player) -> bool:
+	var away := 1.0 if p.global_position.x >= global_position.x else -1.0
+	var tx := global_position.x + away * SWEEP_ESCAPE
+	var y := p.global_position.y
+	var space := get_world_2d().direct_space_state
+	var wall := PhysicsRayQueryParameters2D.create(Vector2(p.global_position.x, y - 8.0), Vector2(tx + away * 4.0, y - 8.0), 1)
+	wall.exclude = [get_rid()]
+	if not space.intersect_ray(wall).is_empty():
+		return false
+	var down := PhysicsRayQueryParameters2D.create(Vector2(tx, y - 12.0), Vector2(tx, y + 12.0), 1)
+	down.exclude = [get_rid()]
+	return not space.intersect_ray(down).is_empty()
+
+
 func _start_leap(p: Player) -> void:
 	_start(LEAP_WARN, LEAP_WARN_TIME)
 	warn(LEAP_WARN_TIME)

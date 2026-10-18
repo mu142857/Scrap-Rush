@@ -68,6 +68,49 @@ static func on_attack(p: Node2D, shot: Node2D) -> void:
 			_slave(p, shot)
 
 
+## 新武器（WeaponRegistry 里有 handler 的）每打出一发调这个，变异就都生效（说明见 weapon_handler.gd）。
+## shots：这一发打出来的子弹节点（怒火给它们乘伤害）；refire：Callable(damage_mult, color)，回声 0.3 秒后调它再打一发。
+## 回声、从闪每几发触发一次，读登记表的 echo_every / slave_every；从闪的伤害读 slave_damage
+static func on_weapon_fire(p: Node2D, weapon_id: String, shots: Array, refire: Callable) -> void:
+	if p == null:
+		return
+	for s in shots:
+		if s is Node and (s as Node).get_meta("mutation_copy", false):
+			return
+	match Upgrades.mutation:
+		"rage":
+			var first := true
+			for s in shots:
+				if s is Node2D:
+					if first:
+						_rage(s)
+						first = false
+					else:
+						_damage_mul(s, rage_mult())
+		"echo":
+			_fire_n[weapon_id + ":echo"] = int(_fire_n.get(weapon_id + ":echo", 0)) + 1
+			if int(_fire_n[weapon_id + ":echo"]) % maxi(int(WeaponRegistry.value(weapon_id, "echo_every", 1)), 1) != 0:
+				return
+			if not refire.is_valid():
+				return
+			p.get_tree().create_timer(ECHO_DELAY, false).timeout.connect(func():
+				if not is_instance_valid(p):
+					return
+				proc_frame = Engine.get_physics_frames()
+				refire.call(ECHO_DAMAGE, ECHO_COLOR)
+				Game.sparks(p.get_parent(), p.global_position + Vector2(0, -10), ECHO_COLOR, 4, 50.0)
+				Game.sfx("shoot", -14.0, 0.75, 0.05))
+		"slave":
+			_fire_n[weapon_id + ":slave"] = int(_fire_n.get(weapon_id + ":slave", 0)) + 1
+			if int(_fire_n[weapon_id + ":slave"]) % maxi(int(WeaponRegistry.value(weapon_id, "slave_every", 1)), 1) != 0:
+				return
+			_slave_shot(p, float(WeaponRegistry.value(weapon_id, "slave_damage", SLAVE_DAMAGE)),
+					SLAVE_RIVET_GAP if int(WeaponRegistry.value(weapon_id, "slave_every", 1)) > 1 else SLAVE_MIN_GAP)
+
+
+static var _fire_n := {}
+
+
 ## 怪死的时候调（EnemyBase、Crawler）
 static func on_kill(_enemy: Node) -> void:
 	if Upgrades.mutation != "dynamo":
@@ -185,16 +228,52 @@ static func _slave(p: Node2D, shot: Node2D) -> void:
 	if best == null:
 		return
 	_slave_last = now
-	proc_frame = Engine.get_physics_frames()
-	var aim: Vector2 = best.call("aim_point") if best.has_method("aim_point") else best.global_position
-	var o: Node2D = (load(ORB_PATH) as GDScript).new()
-	# 0.99：不算蓄满（没有顿帧、不穿透），几乎直飞
-	o.call("setup", p, from, (aim - from).normalized(), 0.99, null, SLAVE_COLOR)
 	var dmg := SLAVE_DAMAGE
 	if rivet:
 		dmg = SLAVE_RIVET_DAMAGE
 	elif _kind(shot) == "blast":
 		dmg = SLAVE_HAMMER_DAMAGE
+	_slave_fire(p, lamp, best, dmg)
+
+
+## 新武器用：从闪补一发（间隔、伤害由调用的人给）
+static func _slave_shot(p: Node2D, dmg: float, gap: float) -> void:
+	var lamp: Node2D = null
+	for c in p.get_tree().get_nodes_in_group("crystal"):
+		var cr := c as Node2D
+		if cr and cr.get("carrier") == null:
+			lamp = cr
+	if lamp == null:
+		return
+	var now := Engine.get_physics_frames() / float(Engine.physics_ticks_per_second)
+	if now - _slave_last < gap:
+		return
+	var from := lamp.global_position + Vector2(0, -6)
+	var best: Node2D = null
+	var bd := SLAVE_RANGE
+	for e in p.get_tree().get_nodes_in_group("enemy"):
+		var n := e as Node2D
+		if n == null or (n.has_method("is_targetable") and not n.call("is_targetable")):
+			continue
+		var at: Vector2 = n.call("aim_point") if n.has_method("aim_point") else n.global_position
+		var d := from.distance_to(at)
+		if d < bd:
+			bd = d
+			best = n
+	if best == null:
+		return
+	_slave_last = now
+	_slave_fire(p, lamp, best, dmg)
+
+
+## 从闪：马灯朝 best 打一发光球（老武器、新武器共用）
+static func _slave_fire(p: Node2D, lamp: Node2D, best: Node2D, dmg: float) -> void:
+	proc_frame = Engine.get_physics_frames()
+	var from := lamp.global_position + Vector2(0, -6)
+	var aim: Vector2 = best.call("aim_point") if best.has_method("aim_point") else best.global_position
+	var o: Node2D = (load(ORB_PATH) as GDScript).new()
+	# 0.99：不算蓄满（没有顿帧、不穿透），几乎直飞
+	o.call("setup", p, from, (aim - from).normalized(), 0.99, null, SLAVE_COLOR)
 	o.set("damage", dmg)
 	o.set_meta("mutation_copy", true)
 	_badge(o, SLAVE_COLOR, false)

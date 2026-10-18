@@ -43,6 +43,9 @@ const CUT_WARN := 0.6
 const GONE_TIME := 0.35
 const MARK_TIME := 0.5
 const BEHIND := 46.0
+## 主角身后是墙、落点只好换到主角前面时离多远：比剪刀够得着的 54 远一点，贴墙站着不动就躲得开
+## （10-18 躲避检查，总机台/留声机会话加：原来也是 46，贴墙时往哪躲都挨——冲过去要 0.85 秒跑 103 像素，主角只跑得了 98）
+const FRONT := 62.0
 const DROP_TIME := 0.22
 const CUT_RECT := Rect2(-54, -40, 58, 40)
 const CUT_DAMAGE := 14.0
@@ -415,7 +418,7 @@ func _pick_mark() -> void:
 	if side == 0.0:
 		side = float(_attack_dir)
 	for s in [side, -side]:
-		var x: float = p.global_position.x + s * BEHIND
+		var x: float = p.global_position.x + s * (BEHIND if s == side else FRONT)
 		var from := p.global_position + Vector2(0, -10)
 		var wall := PhysicsRayQueryParameters2D.create(from, Vector2(x + s * 12.0, from.y), 1)
 		if not get_world_2d().direct_space_state.intersect_ray(wall).is_empty():
