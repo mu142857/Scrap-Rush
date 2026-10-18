@@ -52,3 +52,8 @@ static func is_zh() -> bool:
 ## 英文原来的行距（19、20）会让上下两行的字贴在一起，中文时拉到 25
 static func menu_step(en_step: float) -> float:
 	return maxf(en_step, 25.0) if is_zh() else en_step
+
+
+## 多行小字收紧行距用：英文大写只有十几像素高，收紧 2 像素刚好；中文字满 11 像素，再收就上下贴住，不收
+static func tight_line() -> float:
+	return 0.0 if is_zh() else -2.0

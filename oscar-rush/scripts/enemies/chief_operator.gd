@@ -55,6 +55,7 @@ const AIM := Color(1.0, 0.25, 0.2)
 ## 活物的部分：眼睛颜色、呼吸、挨打后仰、转身前扭头、倒下
 const EYE_COLOR := Color(1.0, 0.86, 0.62)
 const BREATH_TIME := 0.75
+const WALK_CYCLE: Array[int] = [8, 1, 9, 1]
 const FLINCH_TIME := 0.28
 const TURN_TIME := 0.22
 const COLLAPSE_TIME := 0.9
@@ -87,13 +88,13 @@ func _setup() -> void:
 	intro_title = "HOLD THE LINE"
 	intro_frame = 4
 	texture_path = "res://art/enemies/chief_operator.png"
-	hframes = 8
+	hframes = 10
 	frame_size = Vector2i(50, 53)
 	body_rect = Rect2(-12, -48, 24, 48)
 	# led_pixel 是前面那只眼睛（眼睛由 _draw_led 画成两只会眨的暖白眼睛，不是机器的红灯）
 	led_pixel = Vector2i(19, 12)
 	led_by_frame = {1: Vector2i(19, 11), 3: Vector2i(18, 12), 5: Vector2i(19, 11), 6: Vector2i(21, 12),
-			7: Vector2i(19, 28)}
+			7: Vector2i(19, 28), 8: Vector2i(18, 12), 9: Vector2i(18, 12)}
 	# 10-18：停顿压短以后三把武器 13~17 秒就打死（真实时间），每招只放得出 2 轮；血加到 20~35 秒、每招 3 轮以上
 	max_hp = 2400.0
 	contact_damage = 10.0
@@ -368,8 +369,11 @@ func _move(delta: float) -> void:
 		standing = false
 	if not is_knocked():
 		velocity.x = move_toward(velocity.x, side * MOVE_SPEED * speed_mult(), 300.0 * delta)
-	# 飘的时候袍子快快地飘，站着的时候慢慢呼吸（同两帧，节奏不同）
-	set_frame(int(_time / (BREATH_TIME if standing else FRAME_TIME)) % 2)
+	# 站着的时候慢慢呼吸（0、1 两帧）；走的时候迈步：左脚踩 8、抬起 1、右脚踩 9、抬起 1（10-18 夜间打磨）
+	if standing:
+		set_frame(int(_time / BREATH_TIME) % 2)
+	else:
+		set_frame(WALK_CYCLE[int(_time / FRAME_TIME) % 4])
 
 
 ## 面朝主角。走动时主角绕到身后，先扭头看一眼（TURN_TIME）再转身；出招时直接转

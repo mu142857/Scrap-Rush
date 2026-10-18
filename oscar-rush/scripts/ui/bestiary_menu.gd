@@ -176,7 +176,7 @@ func _ready() -> void:
 	_sub = _label(DETAIL.position.x + 6, 0, w, 11, DIM, HORIZONTAL_ALIGNMENT_CENTER)
 	_info = _label(DETAIL.position.x + 6, 0, w, 11, DIM, HORIZONTAL_ALIGNMENT_CENTER)
 	_desc = _label(DETAIL.position.x + 6, 0, w, 11, TEXT, HORIZONTAL_ALIGNMENT_LEFT)
-	_desc.label_settings.line_spacing = -2
+	_desc.label_settings.line_spacing = Lang.tight_line()
 	_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_hint = _label(0, 251, 480, 11, DIM, HORIZONTAL_ALIGNMENT_CENTER)
 	for l in [_title, _back, _hint]:

@@ -29,6 +29,10 @@ IGNORE = {
     "LanternAura", "SCRAP_NO_AUTOPAUSE",
     "Encounter",  # find_children 用的类名
     "Aaron Mumu", "Godot Engine\n\n", "Uranus Pixel 11Px / WenQuanYi Bitmap Song\n",  # 制作人员页的人名、引擎名、字体名
+    "Mumu", "Oscar", "Little Oscar", "Zpbrqols", "Wutong", "Ben2tu", "Rouri",  # 制作人员的名字
+    "WASD", "LB/RB", "LT/RT", "Tab", "Q/E",  # 按键名，两种语言一样
+    "LEVEL ",  # 图鉴里拼成 "LEVEL 1/2/3" 再 tr，那几条在表里
+    "SPEED",  # 图鉴按常量名找怪的速度（SPEED_NAMES），不是界面字
 }
 ## 路径、动作名、属性路径、调试输出（"[tube] t=..."）
 SKIP = re.compile(r"^(\[\w+\]|res://|user://|ui_|--|#|%s_|modulate|position|global_position|rotation|scale|color:|self_modulate|offset|parameters/)")
@@ -79,6 +83,12 @@ def main() -> int:
                 or re.fullmatch(r"(?:[A-Z][a-z0-9]+){2,}[A-Z0-9]*", s):  # 驼峰式类名（CanvasLayer、ShopStand、PointLight2D）
             continue
         if re.search(r"[一-鿿]", s):  # 中文写的（调试名、注释式字符串），不归这里管
+            continue
+        if re.fullmatch(r"[.#oOX]+", s):  # 像素图案（"..XX.."、"#oOo#"）
+            continue
+        src_line = (ROOT / gd).read_text(encoding="utf-8").splitlines()[line - 1] if line > 0 else ""
+        lit = re.escape('"' + s + '"')
+        if re.search(r"\[\s*" + lit + r"\s*\]|\.get\(\s*" + lit, src_line):  # 字典取值 d["KEY"] / d.get("KEY")，是常量名
             continue
         print(f"没进 text.csv：{gd.relative_to(ROOT)}:{line}  {s!r}")
         problems += 1

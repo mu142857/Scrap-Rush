@@ -51,14 +51,15 @@ const FUEL_REFILL_TIME := 1.2
 const JET_VOLUME_DB := -17.0
 const JET_SILENT_DB := -50.0
 # —— 攻击 ——
-const CHARGE_TIME := 0.6
+const CHARGE_TIME := 0.5
 const CHARGE_UPGRADE := 0.08
-const CHARGE_TIME_MIN := 0.35
+const CHARGE_TIME_MIN := 0.3
 const SHOT_COOLDOWN := 0.12
 ## 三把武器（开局选，见 weapon_select.gd；商店也能换）。单体每秒伤害都在 100 左右：
-##   flash  闪光灯：按住蓄力 0.6 秒，蓄满 100 伤害、更快更大、穿透一排；没蓄满也有 35~80 伤害、只微微下坠
+##   flash  闪光灯：按住蓄力 0.5 秒（10-18 打击感：0.6 → 0.5，节奏不断），蓄满 100 伤害、更快更大、穿透一排；没蓄满也有 35~80 伤害、只微微下坠
 ##   rivet  铆钉枪：按住一直连发，每 0.1 秒一颗、每颗 13 伤害，散布 ±9°（散开能顺带打到旁边的怪），射程短、尽头逐渐消失，有后坐
-##   hammer 蒸汽锤：按一下，0.12 秒后以自己为中心炸一圈（半径 48，圈里统一 170 伤害，吹散 Boss 子弹），冷却 1.6 秒
+##   hammer 蒸汽锤：按一下，0.12 秒后以自己为中心炸一圈（半径 48，圈里统一 140 伤害，吹散 Boss 子弹），冷却 1.15 秒
+##          （10-18 打击感：原来 170 伤害、冷却 1.6 秒，两锤之间干等太久；冷却快好时按下会先记着，一好就砸）
 ## （2026-10-17 作者试玩后改：闪光灯太弱、蓄力表现太夸张、铆钉枪要更散更痛、蒸汽锤要近高远低）
 ## 快充升级对三把都有效：蓄力更快 / 射得更快 / 冷却更短
 const RIVET_INTERVAL := 0.1
@@ -66,8 +67,10 @@ const RIVET_UPGRADE := 0.01
 const RIVET_SPREAD := 9.0
 const RIVET_MOVE_MULT := 0.8
 const RIVET_RECOIL := 10.0
-const HAMMER_COOLDOWN := 1.6
-const HAMMER_UPGRADE := 0.2
+const HAMMER_COOLDOWN := 1.15
+const HAMMER_UPGRADE := 0.15
+## 冷却还剩这么多秒以内按下，先记着，冷却一好就砸（输入缓冲）
+const HAMMER_BUFFER := 0.3
 const HAMMER_WINDUP := 0.12
 ## 蓄力圈：身边一圈 12 个点，蓄到哪亮到哪（作者：别太夸张）
 const CHARGE_DOTS := 12
@@ -140,6 +143,10 @@ var _rivet_n := 0
 var _muzzle := 0.0
 var _hammer_cd := 0.0
 var _hammer_windup := 0.0
+var _hammer_buffer := 0.0
+## 闪光灯出手的枪口火光（比铆钉枪的大、亮 3~4 帧），蓄满的另画一种
+var _flash_muzzle := 0.0
+var _flash_muzzle_full := false
 ## 画面上把精灵对齐到整像素：物理位置保留小数，只有显示取整（照 Phage）
 var _snap := Vector2.ZERO
 var _push := Vector2.ZERO
@@ -520,6 +527,7 @@ func set_weapon(w: String) -> void:
 func _attack(delta: float) -> void:
 	# 枪口火光只亮 1~2 帧（合金弹头式的"一帧一闪"）
 	_muzzle = maxf(_muzzle - delta / 0.035, 0.0)
+	_flash_muzzle = maxf(_flash_muzzle - delta / 0.06, 0.0)
 	match weapon():
 		"rivet":
 			_attack_rivet(delta)
@@ -558,12 +566,23 @@ func _fire() -> void:
 	orb.setup(self, muzzle, dir, charge, _target if charge_full else null, strip_color)
 	get_parent().add_child(orb)
 	Mutations.on_attack(self, orb)
+	# 10-18 打击感：出手这一下要"响"——枪口一大团火光、人往后顶、震一下、两层声音叠起来
+	_flash_muzzle = 1.0
+	_flash_muzzle_full = charge_full
 	if charge_full:
 		Game.sfx("shoot", -4.0, 1.0, 0.05)
-		velocity.x -= dir.x * 40.0
+		Game.sfx("flash_boom", -5.0, 1.0, 0.06)
+		velocity.x -= dir.x * 75.0
+		_squash = 0.3
+		Game.add_shake(1.6)
+		# 灯头冒一小股热气
+		Game.sparks(get_parent(), muzzle, Color(0.75, 0.75, 0.8), 4, 35.0, Vector2.UP)
 	else:
-		Game.sfx("shoot", -12.0, 1.35, 0.05)
-	_release_flash = 1.0 if charge_full else 0.4
+		Game.sfx("shoot", -7.0, 1.25, 0.06)
+		Game.sfx("flash_boom", -17.0, 1.7, 0.08)
+		velocity.x -= dir.x * 25.0
+		Game.add_shake(0.5)
+	_release_flash = 1.0 if charge_full else 0.5
 	_cancel_charge()
 	_cooldown = SHOT_COOLDOWN
 
@@ -614,7 +633,7 @@ func _attack_rivet(delta: float) -> void:
 
 
 func hammer_cooldown() -> float:
-	return maxf(HAMMER_COOLDOWN - HAMMER_UPGRADE * charge_level, 1.0)
+	return maxf(HAMMER_COOLDOWN - HAMMER_UPGRADE * charge_level, 0.75)
 
 
 ## 蒸汽锤：按一下，缩一下身子蓄 0.12 秒，以自己为中心炸开一圈蒸汽；之后要冷却
@@ -630,10 +649,15 @@ func _attack_hammer(delta: float) -> void:
 		if _hammer_windup <= 0.0:
 			_blast()
 		return
+	_hammer_buffer = maxf(_hammer_buffer - delta, 0.0)
 	if Input.is_action_just_pressed(_act("attack")) and _stun <= 0.0:
-		if _hammer_cd > 0.0:
-			Game.sfx("ui_back", -18.0, 1.6)
+		if _hammer_cd > HAMMER_BUFFER:
+			# 冷却还早：只轻轻"嘶"一声汽阀，不放"不行"的提示音（10-18：负反馈让节奏更断）
+			Game.sfx("blast_ready", -20.0, 0.7)
 			return
+		_hammer_buffer = HAMMER_BUFFER
+	if _hammer_buffer > 0.0 and _hammer_cd <= 0.0 and _stun <= 0.0:
+		_hammer_buffer = 0.0
 		_hammer_windup = HAMMER_WINDUP
 		_squash = 0.45
 		Game.sfx("scrape", -12.0, 1.8)
@@ -643,6 +667,7 @@ func _blast() -> void:
 	var b := SteamBlast.new()
 	b.color = strip_color
 	b.position = global_position + Vector2(0, -10)
+	b.grounded = is_on_floor()
 	# 蒸汽锤一进场景就结算伤害，所以变异（怒火的倍率等）要在 add_child 之前算
 	Mutations.on_attack(self, b)
 	get_parent().add_child(b)
@@ -830,6 +855,8 @@ func _draw() -> void:
 func _draw_weapon() -> void:
 	match weapon():
 		"flash":
+			if _flash_muzzle > 0.0:
+				_draw_flash_muzzle()
 			if not charging:
 				return
 			var c := Vector2(0, -10)
@@ -881,6 +908,33 @@ func _draw_weapon() -> void:
 					var a := PI + PI * i / (n - 1)
 					var p := Vector2(0, -1) + Vector2(cos(a) * 8.0, sin(a) * 2.0 + 2.0)
 					_px(p, Color(strip_color, 0.5))
+
+
+## 闪光灯出手的火光：蓄满是一大团白光 + 往前喷的长尖 + 斜着四道光刺；没蓄满是小十字星。
+## 都是一格一格的像素，3~4 帧就没了
+func _draw_flash_muzzle() -> void:
+	var m := Vector2(facing * 6, -11)
+	var hot := Color(1.0, 0.97, 0.85)
+	var glow := strip_color.lerp(Color.WHITE, 0.45)
+	if _flash_muzzle_full:
+		var core := 2 if _flash_muzzle > 0.5 else 1
+		draw_rect(Rect2(m - Vector2(core, core) + _snap, Vector2(core * 2 + 1, core * 2 + 1)), Color.WHITE)
+		var reach := 9 if _flash_muzzle > 0.5 else 6
+		for i in range(core + 1, reach):
+			_px(m + Vector2(facing * i, 0), hot if i < 6 else glow)
+		for i in range(core + 1, 5):
+			_px(m + Vector2(0, -i), glow)
+			_px(m + Vector2(0, i), glow)
+			_px(m + Vector2(-facing * (i - 1), 0), glow)
+		for d in [Vector2(1, 1), Vector2(1, -1), Vector2(-1, 1), Vector2(-1, -1)]:
+			_px(m + d * 3, glow)
+			if _flash_muzzle > 0.5:
+				_px(m + d * 4, Color(glow, 0.6))
+	else:
+		draw_rect(Rect2(m - Vector2.ONE + _snap, Vector2(2, 2)), Color.WHITE)
+		for d in [Vector2.LEFT, Vector2.RIGHT, Vector2.UP, Vector2.DOWN]:
+			_px(m + d * 2, glow)
+		_px(m + Vector2(facing * 3, 0), hot)
 
 
 ## 背后的小弧形油量表。满油而且没在飞就不画

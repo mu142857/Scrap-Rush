@@ -18,7 +18,7 @@ const MUTATIONS := [
 	["dynamo", "DYNAMO", ["Every 10 kills: lantern +5.", "The 10 notches under the lantern bar show your progress. More enemies, more healing."]],
 ]
 const GEAR := [
-	["charge", "QUICK CHARGE", ["Per level: the Flash Lamp charges 0.08 s faster, the Rivet Gun fires 0.01 s faster, the Steam Hammer cools down 0.2 s faster.", "Charge never drops below 0.35 s, cooldown never below 1.0 s."]],
+	["charge", "QUICK CHARGE", ["Per level: the Flash Lamp charges %s s faster, the Rivet Gun fires %s s faster, the Steam Hammer cools down %s s faster.", "Charge never drops below %s s, cooldown never below %s s."]],
 	["fuel", "BIG TANK", ["Per level: +0.35 s of rocket boot fuel.", "Base fuel is 1.0 s, or 0.7 s while you carry the lantern."]],
 	["plating", "PLATING", ["Blocks one hit on the lantern every 20 / 15 / 10 s (Lv1 / Lv2 / Lv3)."]],
 	["damping", "DAMPER", ["Per level: emotion rises 20% slower over time.", "At Lv3 it climbs at 40% speed."]],
@@ -62,10 +62,27 @@ func _ready() -> void:
 	_cost = _label(x, DETAIL.position.y + 91, w, DIM, HORIZONTAL_ALIGNMENT_CENTER)
 	_desc = _label(x, DETAIL.position.y + 110, w, TEXT, HORIZONTAL_ALIGNMENT_LEFT)
 	_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_desc.label_settings.line_spacing = -2
+	_desc.label_settings.line_spacing = Lang.tight_line()
 	_select(0)
 	await get_tree().process_frame
 	_ready_for_input = true
+
+
+## 快充的数直接从 player.gd 读（武器手感一调，这里跟着变）：每级快多少，以及最快能到多少
+## （最快值是拿一个满级的主角问它自己的 charge_time() / hammer_cooldown()，不在场景里、不跑 _ready）
+func _quick_charge_numbers() -> Array:
+	var script: GDScript = load("res://scripts/player/player.gd")
+	var c: Dictionary = script.get_script_constant_map()
+	var p: Node = script.new()
+	p.set("charge_level", 99)
+	var out := [_num(c["CHARGE_UPGRADE"]), _num(c["RIVET_UPGRADE"]), _num(c["HAMMER_UPGRADE"]),
+		_num(p.call("charge_time")), _num(p.call("hammer_cooldown"))]
+	p.free()
+	return out
+
+
+func _num(v: float) -> String:
+	return ("%.2f" % v).trim_suffix("0").trim_suffix("0").trim_suffix(".")
 
 
 func _label(x: float, y: float, w: float, color: Color, align: HorizontalAlignment) -> Label:
@@ -106,7 +123,12 @@ func _select(i: int) -> void:
 		_cost.text = tr("MUTATION") + "  -  " + tr("2 PARTS")
 	else:
 		_cost.text = tr("GEAR") + "  -  " + tr("1 PART PER LEVEL")
-	_desc.text = "\n".join(PackedStringArray(e[2].map(func(line): return tr(line))))
+	var lines: PackedStringArray = PackedStringArray(e[2].map(func(line): return tr(line)))
+	if e[0] == "charge":
+		var q := _quick_charge_numbers()
+		lines[0] = lines[0] % [q[0], q[1], q[2]]
+		lines[1] = lines[1] % [q[3], q[4]]
+	_desc.text = "\n".join(lines)
 
 
 ## 总图鉴调：用掉了返回 true

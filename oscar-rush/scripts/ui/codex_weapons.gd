@@ -81,6 +81,12 @@ var _sparks: Array = []
 var _puffs: Array = []
 var _blasts: Array = []
 var _pellets: Array = []
+## 10-18 打击感（游戏设计会话加的）：命中星、机油点、击杀碎铁片、扬尘、全屏白闪
+var _stars: Array = []
+var _oil: Array = []
+var _chunks: Array = []
+var _dust: Array = []
+var _screen_flash := 0.0
 ## 顿帧（Game.hitstop）：打中时整个画面停一下，这段时间模拟不走
 var _freeze := 0.0
 
@@ -119,10 +125,10 @@ func _ready() -> void:
 		_stat_labels.append(l)
 	_facts = _label(x, DETAIL.position.y + 76, w, TEXT, HORIZONTAL_ALIGNMENT_LEFT)
 	_facts.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_facts.label_settings.line_spacing = -2
+	_facts.label_settings.line_spacing = Lang.tight_line()
 	_tip = _label(x, 0, w, WARM, HORIZONTAL_ALIGNMENT_LEFT)
 	_tip.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_tip.label_settings.line_spacing = -2
+	_tip.label_settings.line_spacing = Lang.tight_line()
 	_select(maxi(WEAPONS.map(func(e): return e[0]).find(Upgrades.weapon), 0))
 	await get_tree().process_frame
 	_ready_for_input = true
@@ -268,7 +274,7 @@ func _reset() -> void:
 	_freeze = 0.0
 	_rng.seed = 7
 	_hero = {"x": d["hero"], "vx": 0.0, "charging": false, "charge": 0.0, "full": false, "gather": 0.0, "ring": 0.0,
-		"muzzle": 0.0, "flash": 0.0, "squash": 0.0, "rivet_t": 0.0, "rivet_n": 0, "cd": 0.0, "windup": 0.0, "anim": 0.0}
+		"muzzle": 0.0, "fmuzzle": 0.0, "fmuzzle_full": false, "flash": 0.0, "squash": 0.0, "rivet_t": 0.0, "rivet_n": 0, "cd": 0.0, "windup": 0.0, "anim": 0.0}
 	_bugs.clear()
 	for off in d["bugs"]:
 		_bugs.append(_new_bug(d["hero"] + off))
@@ -279,6 +285,11 @@ func _reset() -> void:
 	_puffs.clear()
 	_blasts.clear()
 	_pellets.clear()
+	_stars.clear()
+	_oil.clear()
+	_chunks.clear()
+	_dust.clear()
+	_screen_flash = 0.0
 	if WEAPONS[_sel][0] == "hammer":
 		# Boss 打过来的三颗弹丸，在主角身边慢慢飘，蒸汽圈扫到就散
 		for off in [Vector2(26, -24), Vector2(-24, -26), Vector2(40, -6)]:
@@ -304,6 +315,8 @@ func _step() -> void:
 	h["ring"] = maxf(h["ring"] - STEP * 5.0, 0.0)
 	h["gather"] = maxf(h["gather"] - STEP / 0.18, 0.0)
 	h["muzzle"] = maxf(h["muzzle"] - STEP / 0.035, 0.0)
+	h["fmuzzle"] = maxf(h["fmuzzle"] - STEP / 0.06, 0.0)
+	_screen_flash = maxf(_screen_flash - STEP / 0.06, 0.0)
 	h["flash"] = maxf(h["flash"] - STEP / 0.15, 0.0)
 	h["squash"] = maxf(h["squash"] - STEP / 0.16, 0.0)
 	# 后坐：往后退一点，慢慢停（站在地上，摩擦很大）
@@ -349,8 +362,13 @@ func _step_flash(d: Dictionary) -> void:
 		h["charging"] = false
 		var muzzle := Vector2(h["x"] + 5, FLOOR_Y - 11)
 		_orbs.append({"p": muzzle, "v": Vector2(_k["orb_speed"], 0), "full": h["full"], "trail": [], "hit": [], "life": 0.0})
+		# 出手：枪口一大团火光（蓄满白芯 + 长尖 + 斜刺，没蓄满小十字星），蓄满的往后顶得更狠、灯头冒一股热气
+		h["fmuzzle"] = 1.0
+		h["fmuzzle_full"] = h["full"]
 		if h["full"]:
-			h["vx"] -= 40.0
+			h["vx"] -= 75.0
+			h["squash"] = 0.3
+			_spark_burst(muzzle, Color(0.75, 0.75, 0.8), 4, 35.0, Vector2.UP)
 		h["flash"] = 1.0 if h["full"] else 0.4
 		h["full"] = false
 		h["charge"] = 0.0
@@ -406,6 +424,16 @@ func _blast() -> void:
 	h["flash"] = 0.6
 	h["ring"] = 0.35
 	var r: float = _k["blast_r"]
+	var hits := 0
+	# 站在地上砸：两边扬尘、迸 6 块碎石
+	var foot := Vector2(h["x"], FLOOR_Y)
+	for side in [-1.0, 1.0]:
+		for i in 8:
+			_dust.append({"p": foot + Vector2(side * 2.0, -1.0), "v": Vector2(side, -0.35).rotated(deg_to_rad(_rng.randf_range(-18, 18))) * _rng.randf_range(20.0, 55.0),
+				"t": 0.0, "s": 1 + _rng.randi() % 2})
+	for i in 6:
+		_chunks.append({"p": foot + Vector2(_rng.randf_range(-10, 10), -1), "v": Vector2(_rng.randf_range(-110.0, 110.0), -_rng.randf_range(90.0, 160.0)),
+			"t": 0.0, "bounces": 0, "spin": 0, "shape": 0, "c": [Color8(90, 86, 84), Color8(120, 112, 100), Color8(70, 66, 66)][i % 3]})
 	for b in _bugs:
 		if b["dead"]:
 			continue
@@ -413,8 +441,13 @@ func _blast() -> void:
 		var body := _bug_rect(b)
 		var nearest := Vector2(clampf(center.x, body.position.x, body.end.x), clampf(center.y, body.position.y, body.end.y))
 		if nearest.distance_to(center) <= r:
-			_hurt(b, _k["blast_damage"], signf(b["x"] - center.x), true)
-			_freeze = 0.05
+			hits += 1
+			var at := Vector2(b["x"], FLOOR_Y - 8)
+			_hurt(b, _k["blast_damage"], signf(b["x"] - center.x), true, at, (at - center).normalized(), 1.0)
+	if hits > 0:
+		# 一锤砸中越多越重：顿帧、全屏白闪
+		_freeze = minf(0.06 + 0.015 * (hits - 1), 0.11)
+		_screen_flash = 1.0
 	for p in _pellets:
 		if not p.has("gone") and p["p"].distance_to(center) < r:
 			p["gone"] = true
@@ -438,9 +471,9 @@ func _step_shots() -> void:
 			if b["dead"] or o["hit"].has(b) or not _bug_rect(b).grow(4.0).has_point(o["p"]):
 				continue
 			o["hit"].append(b)
-			_hurt(b, _k["orb_damage"], 1.0, true)
 			# 第一只顿得最久，后面的短顿一下（orb.gd）
 			_freeze = 0.07 if o["hit"].size() == 1 else 0.03
+			_hurt(b, _k["orb_damage"], 1.0, true, o["p"], Vector2.RIGHT, 1.0)
 			_spark_burst(o["p"], STRIP.lerp(Color.WHITE, 0.5), 10, 90.0, Vector2.ZERO)
 			_spark_burst(o["p"], Color.WHITE, 6, 120.0, Vector2.RIGHT)
 		if o["p"].x > 130.0 or o["life"] > 1.6:
@@ -454,7 +487,7 @@ func _step_shots() -> void:
 		r["p"] += r["v"] * STEP
 		for b in _bugs:
 			if not b["dead"] and _bug_rect(b).grow(3.0).has_point(r["p"]):
-				_hurt(b, _k["rivet_damage"], 1.0, false)
+				_hurt(b, _k["rivet_damage"], 1.0, false, r["p"], r["v"].normalized(), 0.0)
 				_spark_burst(r["p"], Color(1.0, 0.85, 0.6), 4, 80.0, Vector2.LEFT)
 				_rivets.erase(r)
 				break
@@ -489,25 +522,87 @@ func _step_shots() -> void:
 		b["t"] += STEP
 		if b["t"] > _k["blast_life"] + 0.3:
 			_blasts.erase(b)
+	for st in _stars.duplicate():
+		st["t"] += STEP
+		if st["t"] > 0.045:
+			_stars.erase(st)
+	for o in _oil:
+		if not o["landed"]:
+			o["v"].y += 520.0 * STEP
+			o["p"] += o["v"] * STEP
+			if o["p"].y >= FLOOR_Y - 1 and o["v"].y > 0.0:
+				o["p"].y = FLOOR_Y - 1
+				o["landed"] = true
+	for c in _chunks.duplicate():
+		c["t"] += STEP
+		if c["bounces"] < 2:
+			c["v"].y += 560.0 * STEP
+			c["p"] += c["v"] * STEP
+			c["spin"] += 1
+			if c["p"].y >= FLOOR_Y - 1 and c["v"].y > 0.0:
+				c["p"].y = FLOOR_Y - 1
+				c["bounces"] += 1
+				c["v"] = Vector2(c["v"].x * 0.4, -absf(c["v"].y) * 0.3)
+				if c["bounces"] >= 2:
+					c["v"] = Vector2.ZERO
+		if c["t"] > 1.1:
+			_chunks.erase(c)
+	for d in _dust.duplicate():
+		d["t"] += STEP
+		d["v"] = d["v"].move_toward(Vector2.ZERO, 140.0 * STEP) + Vector2(0, -20.0 * STEP)
+		d["p"] += d["v"] * STEP
+		if d["t"] > 0.35:
+			_dust.erase(d)
+	for b in _bugs:
+		if b.has("sil"):
+			b["sil"] -= STEP
 
 
 func _bug_rect(b: Dictionary) -> Rect2:
 	return Rect2(b["x"] - 12, FLOOR_Y - 15, 24, 15)
 
 
-## 齿轮爬虫挨打：发白、往后退；血打光了冒灰色和橙色碎屑后消失（crawler.gd 的 hurt / _die）
-func _hurt(b: Dictionary, dmg: float, dir: float, full: bool) -> void:
+## 齿轮爬虫挨打：发白、往后退；血打光了留一个白剪影 3 帧、冒灰色和橙色碎屑后消失（crawler.gd 的 hurt / _die），
+## 再加武器那边的击杀反馈（hit_fx.gd）：碎铁片顺着攻击方向迸出去落地弹两下、机油溅、一小股火花、短顿帧。
+## 每一下还有命中星（越痛刺越长）和几滴机油。power：铆钉 0、没蓄满的光球 0.45、蓄满和蒸汽锤 1
+func _hurt(b: Dictionary, dmg: float, dir: float, full: bool, at := Vector2.ZERO, hit_dir := Vector2.RIGHT, power := 0.0) -> void:
 	if b["dead"]:
 		return
 	b["hp"] -= dmg
 	b["flash"] = 1.0
 	b["knock"] = 0.12 if full else 0.06
 	b["vx"] = dir * (90.0 if full else 40.0)
+	if at == Vector2.ZERO:
+		at = Vector2(b["x"], FLOOR_Y - 8)
+	_stars.append({"p": at.round(), "t": 0.0, "arm": 2 + int(round(power * 3.0))})
+	_spray(at, hit_dir, 1 + int(round(power * 3.0)), 0.8 + 0.4 * power, 40.0)
 	if b["hp"] <= 0.0:
 		b["dead"] = true
-		var at := Vector2(b["x"], FLOOR_Y - 8)
-		_spark_burst(at, Color8(150, 140, 125), 14, 110.0, Vector2.ZERO)
-		_spark_burst(at, Color8(255, 190, 120), 6, 80.0, Vector2.ZERO)
+		b["sil"] = 0.05
+		var c := Vector2(b["x"], FLOOR_Y - 8)
+		_spark_burst(c, Color8(150, 140, 125), 14, 110.0, Vector2.ZERO)
+		_spark_burst(c, Color8(255, 190, 120), 6, 80.0, Vector2.ZERO)
+		var d := hit_dir.normalized() if hit_dir.length() > 0.1 else Vector2.RIGHT
+		_spray(at, d, 8, 1.2, 35.0)
+		for i in 4:
+			_chunks.append({"p": at + Vector2(_rng.randf_range(-2, 2), _rng.randf_range(-2, 2)),
+				"v": Vector2(d.x * _rng.randf_range(90.0, 200.0) + _rng.randf_range(-25.0, 25.0), minf(d.y, 0.0) * 120.0 - _rng.randf_range(70.0, 150.0)),
+				"t": 0.0, "bounces": 0, "spin": 0, "shape": 2 if i == 3 else (1 if i < 2 else 0),
+				"c": [Color8(120, 115, 110), Color8(150, 140, 125), Color8(200, 160, 90), Color8(90, 86, 84)][i % 4]})
+		_spark_burst(at, Color(1.0, 0.8, 0.45), 6, 150.0, d)
+		if _freeze <= 0.0:
+			_freeze = 0.035
+
+
+## 机油溅（splatter.gd）：往攻击方向溅一道弧，落地摊成一小块斑
+func _spray(at: Vector2, dir: Vector2, n: int, speed: float, spread: float) -> void:
+	var d := dir.normalized() if dir.length() > 0.01 else Vector2.UP
+	var pal := [Color8(30, 26, 24), Color8(54, 46, 38), Color8(40, 34, 30), Color8(96, 82, 58)]
+	for i in n:
+		var v := d.rotated(deg_to_rad(_rng.randf_range(-spread, spread))) * _rng.randf_range(60.0, 170.0) * speed
+		v.y -= _rng.randf_range(30.0, 90.0)
+		_oil.append({"p": at + Vector2(_rng.randf_range(-1, 1), _rng.randf_range(-1, 1)), "v": v, "landed": false,
+			"c": pal[_rng.randi() % pal.size()], "size": 2 if _rng.randf() < 0.25 else 1})
 
 
 ## Game.sparks 的样子：1 格的点，往一个方向（或四面）喷，受重力，0.35 秒淡掉
@@ -549,6 +644,10 @@ func _draw_stage() -> void:
 			var drift := Vector2(0, roundf(sin(_t * 3.0 + p["home"].x)))
 			c.draw_rect(Rect2((p["p"] + drift - Vector2(1, 1)).round(), Vector2(3, 3)), UiStyle.POOR)
 			_px(c, p["p"] + drift, Color(1, 0.8, 0.6))
+	# 地上的机油斑：摊开 2~3 格宽、1 格高
+	for o in _oil:
+		if o["landed"]:
+			c.draw_rect(Rect2(o["p"].round() + Vector2(-1, 0), Vector2(2 + o["size"], 1)), o["c"])
 	for b in _bugs:
 		_draw_bug(c, b)
 	_draw_hero(c)
@@ -568,6 +667,28 @@ func _draw_stage() -> void:
 		var a: float = 1.0 - s["t"] / 0.35
 		var col: Color = s["c"]
 		_px(c, s["p"], Color(col.r, col.g, col.b, a).lerp(Color(col.r * 0.4, col.g * 0.3, col.b * 0.3, 0.0), 1.0 - a))
+	# 扬尘（Game.dust）：贴地往两边扬，1~2 格，淡掉
+	for d in _dust:
+		var k: float = d["t"] / 0.35
+		c.draw_rect(Rect2(d["p"].round(), Vector2(d["s"], d["s"])), Color(0.72, 0.68, 0.64, 0.85).lerp(Color(0.4, 0.38, 0.38, 0.0), k))
+	# 飞着的机油点
+	for o in _oil:
+		if not o["landed"]:
+			_px(c, o["p"], o["c"])
+			if o["size"] == 2:
+				_px(c, o["p"] - o["v"].normalized().round(), o["c"])
+	for k in _chunks:
+		_draw_chunk(c, k)
+	# 命中星：白芯 + 四个方向的短刺，越痛刺越长（hit_fx.gd）
+	for st in _stars:
+		var at: Vector2 = st["p"]
+		c.draw_rect(Rect2(at - Vector2(1, 1), Vector2(2, 2)), Color.WHITE)
+		for i in range(1, int(st["arm"]) + 1):
+			var col := Color.WHITE if i <= 1 else Color(1.0, 0.9, 0.7)
+			for d in [Vector2.LEFT, Vector2.RIGHT, Vector2.UP, Vector2.DOWN]:
+				c.draw_rect(Rect2((at + d * (i + 0.5) - Vector2(0.5, 0.5)).round(), Vector2.ONE), col)
+	if _screen_flash > 0.0:
+		c.draw_rect(Rect2(0, 0, 120, 70), Color(1, 1, 1, 0.06 * _screen_flash))
 	c.draw_set_transform(Vector2.ZERO)
 
 
@@ -605,6 +726,8 @@ func _draw_hero(c: CanvasItem) -> void:
 			_px(c, o + Vector2(cos(a), sin(a)) * r, Color(1, 1, 1, h["ring"]))
 	match WEAPONS[_sel][0]:
 		"flash":
+			if h["fmuzzle"] > 0.0:
+				_draw_flash_muzzle(c, o)
 			if h["charging"]:
 				if not h["full"]:
 					var n := 2 + int(h["charge"] * 3.0)
@@ -650,8 +773,58 @@ func _draw_hero(c: CanvasItem) -> void:
 					_px(c, Vector2(roundf(h["x"]), FLOOR_Y - 1) + Vector2(cos(a) * 8.0, sin(a) * 2.0 + 2.0), Color(STRIP, 0.5))
 
 
+## 闪光灯出手的枪口火光（player.gd 的 _draw_flash_muzzle）：蓄满是白芯 + 往前的长尖 + 四道斜刺，没蓄满是小十字星
+func _draw_flash_muzzle(c: CanvasItem, o: Vector2) -> void:
+	var h := _hero
+	var m := o + Vector2(6, -1)
+	var hot := Color(1.0, 0.97, 0.85)
+	var glow := STRIP.lerp(Color.WHITE, 0.45)
+	var f: float = h["fmuzzle"]
+	if h["fmuzzle_full"]:
+		var core := 2 if f > 0.5 else 1
+		c.draw_rect(Rect2(m - Vector2(core, core), Vector2(core * 2 + 1, core * 2 + 1)), Color.WHITE)
+		var reach := 9 if f > 0.5 else 6
+		for i in range(core + 1, reach):
+			_px(c, m + Vector2(i, 0), hot if i < 6 else glow)
+		for i in range(core + 1, 5):
+			_px(c, m + Vector2(0, -i), glow)
+			_px(c, m + Vector2(0, i), glow)
+			_px(c, m + Vector2(-(i - 1), 0), glow)
+		for d in [Vector2(1, 1), Vector2(1, -1), Vector2(-1, 1), Vector2(-1, -1)]:
+			_px(c, m + d * 3, glow)
+			if f > 0.5:
+				_px(c, m + d * 4, Color(glow, 0.6))
+	else:
+		c.draw_rect(Rect2(m - Vector2.ONE, Vector2(2, 2)), Color.WHITE)
+		for d in [Vector2.LEFT, Vector2.RIGHT, Vector2.UP, Vector2.DOWN]:
+			_px(c, m + d * 2, glow)
+		_px(c, m + Vector2(3, 0), hot)
+
+
+## 击杀迸出来的碎片、蒸汽锤砸出的碎石（hit_fx.gd 的 Chunk）：飞着横竖交替，落地躺平，最后一闪一闪没掉
+func _draw_chunk(c: CanvasItem, k: Dictionary) -> void:
+	if k["t"] > 0.8 and int(k["t"] * 20.0) % 2 == 0:
+		return
+	var p: Vector2 = k["p"].round()
+	var flying: bool = k["bounces"] < 2 and (int(k["spin"]) / 3) % 2 == 1
+	var col: Color = k["c"]
+	match int(k["shape"]):
+		1:
+			c.draw_rect(Rect2(p, Vector2(2, 3) if flying else Vector2(3, 2)), col)
+			c.draw_rect(Rect2(p, Vector2.ONE), col.lightened(0.25))
+		2:
+			c.draw_rect(Rect2(p, Vector2(1, 3) if flying else Vector2(3, 1)), Color8(170, 165, 155))
+			c.draw_rect(Rect2(p, Vector2.ONE), Color8(210, 205, 195))
+		_:
+			c.draw_rect(Rect2(p, Vector2(1, 2) if flying else Vector2(2, 1)), col)
+
+
 func _draw_bug(c: CanvasItem, b: Dictionary) -> void:
 	if b["dead"]:
+		# 死的那一下留一个纯白剪影，亮 3 帧
+		if b.get("sil", 0.0) > 0.0:
+			var f2 := int(_t / 0.15) % 4
+			c.draw_texture_rect_region(_bug, Rect2(Vector2(roundf(b["x"]) - 18, FLOOR_Y - 16), Vector2(36, 16)), Rect2(f2 * 36, 0, 36, 16), Color(6, 6, 6))
 		return
 	var f := int(_t / 0.15) % 4
 	var at := Vector2(roundf(b["x"]) - 18, FLOOR_Y - 16)
@@ -662,9 +835,13 @@ func _draw_bug(c: CanvasItem, b: Dictionary) -> void:
 func _draw_orb(c: CanvasItem, o: Dictionary) -> void:
 	var trail: Array = o["trail"]
 	var n: int = _k["orb_trail"]
+	# 尾巴：蓄满的 2 像素粗、前两格偏白；没蓄满 1 像素
 	for i in trail.size():
 		var a := 0.6 * (1.0 - float(i) / n)
-		_px(c, trail[i], Color(STRIP.r, STRIP.g, STRIP.b, a))
+		var col := Color(STRIP.r, STRIP.g, STRIP.b, a)
+		if o["full"] and i < 2:
+			col = Color(1, 1, 1, 0.8)
+		c.draw_rect(Rect2((trail[i] as Vector2).round(), Vector2(2, 2) if o["full"] else Vector2.ONE), col)
 	var p: Vector2 = o["p"].round()
 	if o["full"]:
 		c.draw_rect(Rect2(p + Vector2(-1, -3), Vector2(3, 7)), STRIP)
@@ -672,7 +849,8 @@ func _draw_orb(c: CanvasItem, o: Dictionary) -> void:
 		c.draw_rect(Rect2(p + Vector2(-2, -2), Vector2(5, 5)), STRIP.lerp(Color.WHITE, 0.5))
 		c.draw_rect(Rect2(p + Vector2(-1, -1), Vector2(3, 3)), Color.WHITE)
 	else:
-		c.draw_rect(Rect2(p + Vector2(-1, -1), Vector2(2, 2)), STRIP.lerp(Color.WHITE, 0.4))
+		c.draw_rect(Rect2(p + Vector2(-1, -1), Vector2(3, 3)), STRIP.lerp(Color.WHITE, 0.3))
+		c.draw_rect(Rect2(p, Vector2.ONE), Color.WHITE)
 
 
 func _draw_rivet(c: CanvasItem, r: Dictionary) -> void:
@@ -726,6 +904,14 @@ func _draw_blast(c: CanvasItem, b: Dictionary) -> void:
 		var col := Color(1, 1, 1, a) if ring == 0 else Color(STRIP.r, STRIP.g, STRIP.b, a * 0.6)
 		for i in n:
 			var ang := TAU * i / n
-			c.draw_rect(Rect2(center + (Vector2(cos(ang), sin(ang)) * rr).round(), Vector2.ONE), col)
+			var v := Vector2(cos(ang), sin(ang))
+			c.draw_rect(Rect2(center + (v * rr).round(), Vector2.ONE), col)
+			# 外圈刚炸开时 2 像素粗
+			if ring == 0 and k < 1.0:
+				c.draw_rect(Rect2(center + (v * (rr - 1.0)).round(), Vector2.ONE), col)
+	# 中心一团白：大一圈，带十字
 	if t < 0.08:
-		c.draw_rect(Rect2(center + Vector2(-5, -5), Vector2(10, 10)), Color(1, 1, 1, 1.0 - t / 0.08))
+		var w := Color(1, 1, 1, 1.0 - t / 0.08)
+		c.draw_rect(Rect2(center + Vector2(-7, -7), Vector2(14, 14)), w)
+		c.draw_rect(Rect2(center + Vector2(-2, -11), Vector2(4, 22)), w)
+		c.draw_rect(Rect2(center + Vector2(-11, -2), Vector2(22, 4)), w)

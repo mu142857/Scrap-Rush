@@ -541,6 +541,44 @@ def hammer_boom():
     return boom + rubble + clank
 
 
+# 第三关开场：老电脑开机（游戏剧情主题讨论会话，2026-10-18）
+# 显像管上电：低沉的"咚" + 高压包一声细细的高频啸叫往上爬 + 一点静电噼啪
+def boot_crt():
+    d = 0.9
+    n = int(SR * d)
+    thump = np.sin(2 * np.pi * np.geomspace(90, 40, n) * t(d)) * decay(n, 9)
+    whine = sweep(5200, 7600, d) * env(n, 0.08, 0.3) * 0.07
+    crackle = highpass(_rn(d, 1820), 0.6) * (_rn(d, 1821) > 0.93) * decay(n, 5) * 0.5
+    return thump + whine + crackle
+
+
+# 开机嗡嗡声：50Hz 电源哼 + 二次谐波 + 风扇的低通噪声，前后淡入淡出（3.6 秒）
+def boot_hum():
+    d = 3.6
+    n = int(SR * d)
+    hum = np.sin(2 * np.pi * 50 * t(d)) + 0.5 * np.sin(2 * np.pi * 100 * t(d)) + 0.2 * np.sin(2 * np.pi * 150 * t(d))
+    fan = lowpass(_rn(d, 1822), 0.05) * 3.0
+    wob = 1.0 + 0.08 * np.sin(2 * np.pi * 0.7 * t(d))
+    return (hum * 0.5 + fan) * wob * env(n, 0.5, 0.8)
+
+
+# 硬盘咔哒：一声很短的"嗒" + 一小段寻道的沙沙
+def hdd_click():
+    d = 0.09
+    n = int(SR * d)
+    tick = highpass(_rn(d, 1823), 0.4) * decay(n, 160)
+    seek = lowpass(_rn(d, 1824), 0.35) * env(n, 0.01, 0.03) * 0.35
+    return tick + seek
+
+
+# 自检通过的"嘀"：方波，0.14 秒
+def boot_beep():
+    d = 0.14
+    n = int(SR * d)
+    sq = np.sign(np.sin(2 * np.pi * 988 * t(d)))
+    return lowpass(sq, 0.5) * env(n, 0.003, 0.02)
+
+
 if __name__ == "__main__":
     import sys
     # 只重写指定的几个：python3 tools/gen_sfx.py jet jet_long。照样全部算一遍，保证随机序列不变
@@ -550,7 +588,7 @@ if __name__ == "__main__":
                whistle, boom, rivets, embers, vent, scrape, suction, clang, ding, alarm,
                bell, dial, buzz, busy, voice, tvclick, static, tvoff, tvon,
                rivet_shot, rivet_hit, casing, steam_blast, blast_ready, jet, jet_long,
-               kill_pop, flash_boom, hammer_boom]:
+               kill_pop, flash_boom, hammer_boom, boot_crt, boot_hum, hdd_click, boot_beep]:
         x = fn()
         if not only or fn.__name__ in only:
             write(fn.__name__, x)

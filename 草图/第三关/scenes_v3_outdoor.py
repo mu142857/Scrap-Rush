@@ -295,10 +295,24 @@ def pigeon_coop(x, fy, w, leg=10, h=18, wood=(130, 104, 100)):
 
 
 def pigeon(x, y, c=(150, 146, 160), flip=False):
+    """站着的鸽子，约 8×5：圆头、发绿的脖子、胖身子、深一档的尾巴、一点红脚。y 是脚踩的那一行。
+    （10-18 打磨：原来 3×2 像素，在屋顶上看不出是鸽子）"""
     d = -1 if flip else 1
-    R(min(x, x + 2 * d), y, max(x, x + 2 * d), y + 1, c)
-    P(x + 3 * d, y - 1, shade(c, -1))
-    P(x + 1 * d, y - 1, shade(c, 2))
+
+    def px(dx, dy, col):
+        P(x + dx * d, y + dy, col)
+
+    for dx in range(0, 5):
+        px(dx, -1, c)                                  # 身子下排
+    for dx in range(-1, 5):
+        px(dx, -2, shade(c, 1) if dx >= 2 else c)      # 身子上排，胸口亮一档
+    px(-2, -2, shade(c, -2)); px(-2, -1, shade(c, -2)); px(-3, -2, shade(c, -2))   # 尾巴
+    px(0, -3, shade(c, -1)); px(1, -3, shade(c, -1))   # 翅膀背
+    neck = (112, 150, 142)
+    px(4, -3, neck); px(5, -3, neck)                  # 脖子：一点绿
+    px(5, -4, shade(c, 2)); px(6, -4, shade(c, 2))    # 头
+    px(7, -4, (214, 160, 120))                        # 嘴
+    px(1, 0, (196, 112, 104)); px(3, 0, (196, 112, 104))   # 脚
 
 
 def flying_bird(x, y, c):
@@ -459,8 +473,8 @@ def sc_rooftop(tv):
         clothesline(x0 + 214, x0 + 300, fy, 40, [("shirt", CREW[0]), ("pants", CREW[1]), ("towel", CREW[2]), ("sock", CREW[3])])
         skylight(x0 + 230, fy, 34)
         top = pigeon_coop(x0 + 314, fy, 40, leg=12, h=18)
-        for px in (x0 + 318, x0 + 324, x0 + 341):
-            pigeon(px, top - 2, flip=px > x0 + 330)
+        for px in (x0 + 316, x0 + 327, x0 + 346):
+            pigeon(px, top - 3, flip=px > x0 + 335)
         for i, (bx, by) in enumerate([(x0 + 360, top - 26), (x0 + 372, top - 34)]):
             flying_bird(bx, by, (128, 116, 140))
         hx = x1 - 62
@@ -974,11 +988,26 @@ def pine(x, fy, h, w, c=(46, 76, 76), snow=(222, 228, 242), moon_right=True, tie
         S().poly([(x - hw, yb), (x + hw + 1, yb), (x, yb - th)], dark_c if moon_right else lit_c)
         S().poly([(x, yb), (x + hw + 1, yb), (x, yb - th)], lit_c if moon_right else dark_c)
         # 雪：每层顶上一顶雪帽（朝月亮那半亮），枝梢上零星几点
-        cap = max(3, th // 3)
-        cw = max(2, hw * cap // th)
-        S().poly([(x - cw, yb - th + cap), (x, yb - th + cap - 2), (x, yb - th)], shade(snow, -2))
-        S().poly([(x, yb - th + cap - 2), (x + cw + 1, yb - th + cap), (x, yb - th)], snow)
-        P(x + hw - 1, yb - 1, snow); P(x + hw // 2, yb - 1, snow); P(x - hw + 2, yb - 1, shade(snow, -2))
+        # 10-18 打磨：雪帽原来只有尖上一小点，看不出是积雪。现在压到这层的一半高，下沿参差，
+        # 朝月亮那边的斜边再挂一道雪，枝梢上一排雪点
+        cap = max(4, th // 2)
+        cw = max(3, hw * cap // th)
+        lit_snow, dark_snow = (snow, shade(snow, -2)) if moon_right else (shade(snow, -2), snow)
+        S().poly([(x - cw, yb - th + cap), (x - cw // 2, yb - th + cap - 1), (x, yb - th + cap + 1), (x, yb - th)], dark_snow)
+        S().poly([(x, yb - th + cap + 1), (x + cw // 2, yb - th + cap - 1), (x + cw + 1, yb - th + cap), (x, yb - th)], lit_snow)
+        side = 1 if moon_right else -1
+        for k in range(cap, th - 1):                    # 朝月亮那条斜边上挂的一道雪
+            ex = x + side * (hw * k // th)
+            P(ex, yb - th + k, lit_snow)
+        # 枝梢积雪：每层的下沿（上一层盖不住的那截）朝月亮那半压一道实的雪，背光那半是断续的雪点
+        for k in range(-hw + 1, hw):
+            lit = (k > 0) == moon_right
+            if lit:
+                P(x + k, yb - 1, lit_snow)
+                if abs(k) < hw - 2 and k % 4 == 1:
+                    P(x + k, yb - 2, lit_snow)
+            elif k % 2 == 0:
+                P(x + k, yb - 1, dark_snow)
 
 
 def bare_tree(x, fy, h, c=(70, 66, 96), snow=(206, 214, 238), seed=3):

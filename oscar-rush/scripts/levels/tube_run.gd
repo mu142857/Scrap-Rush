@@ -19,6 +19,8 @@ const FAR_TEX := preload("res://art/levels/level2_tube_far.png")
 const MID_TEX := preload("res://art/levels/level2_tube_mid.png")
 ## 管里的风（草图/第二关/level2_sfx.py 合成的 2 秒循环），音量、音高跟着速度走
 const WIND := preload("res://sfx/level2_tube_wind.wav")
+## 开场动画：胶片很快地卷过去、卡住、烧白，接着就是管道冲刺（只在第一次进来时播）
+const INTRO := preload("res://scripts/levels/level2_intro.gd")
 
 const LANES: Array[float] = [104.0, 140.0, 176.0]
 const TUBE_R := 9.0
@@ -91,6 +93,8 @@ func _ready() -> void:
 		if arg.begins_with("--tubeat="):
 			resume_d = arg.trim_prefix("--tubeat=").to_float()
 			_debug_start = true
+	# 要在 start_level 之前看：它会把"正在重来"的标记清掉
+	var play_intro: bool = INTRO.wanted()
 	Run.start_level()
 	Run.crystal_broken.connect(_on_crystal_broken)
 	dist = resume_d
@@ -129,6 +133,8 @@ func _ready() -> void:
 	# 开场不打"冲进气动管"横幅：它正好压在中间那条管上，玩家这时候正在学换道（10-18 夜间打磨）
 	if resume_d > 0.0 and not _debug_start:
 		hud.show_banner("CHECKPOINT", 0.8)
+	if play_intro:
+		add_child(INTRO.new())
 
 
 func _bg(tex: Texture2D, z: int) -> Sprite2D:

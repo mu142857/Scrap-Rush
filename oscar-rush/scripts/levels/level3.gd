@@ -81,6 +81,8 @@ func _ready() -> void:
 			for i in n:
 				Run.players.append({"input": schemes[i], "skin": Run.SKINS[i]})
 			Run.reset_run()
+	# 从存档点重来时 Run._resuming 是真（start_level 会把它清掉，所以先记下来）：重来不放开场动画、不出开场横幅
+	var retrying: bool = Run.get("_resuming")
 	Run.start_level()
 	Run.crystal_broken.connect(_on_crystal_broken)
 
@@ -152,7 +154,15 @@ func _ready() -> void:
 	for m in _modes:
 		m.hud = hud
 	# 开场说清目标（新玩家报告第 1 条：不知道往哪走）。从存档点重来就不再出
-	if Run.checkpoint.is_empty():
+	if not retrying:
+		# 开场：老电脑开机（l3_boot_intro.gd）。播的时候整棵树暂停，开场横幅的计时器也跟着停，放完才出。
+		# 自测参数（--l3auto、--l3mode、--l3fix……）跳过开场，不然每次测试多等 4 秒
+		var testing := false
+		for a in OS.get_cmdline_user_args():
+			if a.begins_with("--l3") or a.begins_with("--tour"):
+				testing = true
+		if not testing or OS.get_cmdline_user_args().has("--l3intro"):
+			L3BootIntro.play(self)
 		_after(1.2, func() -> void:
 			if is_instance_valid(hud) and not _leaving:
 				hud.show_banner(tr("Find the house from the tape. Up and to the right."), 3.0))

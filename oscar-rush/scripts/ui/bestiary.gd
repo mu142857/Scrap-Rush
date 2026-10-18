@@ -49,7 +49,8 @@ class _Watch extends Node:
 
 ## 贴图路径 → 图鉴编号
 static func id_for_texture(path: String) -> String:
-	return path.trim_prefix("res://art/enemies/").get_basename().replace("/", "_")
+	# 第三关精英的大号、小号贴图在 l3/size/ 里（l3_elite_art.gd），编号和原图一样
+	return path.trim_prefix("res://art/enemies/").get_basename().replace("/size/", "/").replace("/", "_")
 
 
 static func mark(id: String) -> void:
@@ -313,6 +314,10 @@ static func entries() -> Array:
 	# 用 load 读，不写 L3Mob 类名：EnemyBase 会调 Bestiary，写了类名就等于每只怪都依赖第三关的全部脚本，
 	# 第三关哪个文件正改到一半（解析错误），全游戏的怪都跟着编译不过（10-18 夜里真出过一次）
 	var mobs: Dictionary = load("res://scripts/levels/level3_mobs.gd").get_script_constant_map()["MOBS"]
+	# 第三关精英有新画的大号、小号贴图的，图鉴里也用新图（和游戏里一样）
+	var art: Dictionary = {}
+	if ResourceLoader.exists("res://scripts/enemies/l3/l3_elite_art.gd"):
+		art = load("res://scripts/enemies/l3/l3_elite_art.gd").get_script_constant_map().get("ART", {})
 	for key in mobs:
 		var cfg: Dictionary = mobs[key]
 		var kind: String = cfg["kind"]
@@ -324,6 +329,9 @@ static func entries() -> Array:
 			"tex": cfg["texture"], "hframes": hf, "frames": [0, 1] if hf > 1 and kind != "hop" else [0],
 			"place": "l3_" + cfg["scene"], "key": key, "moves": cfg.get("moves", []).size(),
 		}
+		if art.has(key) and ResourceLoader.exists(art[key]["texture"]):
+			e["tex"] = art[key]["texture"]
+			e["hframes"] = art[key]["hframes"]
 		E.append(e)
 	# ---- Boss
 	E.append({"id": "boss_stoker", "chapter": "boss", "kind": "boss", "name": "THE STOKER", "title": "LEVEL 1 BOSS",
@@ -474,6 +482,10 @@ static func stats(e: Dictionary) -> Dictionary:
 		st["hp"] = int(obj.get("max_hp"))
 		st["atk"] = int(obj.get("contact_damage"))
 		st["spd"] = _speed_of(obj.get_script())
+		# 第三关精英按打法走（l3_elite.gd 的 TYPE[打法]["walk"]，_setup 时放在 _tp 里）
+		var tp = obj.get("_tp")
+		if tp is Dictionary and tp.has("walk"):
+			st["spd"] = _tier(float(tp["walk"]))
 		obj.free()
 	_stats[id] = st
 	return st

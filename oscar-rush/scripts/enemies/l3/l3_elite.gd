@@ -64,7 +64,7 @@ const MOVES := {
 const TYPE := {
 	"charger": {"walk": 34.0, "near": 0.0, "far": 50.0, "hp": 1.0},
 	"giant": {"walk": 16.0, "near": 0.0, "far": 34.0, "hp": 1.05},
-	"flyer": {"walk": 60.0, "near": 0.0, "far": 0.0, "hp": 0.95},
+	"flyer": {"walk": 60.0, "near": 0.0, "far": 0.0, "hp": 1.1},
 	"summoner": {"walk": 26.0, "near": 80.0, "far": 130.0, "hp": 0.95},
 	"shield": {"walk": 22.0, "near": 0.0, "far": 46.0, "hp": 0.62},
 	"blinker": {"walk": 28.0, "near": 40.0, "far": 90.0, "hp": 0.95},
@@ -83,7 +83,7 @@ const BULLET_SPEED := 88.0
 const MAX_SUMMONS := 2
 const COOLDOWN := Vector2(0.35, 0.7)  # 10-18 作者：招和招之间停太久
 ## 血量在 level3_mobs.gd（生成的，别手改）里，这里统一乘上去，再乘打法的倍数
-const HP_MULT := 2.3  # 10-18 作者：血不够，三把武器 20～35 秒
+const HP_MULT := 2.5  # 10-18 作者：血不够，三把武器 20～35 秒（2.3 → 2.5：分打法以后站桩快了一点）
 ## 预判：落点按主角现在的水平速度再跑这么久来算，最多偏 LEAD_MAX
 const LEAD_TIME := 0.45
 const LEAD_MAX := 56.0
@@ -467,7 +467,8 @@ func _begin(p: Player) -> void:
 func _pick_move() -> void:
 	var moves: Array = MOVES[arch]
 	_summons = _summons.filter(func(n): return is_instance_valid(n) and not n.get("dead"))
-	var cap := MAX_SUMMONS + (1 if arch == "summoner" else 0)
+	# 叫出来的小怪同时最多 MAX_SUMMONS 只（10-18 第三关会话：作者嫌怪多，一场压到 3+2，精英叫的最多 2 只）
+	var cap := MAX_SUMMONS
 	if _bag.is_empty():
 		_bag = moves.duplicate()
 		_bag.shuffle()
@@ -475,7 +476,8 @@ func _pick_move() -> void:
 			_bag.reverse()
 	var pick: String = _bag.pop_back()
 	# 小怪已经召满了：这张先放回去垫底，换下一张
-	if (pick == "summon" or pick == "flank") and _summons.size() >= cap:
+	var need := 2 if pick == "flank" else 1
+	if (pick == "summon" or pick == "flank") and _summons.size() + need > cap:
 		var other := moves.filter(func(m): return m != "summon" and m != "flank" and m != _last_move)
 		if other.is_empty():
 			other = moves.filter(func(m): return m != "summon" and m != "flank")
@@ -842,9 +844,11 @@ func _draw_tele() -> void:
 				# 俯冲路线：从身上一路点到落点
 				var from := aim_point()
 				var to := _tele_pts[0] + Vector2(0, -4)
-				var n := int(from.distance_to(to) / 6.0)
-				for k in range(1, n):
-					_tele.draw_rect(Rect2(from.lerp(to, float(k) / n).round(), Vector2.ONE), col)
+				# 俯冲路线：从身上到落点一段一段的虚线（每 4 格亮 2 格）
+				var n := int(from.distance_to(to))
+				for k in range(4, n):
+					if k % 4 < 2:
+						_tele.draw_rect(Rect2(from.lerp(to, float(k) / n).round(), Vector2.ONE), col)
 		"spray":
 			var from := _muzzle()
 			for i in SPRAY_SHOTS:
@@ -909,12 +913,30 @@ func hurt(damage: float, from_dir: Vector2, full: bool) -> void:
 		elif not front:
 			damage *= BACK_MULT
 	super.hurt(damage, from_dir, full)
-	if arch == "flyer" and _state == WALK and _dodge_cd <= 0.0 and not dead and not dying() and randf() < 0.35:
+	if arch == "flyer" and flying and _state == WALK and _dodge_cd <= 0.0 and not in_intro() and not dead and not dying() and randf() < 0.35:
+		_dodge()
+
+
+## 飞的挨打闪身：随机挑一边，那边有墙、闸门（都在第 1 层）就换另一边，两边都不行就不闪
+## （10-18 质检：原来不查墙，会闪到闸门外面、闪进墙里）
+func _dodge() -> void:
+	var first := 1.0 if randf() < 0.5 else -1.0
+	var space := get_world_2d().direct_space_state
+	var half := body_rect.size.x / 2.0
+	for side in [first, -first]:
+		var from := aim_point()
+		var q := PhysicsRayQueryParameters2D.create(from, from + Vector2(side * (DODGE_DIST + half + 2.0), -6.0), 1)
+		q.exclude = [get_rid()]
+		if not space.intersect_ray(q).is_empty():
+			continue
+		var t := test_move(global_transform, Vector2(side * DODGE_DIST, -6.0))
+		if t:
+			continue
 		_dodge_cd = DODGE_CD
-		var side := 1.0 if randf() < 0.5 else -1.0
-		global_position += Vector2(side * DODGE_DIST, -6)
+		global_position += Vector2(side * DODGE_DIST, -6.0)
 		Game.sparks(get_parent(), aim_point(), Color(0.9, 0.9, 0.95), 5, 60.0)
 		Game.sfx("jump", -12.0, 1.6)
+		return
 
 
 ## 预警：整只一闪一闪发白（第三关的着色器把颜色映射成单色，发红看不出来；白闪在映射之后叠，哪种屏幕都看得见）

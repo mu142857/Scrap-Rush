@@ -39,7 +39,7 @@ func _setup() -> void:
 	body_rect = Rect2(-7, -24, 14, 24)
 	# led_pixel 是前面那只眼睛：LivingFx 把红灯换成两只会眨、会看人的暖白眼睛（是活人，不是机器）
 	led_pixel = Vector2i(8, 6)
-	led_by_frame = {1: Vector2i(8, 5), 2: Vector2i(8, 5), 4: Vector2i(9, 6), 5: Vector2i(7, 6), 6: Vector2i(9, 6),
+	led_by_frame = {1: Vector2i(8, 5), 3: Vector2i(8, 5), 4: Vector2i(9, 6), 5: Vector2i(7, 6), 6: Vector2i(10, 7),
 			7: Vector2i(8, 18)}
 	max_hp = 130.0  # 10-18 按每场同屏怪数重平衡（作者：一关比一关难），原来 200；表见 夜间打磨/商店经济压力马灯_报告.md 第 27 节
 	contact_damage = 10.0

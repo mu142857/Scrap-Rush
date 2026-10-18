@@ -1,9 +1,11 @@
 class_name BossBar
 extends CanvasLayer
 ## 屏幕底部的 Boss 名字和血条。挨打时白条慢慢追上实际血量；66%、33% 两处刻度是换阶段的地方。
+## 10-18：和精英血条一样，名字和血条排成一行贴在画面最底下，血条 3 像素；子弹、怪、主角走到后面时变淡（BarFade）
 
 const WARM := Color8(255, 211, 138)
-const BAR := Rect2(110, 256, 260, 4)
+const BAR_W := 260.0
+const BAR_H := 3.0
 
 ## 任何有 hp / max_hp / phase 属性和 hp_changed / defeated 信号的 Boss
 var boss: Node2D
@@ -13,6 +15,11 @@ var _shown := 1.0
 var _flash := 0.0
 var _root: Control
 var _name: Label
+## 血条的位置（_ready 里按名字的宽度排）
+var BAR := Rect2()
+var _alpha := 1.0
+## appear() 以后才显示；之前 modulate 由出场淡入管
+var _appeared := false
 
 
 func _ready() -> void:
@@ -25,19 +32,25 @@ func _ready() -> void:
 	_name = Label.new()
 	_name.label_settings = Hud.small_text(WARM)
 	_name.text = boss_name
-	_name.position = Vector2(BAR.position.x, BAR.position.y - 14)
-	_name.size = Vector2(200, 12)
 	_root.add_child(_name)
+	var w := _name.get_minimum_size().x
+	var at: Array = BarFade.row(w, BAR_W, BAR_H)
+	_name.position = at[0]
+	_name.size = Vector2(w, 12)
+	BAR = at[1]
 	_root.modulate.a = 0.0
 	boss.connect("hp_changed", func(_hp: float, _max: float): _flash = 1.0)
 	boss.connect("defeated", _on_defeated)
 
 
+## 出场：从透明慢慢显出来（_process 里 BarFade.step 往 1 走）
 func appear() -> void:
-	_root.create_tween().tween_property(_root, "modulate:a", 1.0, 0.5)
+	_alpha = 0.0
+	_appeared = true
 
 
 func _on_defeated() -> void:
+	_appeared = false
 	var tw := _root.create_tween().set_ignore_time_scale(true)
 	tw.tween_interval(0.6)
 	tw.tween_property(_root, "modulate:a", 0.0, 0.8)
@@ -49,6 +62,9 @@ func _process(delta: float) -> void:
 	if _shown < ratio:
 		_shown = ratio
 	_flash = maxf(_flash - delta * 6.0, 0.0)
+	if _appeared:
+		_alpha = BarFade.step(_alpha, BarFade.crowded(self, BAR.merge(Rect2(_name.position, _name.size))), delta)
+		_root.modulate.a = _alpha
 	_root.queue_redraw()
 
 

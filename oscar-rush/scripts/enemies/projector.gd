@@ -27,6 +27,8 @@ const BEAM_WARN := 0.8
 const BEAM_START := 24.0
 const BEAM_SPEED := 150.0
 const BEAM_MAX := 300.0
+## 回扫那种扫到头停多久再扫回来
+const BEAM_TURN := 0.35
 const BEAM_FADE := 0.25
 ## 光斑烫人的那一块：光斑中心左右各 HOT_HALF，地面往上 HOT_H
 const HOT_HALF := 9.0
@@ -61,6 +63,11 @@ var _attack_dir := -1
 ## 光斑现在的 x、扫到哪为止
 var _spot_x := 0.0
 var _spot_end := 0.0
+## 回扫（10-18 加）：第 2、4、6……次光柱扫到头停 BEAM_TURN 秒再扫回来。出招变密以后同一招要放好几次，加个变化
+var _beams := 0
+var _back := false
+var _turn := -1.0
+var _spot_start := 0.0
 var _floor := 0.0
 ## 银幕光框的中心 x（脚底那一行）
 var _screen_x := 0.0
@@ -182,11 +189,23 @@ func _tick(delta: float) -> void:
 				Game.sfx("jet", -10.0, 1.4)
 		State.BEAM:
 			_pose(4)
-			_spot_x = move_toward(_spot_x, _spot_end, BEAM_SPEED * delta)
+			if _turn >= 0.0:
+				# 回扫：扫到头先停一下（光柱还亮着、光斑原地烧），再往回扫
+				_turn += delta
+				if _turn >= BEAM_TURN:
+					_turn = -1.0
+					_back = false
+					_spot_end = _spot_start
+					Game.sfx("jet", -12.0, 1.2)
+			else:
+				_spot_x = move_toward(_spot_x, _spot_end, BEAM_SPEED * delta)
 			_burn_spot(delta)
 			_beam_hit()
-			if _spot_x == _spot_end:
-				_enter(State.RECOVER)
+			if _spot_x == _spot_end and _turn < 0.0:
+				if _back:
+					_turn = 0.0
+				else:
+					_enter(State.RECOVER)
 		State.SCREEN_WARN:
 			_pose(3)
 			if _state_t >= SCREEN_WARN:
@@ -242,7 +261,11 @@ func _start_attack() -> void:
 		_enter(State.SCREEN_WARN)
 	else:
 		_spot_x = _lens().x + _attack_dir * BEAM_START
+		_spot_start = _spot_x
 		_spot_end = _lens().x + _attack_dir * minf(BEAM_MAX, _wall_dist(BEAM_MAX) - HOT_HALF)
+		_beams += 1
+		_back = _beams % 2 == 0
+		_turn = -1.0
 		warn(BEAM_WARN)
 		_enter(State.BEAM_WARN)
 	Game.sfx("ready", -12.0, 0.6)
@@ -495,7 +518,12 @@ func _draw_beam() -> void:
 			# 夜间打磨加的：光斑要扫过的整条路先在地上淡淡点出来（虚线），一个亮点顺着扫的方向跑，看得出往哪边扫、扫多远
 			var x_from := minf(_spot_x, _spot_end)
 			var x_to := maxf(_spot_x, _spot_end)
-			var run := fmod(_state_t * 260.0, maxf(x_to - x_from, 1.0))
+			var span := maxf(x_to - x_from, 1.0)
+			var run := fmod(_state_t * 260.0, span)
+			if _back:
+				# 回扫：亮点跑到头再跑回来，看得出会扫回来
+				run = fmod(_state_t * 360.0, span * 2.0)
+				run = run if run < span else span * 2.0 - run
 			var head := _spot_x + _attack_dir * run
 			for x in range(int(x_from), int(x_to), 6):
 				var near_head := absf(x - head) < 8.0

@@ -56,6 +56,8 @@ var frame := 0
 
 var _home := Vector2.ZERO
 var _knock := 0.0
+## 最后一下挨打的方向：死的时候火花顺着它撒出去（10-18 作者：死亡粒子别均匀扩散一圈；游戏设计会话加）
+var _hit_dir := Vector2.ZERO
 var _flash := 0.0
 var _time := 0.0
 var _sprite: Sprite2D
@@ -149,6 +151,7 @@ func hurt(damage: float, from_dir: Vector2, full: bool) -> void:
 	if dead:
 		return
 	hp -= damage
+	_hit_dir = from_dir.normalized()
 	_flash = 1.0
 	_knock = 0.12 if full else 0.06
 	velocity.x = signf(from_dir.x) * (knockback.x if full else knockback.y)
@@ -168,8 +171,8 @@ func _die() -> void:
 	_shape.set_deferred("disabled", true)
 	_contact.set_deferred("monitoring", false)
 	Game.sfx(death_sfx, -4.0, (0.85 if big else 1.0) * death_sfx_pitch, 0.12)
-	Game.sparks(get_parent(), aim_point(), death_spark_colors[0], 20 if big else 14, 120.0 if big else 110.0)
-	Game.sparks(get_parent(), aim_point(), death_spark_colors[1], 6, 80.0)
+	Game.sparks(get_parent(), aim_point(), death_spark_colors[0], 20 if big else 14, 120.0 if big else 110.0, _hit_dir)
+	Game.sparks(get_parent(), aim_point(), death_spark_colors[1], 6, 80.0, _hit_dir)
 	Game.add_shake(3.0 if big else 2.0)
 	Run.add_emotion(-3.0 if big else -1.0)
 	LampOil.maybe_drop(self)

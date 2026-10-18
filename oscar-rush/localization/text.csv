@@ -576,8 +576,10 @@ MUTATIONS & GEAR,变异与升级
 Pick one before level 1. Swap at the shop for 3 parts.,开局三选一，商店里花 3 个零件可以换。
 Glows: moths chase the light,会发光：扑灯蛾会追过来
 No light: moths ignore it,不发光：扑灯蛾不理它
-"Hold, then release. Auto-aims and homes in a little.",按住蓄力，松手发射。自动瞄准，还会稍微追踪。
-Tap to blast all around you. Best when surrounded.,按一下朝四周炸一圈。被围住的时候最好用。
+"Hold, then release. Auto-aims and homes in a little.","按住蓄力，松手发射。
+自动瞄准，还会稍微追踪。"
+Tap to blast all around you. Best when surrounded.,"按一下朝四周炸一圈。
+被围住的时候最好用。"
 MUTATIONS,变异
 "2 parts, one at a time",2 个零件，同时只能带一个
 GEAR,装备升级
@@ -591,8 +593,6 @@ GEAR,装备升级
 The Rivet Gun echoes every 3rd rivet. Echoes never echo.,铆钉枪每 3 颗回一次。回声不会再回声。
 Every 10 kills: lantern +5.,每杀 10 只怪：马灯 +5。
 "The 10 notches under the lantern bar show your progress. More enemies, more healing.",马灯血条下面的 10 小格是进度。怪越多，回得越多。
-"Per level: the Flash Lamp charges 0.08 s faster, the Rivet Gun fires 0.01 s faster, the Steam Hammer cools down 0.2 s faster.",每级：闪光灯蓄力快 0.08 秒，铆钉枪每发快 0.01 秒，蒸汽锤冷却短 0.2 秒。
-"Charge never drops below 0.35 s, cooldown never below 1.0 s.",蓄力最快 0.35 秒，冷却最短 1.0 秒。
 Per level: +0.35 s of rocket boot fuel.,每级：火箭靴油量 +0.35 秒。
 "Base fuel is 1.0 s, or 0.7 s while you carry the lantern.",原本能喷 1.0 秒，提着马灯时 0.7 秒。
 Blocks one hit on the lantern every 20 / 15 / 10 s (Lv1 / Lv2 / Lv3).,每 20 / 15 / 10 秒（1 / 2 / 3 级）替马灯挡一次伤害。
@@ -633,7 +633,8 @@ End of the list,到底了
 You walk at %d%% while firing,开火时走路慢到 %d%%
 %d dmg to all within %d,%d 伤害，半径 %d 内的全中
 Wind-up: %s s,出招前蓄 %s 秒
-Hold to fire nonstop. Rivets fade out at the end of their range.,按住一直连发。铆钉飞到射程尽头会慢慢变淡消失。
+Hold to fire nonstop. Rivets fade out at the end of their range.,"按住一直连发。
+铆钉飞到射程尽头会慢慢淡掉。"
 "At full panic, every hit does double damage.",完全失控时，每一下都是双倍伤害。
 No.,编号
 HP,生命值
@@ -646,3 +647,19 @@ DEV,开发者
 Killed %d,击杀 %d
 %s move  %s sort  %s reverse  %s filter  %s back,%s 选择  %s 排序  %s 反序  %s 筛选  %s 返回
 %s move  %s sort  %s reverse  %s filter  %s chapter  %s back,%s 选择  %s 排序  %s 反序  %s 筛选  %s 换册  %s 返回
+"Per level: the Flash Lamp charges %s s faster, the Rivet Gun fires %s s faster, the Steam Hammer cools down %s s faster.",每级：闪光灯蓄力快 %s 秒，铆钉枪每发快 %s 秒，蒸汽锤冷却短 %s 秒。
+"Charge never drops below %s s, cooldown never below %s s.",蓄力最快 %s 秒，冷却最短 %s 秒。
+Old Tech Inc. - all signals reserved,老科技公司 · 保留所有信号
+Memory test,内存自检
+Detecting tape drive,检测磁带机
+1 found,找到 1 台
+Detecting lantern,检测马灯
+lit,亮着
+Detecting crew,检测船员
+4 aboard,4 人在船
+Hometown signal,家乡信号
+weak,微弱
+Loading tape #3,读取录像带 3 号
+HOME,家
+Rewinding to the last good frame,倒带到最后一格好画面
+Press DEL to remember,按 DEL 键回忆

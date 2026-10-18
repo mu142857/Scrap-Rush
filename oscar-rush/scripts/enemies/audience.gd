@@ -36,12 +36,12 @@ var _air := false
 func _setup() -> void:
 	texture_path = "res://art/enemies/audience.png"
 	hframes = 9
-	frame_size = Vector2i(20, 22)
+	frame_size = Vector2i(20, 23)
 	body_rect = SIT_RECT
 	# led_pixel 是前面那只眼睛：LivingFx 把红灯换成两只会眨、会看人的暖白眼睛（裹着胶片的活人）
-	led_pixel = Vector2i(8, 11)
-	led_by_frame = {1: Vector2i(8, 10), 2: Vector2i(10, 8), 3: Vector2i(9, 3), 4: Vector2i(11, 3),
-			5: Vector2i(10, 5), 6: Vector2i(6, 3), 7: Vector2i(12, 3), 8: Vector2i(10, 13)}
+	led_pixel = Vector2i(8, 12)
+	led_by_frame = {1: Vector2i(8, 11), 2: Vector2i(10, 9), 3: Vector2i(9, 4), 4: Vector2i(11, 3),
+			5: Vector2i(10, 6), 6: Vector2i(6, 4), 7: Vector2i(12, 5), 8: Vector2i(10, 14)}
 	max_hp = 95.0  # 10-18 按每场同屏怪数重平衡（作者：一关比一关难），原来 100；表见 夜间打磨/商店经济压力马灯_报告.md 第 27 节
 	contact_damage = 10.0
 	knockback = Vector2(70.0, 30.0)

@@ -35,9 +35,9 @@ func setup(p: Player, pos: Vector2, dir: Vector2, charge: float, tgt: Node2D, co
 		damage = FULL_DAMAGE
 		target = tgt
 	else:
-		# 没蓄满也要能用：伤害 35~80，只微微往下坠（作者：闪光灯太弱）
-		velocity = dir * lerpf(180.0, 290.0, charge)
-		fall_gravity = lerpf(320.0, 40.0, charge)
+		# 没蓄满也要能用：伤害 35~80，只微微往下坠（作者：闪光灯太弱）；10-18 打击感：飞得更快、坠得更少，点按也像一发子弹
+		velocity = dir * lerpf(230.0, 320.0, charge)
+		fall_gravity = lerpf(200.0, 20.0, charge)
 		damage = 35.0 + 45.0 * charge
 
 
@@ -89,13 +89,22 @@ func _on_body_entered(body: Node) -> void:
 			return
 		_hit.append(body)
 		body.call("hurt", damage, velocity.normalized(), full)
-		Game.sfx("hit", -2.0 if full else -8.0, 1.0 + 0.12 * (_hit.size() - 1), 0.1)
-		Game.sparks(get_parent(), global_position, color.lerp(Color.WHITE, 0.5), 10 if full else 5, 90.0)
+		Game.sfx("hit", -2.0 if full else -6.0, 1.0 + 0.12 * (_hit.size() - 1), 0.1)
+		Game.sfx("rivet_hit", -6.0 if full else -9.0, 0.8, 0.1)
+		Game.sparks(get_parent(), global_position, color.lerp(Color.WHITE, 0.5), 10 if full else 6, 90.0 if full else 80.0, -velocity.normalized() if not full else Vector2.ZERO)
 		if full:
 			# 每穿一只都有反馈：第一只顿得最久，后面的短顿一下、音调一只比一只高
-			Game.add_shake(2.5 if _hit.size() == 1 else 1.5)
+			Game.add_shake(3.0 if _hit.size() == 1 else 1.8)
 			Game.hitstop(0.07 if _hit.size() == 1 else 0.03)
 			Game.sparks(get_parent(), global_position, Color.WHITE, 6, 120.0, velocity.normalized())
+		# 命中星 + 打死了就加一层击杀爆裂（HitFx：碎铁片、白圈、连杀音高）
+		HitFx.after_hit(body, global_position, velocity.normalized(), 1.0 if full else 0.45)
+		if not full:
+			# 没蓄满的也要"咬"一下：极短的顿帧、轻震（10-18 打击感）
+			Game.add_shake(1.0)
+			if Engine.time_scale > 0.0:
+				Game.hitstop(0.02)
+		if full:
 			# 穿过去接着飞：追踪的目标打过了就不再拐弯；往下斜的拉平，免得穿过第一只就钻进地里、打不到后面那排
 			target = null
 			velocity = Vector2(signf(velocity.x) * FULL_SPEED, minf(velocity.y, 0.0) * 0.3) if absf(velocity.x) > 1.0 else velocity
@@ -103,19 +112,25 @@ func _on_body_entered(body: Node) -> void:
 		_done = true
 	else:
 		_done = true
-		Game.sparks(get_parent(), global_position, color, 4, 40.0)
+		Game.sparks(get_parent(), global_position, color, 6 if full else 4, 60.0 if full else 40.0, -velocity.normalized())
+		HitFx.spawn(get_parent(), global_position, 0.6 if full else 0.1)
 	queue_free()
 
 
 func _draw() -> void:
+	# 尾巴：蓄满的 2 像素粗、前两格偏白；没蓄满 1 像素（10-18 打击感：飞行要看得见）
 	for i in _trail.size():
 		var a := 0.6 * (1.0 - float(i) / TRAIL)
 		var p := (_trail[i] - global_position).round()
-		draw_rect(Rect2(p, Vector2.ONE), Color(color.r, color.g, color.b, a))
+		var col := Color(color.r, color.g, color.b, a)
+		if full and i < 2:
+			col = Color(1, 1, 1, 0.8)
+		draw_rect(Rect2(p, Vector2(2, 2) if full else Vector2.ONE), col)
 	if full:
 		draw_rect(Rect2(-1, -3, 3, 7), color)
 		draw_rect(Rect2(-3, -1, 7, 3), color)
 		draw_rect(Rect2(-2, -2, 5, 5), color.lerp(Color.WHITE, 0.5))
 		draw_rect(Rect2(-1, -1, 3, 3), Color.WHITE)
 	else:
-		draw_rect(Rect2(-1, -1, 2, 2), color.lerp(Color.WHITE, 0.4))
+		draw_rect(Rect2(-1, -1, 3, 3), color.lerp(Color.WHITE, 0.3))
+		draw_rect(Rect2(0, 0, 1, 1), Color.WHITE)

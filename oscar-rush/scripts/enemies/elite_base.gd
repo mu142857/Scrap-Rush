@@ -484,18 +484,24 @@ func _tick_death(delta: float) -> void:
 		_die()
 
 
-## 屏幕下方的名字 + 血条。挂在精英怪身上，跟着它一起消失。
-## 出场动画时：摆姿势那一刻才出来，血条从空涨满
+## 屏幕最底下一行：名字 + 血条。挂在精英怪身上，跟着它一起消失。
+## 出场动画时：摆姿势那一刻才出来，血条从空涨满。
+## 10-18（游戏细节讨论会话）：作者说第三关血条会挡住弹幕。名字和血条从 y 224~242（第三关正好是地面那一层）
+## 挪到画面最底下排成一行，血条 4 像素改 3 像素；子弹、怪、主角走到后面时整条变淡（见 BarFade）
 class EliteBar:
 	extends CanvasLayer
 
 	const FILL_START := 0.05
 	const FILL_TIME := 0.7
+	const BAR_W := 200.0
+	const BAR_H := 3.0
 
 	var elite: EliteBase
 	var _shown := 0.0
 	var _root: Control
 	var _label: Label
+	var _rect := Rect2()
+	var _alpha := 1.0
 
 	func _ready() -> void:
 		layer = 40
@@ -506,11 +512,13 @@ class EliteBar:
 		add_child(_root)
 		_label = Label.new()
 		_label.label_settings = Hud.small_text(Color8(255, 211, 138))
-		_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		_label.size = Vector2(200, 12)
-		_label.position = Vector2(140, 224)
 		_label.text = elite.elite_name
 		_root.add_child(_label)
+		var w := _label.get_minimum_size().x
+		var at: Array = BarFade.row(w, BAR_W, BAR_H)
+		_label.position = at[0]
+		_label.size = Vector2(w, 12)
+		_rect = at[1]
 		_shown = 1.0
 		visible = not elite.in_intro()
 
@@ -529,10 +537,12 @@ class EliteBar:
 			_shown = _fill()
 		else:
 			_shown = move_toward(_shown, elite.hp / elite.max_hp, delta * 1.5)
+		_alpha = BarFade.step(_alpha, BarFade.crowded(self, _rect.merge(Rect2(_label.position, _label.size))), delta)
+		_root.modulate.a = _alpha
 		_root.queue_redraw()
 
 	func _draw_bar() -> void:
-		var r := Rect2(140, 238, 200, 4)
+		var r := _rect
 		var hp := minf(elite.hp / elite.max_hp, _fill())
 		_root.draw_rect(r.grow(1), Color(0, 0, 0, 0.7))
 		_root.draw_rect(Rect2(r.position, Vector2(r.size.x * _shown, r.size.y)), Color8(120, 40, 30))

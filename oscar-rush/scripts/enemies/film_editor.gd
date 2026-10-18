@@ -51,6 +51,7 @@ const MARK := Color(1.0, 0.25, 0.2)
 const FLASH := Color(1.0, 0.95, 0.85)
 const EYE_COLOR := Color(1.0, 0.86, 0.62)
 const BREATH_TIME := 0.7
+const WALK_CYCLE: Array[int] = [8, 1, 9, 1]
 const FLINCH_TIME := 0.28
 const TURN_TIME := 0.18
 const COLLAPSE_TIME := 0.9
@@ -82,13 +83,13 @@ func _setup() -> void:
 	intro_title = "FINAL CUT"
 	intro_frame = 2
 	texture_path = "res://art/enemies/film_editor.png"
-	hframes = 8
+	hframes = 10
 	frame_size = Vector2i(88, 48)
 	body_rect = Rect2(-11, -42, 22, 42)
 	# led_pixel 是前面那只眼睛（眼睛由 _draw_led 画成两只会眨的暖白眼睛，不是机器的红灯）
 	led_pixel = Vector2i(39, 11)
 	led_by_frame = {1: Vector2i(39, 10), 2: Vector2i(39, 15), 3: Vector2i(36, 17), 4: Vector2i(36, 17),
-			6: Vector2i(41, 11), 7: Vector2i(39, 27)}
+			6: Vector2i(41, 11), 7: Vector2i(39, 27), 8: Vector2i(38, 11), 9: Vector2i(38, 11)}
 	# 10-18：三把武器原来 11~17 秒就打死（真实时间）；血加到 20~35 秒、每招 3 轮以上
 	max_hp = 2300.0
 	contact_damage = 10.0
@@ -312,8 +313,11 @@ func _chase(delta: float) -> void:
 		side = 0.0
 	if not is_knocked():
 		velocity.x = move_toward(velocity.x, side * WALK_SPEED * speed_mult(), 400.0 * delta)
-	# 走的时候快快地迈步，站着的时候慢慢呼吸（同两帧，节奏不同）
-	set_frame(int(_time / (FRAME_TIME if absf(velocity.x) > 2.0 else BREATH_TIME)) % 2)
+	# 站着的时候慢慢呼吸（0、1 两帧）；走的时候驼着背大步走：8、1、9、1（10-18 夜间打磨）
+	if absf(velocity.x) > 2.0:
+		set_frame(WALK_CYCLE[int(_time / FRAME_TIME) % 4])
+	else:
+		set_frame(int(_time / BREATH_TIME) % 2)
 
 
 ## 面朝主角。追的时候主角绕到身后，先扭头看一眼（TURN_TIME）再转身；出招时直接转

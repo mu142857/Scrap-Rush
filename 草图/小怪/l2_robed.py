@@ -107,6 +107,42 @@ def feet(img, f, xs, col, ground):
     return out
 
 
+def stride(body, arm, f, xs, col, ground, hem_rows=4, lift_arm=True, amp=1):
+    """走路一步（10-18 夜间打磨：原来四帧几乎一样，小屏上看不出在走）。四帧：
+    0 左脚往前踩（下摆往后甩）、1 两脚交错（整个人抬高一格，下摆底下露出腿）、
+    2 右脚往前踩（下摆往前踢）、3 交错（抬高一格）。手臂跟脚反着摆一格。"""
+    up = f % 2
+    s = [1, 0, -1, 0][f % 4]                                              # 下摆：往后甩 +1（原图朝左，右边是后面）
+    H = body.shape[0]
+    ys = np.nonzero((body[..., 3] > 0).any(1))[0]
+    y1 = ys.max()
+    offs = [0] * H
+    for k in range(hem_rows):
+        if amp == 1:
+            offs[y1 - k] = s if k < (hem_rows + 1) // 2 else (s if f % 4 == 0 else 0)
+        else:                                                              # 精英个子大：越往下摆得越开
+            offs[y1 - k] = round(s * amp * (1 - k / hem_rows))
+    b = shift_rows(body, offs)
+    a = shift_rows(arm, [-s * amp] * H)                                    # 手臂往前摆（和下摆反着）
+    if up:
+        b = lift(b, 1)
+        if lift_arm:
+            a = lift(a, 1)
+    out = b.copy()
+    l, r = xs
+    if up:                                                                 # 交错：两条腿都在身子底下，袍子抬起来露出一截
+        for x in (l + 2, r - 2):
+            put(out, x, ground, col)
+            put(out, x - 1, ground, col)
+            put(out, x, ground - 1, col)
+    else:
+        front, back = (l - amp, r) if f % 4 == 0 else (l - 2 * amp, r - 2 * amp)
+        put(out, front - 1, ground, col)
+        put(out, front, ground, col)
+        put(out, back, ground, col)
+    return over(out, a)
+
+
 def pad(img, n=2):
     """顶上补 n 行空白（breathe 要往上挪，帽尖不能顶着画布边）。"""
     return np.concatenate([np.zeros((n,) + img.shape[1:], img.dtype), img])
@@ -205,13 +241,7 @@ def operator_frames():
     H = OP_H + 2
     frames = []
     for f in range(4):
-        b = breathe(body, 1 if f in (1, 2) else 0, at=0.45)
-        b = hem(b, f)
-        b = feet(b, f, (7, 15), OP_R[1], H - 1)
-        arm = pad(op_arm(0))
-        if f in (1, 2):                                                  # 手臂跟着身子起伏
-            arm = lift(arm, 1)
-        frames.append(over(b, arm))
+        frames.append(stride(body, pad(op_arm(0)), f, (7, 15), OP_R[1], H - 1))
     # 抡：身子往后仰一格（上半身往右挪），手举到脑后
     back = shift_rows(body, [1 if y < 16 else 0 for y in range(H)])
     frames.append(over(feet(back, 0, (7, 15), OP_R[1], H - 1), pad(op_arm(1))))
@@ -220,7 +250,7 @@ def operator_frames():
     frames.append(over(feet(fwd, 1, (7, 15), OP_R[1], H - 1), pad(op_arm(2))))
     still = feet(body, 0, (7, 15), OP_R[1], H - 1)
     # 6 挨打后仰：上半身往后一仰，手臂跟着甩
-    frames.append(tilt(over(still, pad(op_arm(0))), -2, below=H - 8))
+    frames.append(squash(tilt(over(still, pad(op_arm(0))), -3, below=H - 6), 1, at=0.6))
     # 7 倒下：瘫成一堆，电话线散在地上
     heap = squash(over(still, pad(op_arm(0))), 12, at=0.8)
     for x in range(2, 7):
@@ -290,18 +320,12 @@ def usher_frames():
     H = US_H + 2
     frames = []
     for f in range(4):
-        b = breathe(body, 1 if f in (1, 2) else 0, at=0.45)
-        b = hem(b, f, rows=5)
-        b = feet(b, f, (6, 16), US_R[1], H - 1)
-        arm = pad(us_arm(0))
-        if f in (1, 2):
-            arm = lift(arm, 1)
-        frames.append(over(b, arm))
+        frames.append(stride(body, pad(us_arm(0)), f, (6, 16), US_R[1], H - 1, hem_rows=5))
     frames.append(over(feet(body, 0, (6, 16), US_R[1], H - 1), pad(us_arm(1))))
     back = shift_rows(body, [1 if y < 18 else 0 for y in range(H)])
     frames.append(over(feet(back, 0, (6, 16), US_R[1], H - 1), pad(us_arm(2))))
     still = feet(body, 0, (6, 16), US_R[1], H - 1)
-    frames.append(tilt(over(still, pad(us_arm(0))), -2, below=H - 8))
+    frames.append(squash(tilt(over(still, pad(us_arm(0))), -3, below=H - 6), 1, at=0.6))
     # 倒下：瘫成一堆，手电滚在身前的地上，镜片还亮着一点
     heap = squash(still, 12, at=0.8)
     for x, c in [(1, US_A[1]), (2, US_A[0]), (3, US_A[0])]:
@@ -400,12 +424,21 @@ def audience_frames():
     half = over(au_seated(), half)
     frames.append(half)
     for f in range(2):
-        b = shift_rows(stand, [(1 if f else -1) if y < 10 else 0 for y in range(AU_H)])   # 摇摇晃晃
+        # 摇摇晃晃：上半身左右晃一格，晃到哪边哪只脚踩出去；第二帧整个人颠起来一格（拖着步子）
+        b = shift_rows(stand, [(1 if f else -1) if y < 10 else 0 for y in range(AU_H)])
         b = hem(b, f * 2, rows=3)
-        b = feet(b, f, (10, 16), AU_R[1], AU_H - 1)
         arms = au_arms("hang")
         if f:
             arms = shift_rows(arms, [1 if y < 10 else 0 for y in range(AU_H)])
+        if f:
+            b, arms = lift(b, 1), lift(arms, 1)
+            for x in (11, 15):
+                put(b, x, AU_H - 1, AU_R[1])
+                put(b, x - 1, AU_H - 1, AU_R[1])
+                put(b, x, AU_H - 2, AU_R[1])
+        else:
+            b = feet(b, 0, (9, 16), AU_R[1], AU_H - 1)
+            put(b, 16, AU_H - 1, AU_R[1])
         frames.append(over(b, arms))
     # 蹲下蓄力：上半身压低两行
     crouch = np.zeros_like(stand)
@@ -414,7 +447,7 @@ def audience_frames():
     frames.append(crouch)
     frames.append(over(au_standing(lean=3), au_arms("reach", lean=3)))
     standing = over(stand, au_arms("hang"))
-    frames.append(tilt(standing, -2, below=AU_H - 6))
+    frames.append(squash(tilt(standing, -3, below=AU_H - 5), 1, at=0.6))
     # 倒下：胶片散开，瘫成一堆
     frames.append(squash(standing, 10, at=0.8))
     return frames

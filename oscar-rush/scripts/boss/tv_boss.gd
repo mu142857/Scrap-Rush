@@ -22,7 +22,7 @@ signal hp_changed(hp: float, max_hp: float)
 signal phase_changed(phase: int)
 signal defeated
 
-const BASE_HP := 7400.0  # 10-18 作者："最终 boss 太弱、太脆"：3600 → 7400，站桩三把武器 60~90 秒
+const BASE_HP := 7800.0  # 10-18 作者："最终 boss 太弱、太脆"：3600 → 7400；武器打击感加强后闪光灯变快，再到 7800。站桩三把武器 60~80 秒
 const CONTACT_DAMAGE := 10.0
 const CANVAS_ORIGIN := Vector2(44, 78)
 const SCREEN := Rect2(Vector2(12, 30) - CANVAS_ORIGIN, Vector2(47, 31))

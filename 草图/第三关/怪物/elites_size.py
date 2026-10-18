@@ -186,6 +186,9 @@ def _small_extra(name, c, f, k):
     """小号飞行版：去掉腿、加尾焰 / 气泡 / 飘起来的下摆。c 是原尺寸（小）的画布。"""
     a = c.a
     h, w = a.shape[:2]
+    if name == "space_rocket":
+        _rocket_porthole(a)
+        _merge_lone_edge(a)
     if name == "weather_storm":
         # 去掉雨柱腿：云底以下只留几滴雨，像一团飘着的雷暴云
         cloud_bottom = int(math.ceil(25 * k))
@@ -200,6 +203,8 @@ def _small_extra(name, c, f, k):
                 x = int(w / 2 - 2 + ((y * 3) % 4) - 1)
                 a[y, x] = (252, 230, 110, 255)
     elif name == "aq_angler":
+        _angler_teeth(a)
+        _merge_lone_edge(a)
         for (x, y) in ((1, 4), (2, 1), (0, 7)):               # 嘴前冒的气泡
             yy = (y + f.i) % max(1, h // 2)
             if 0 <= yy < h and a[yy, x, 3] == 0:
@@ -209,6 +214,99 @@ def _small_extra(name, c, f, k):
         for y in range(h - 2, h):
             row = a[y].copy()
             a[y] = np.roll(row, 1 if (y + f.i) % 2 else -1, axis=0)
+
+
+def _red(a):
+    m = (a[..., 0] == LED[0]) & (a[..., 1] == LED[1]) & (a[..., 2] == LED[2]) & (a[..., 3] > 0)
+    ys, xs = np.nonzero(m)
+    return (int(xs.min()), int(ys.min())) if len(xs) else None
+
+
+def _mode(px):
+    cols = [tuple(int(v) for v in p) for p in px]
+    return max(set(cols), key=cols.count) if cols else None
+
+
+def _rocket_porthole(a):
+    """小火箭的舷窗按小尺寸手点（美术巡检 10-18：缩小后黄铜圈和深色玻璃糊成一团、碎点 12%）：
+    中间 2×2 红灯当亮点，外面一圈 1 格黄铜，四个角留机身色，周围别的杂色都抹成机身色。"""
+    led = _red(a)
+    if led is None:
+        return
+    lx, ly = led
+    box = a[ly - 2:ly + 4, lx - 2:lx + 4]
+    flat = box.reshape(-1, 4)
+    brass = _mode([p for p in flat if p[3] and p[0] > p[2] + 40 and tuple(p[:3]) != LED])
+    near = a[ly - 4:ly + 6, lx - 3:lx + 5].reshape(-1, 4)
+    hull = _mode([p for p in near if p[3] and abs(int(p[0]) - int(p[2])) < 30 and p[0] > 120])
+    if brass is None or hull is None:
+        return
+    for y in range(ly - 2, ly + 4):
+        for x in range(lx - 2, lx + 4):
+            if a[y, x, 3] and not (lx <= x <= lx + 1 and ly <= y <= ly + 1):
+                a[y, x] = hull
+    for x in (lx, lx + 1):
+        a[ly - 1, x] = brass
+        a[ly + 2, x] = brass
+    for y in (ly, ly + 1):
+        a[y, lx - 1] = brass
+        a[y, lx + 2] = brass
+    a[ly:ly + 2, lx:lx + 2] = (*LED, 255)
+
+
+def _angler_teeth(a):
+    """小鮟鱇的嘴按小尺寸手点（美术巡检 10-18：一排牙缩小后变成噪点）：
+    嘴是两行深色缝（上一行短一点），里面三颗白牙：上面两颗往下、下面一颗往上。"""
+    led = _red(a)
+    if led is None:
+        return
+    lx, ly = led
+    y0, y1 = ly + 4, ly + 9
+    reg = a[y0:y1, :lx + 4]
+    dark = (reg[..., 3] > 0) & (reg[..., :3].astype(int).sum(-1) < 160)
+    white = (reg[..., 3] > 0) & (reg[..., :3].min(-1) > 200)
+    ys, xs = np.nonzero(dark | white)
+    if not len(xs):
+        return
+    x0, x1, my0, my1 = int(xs.min()), int(xs.max()), y0 + int(ys.min()), y0 + int(ys.max())
+    body = _mode([p for p in a[my0 - 2:my1 + 3, x0:x1 + 1].reshape(-1, 4)
+                  if p[3] and 160 <= int(p[0]) + int(p[1]) + int(p[2]) and p[:3].min() <= 200])
+    mouth = _mode([p for p in reg[dark]])
+    for y in range(my0, my1 + 1):
+        for x in range(x0, x1 + 1):
+            if a[y, x, 3]:
+                a[y, x] = body
+    W = (240, 236, 226, 255)
+    for x in range(x0 + 1, x1):
+        a[my0, x] = mouth
+    for x in range(x0, x1 + 1):
+        a[my0 + 1, x] = mouth
+    for x, y in ((x0 + 2, my0), (x0 + 7, my0), (x0 + 4, my0 + 1)):
+        a[y, x] = W
+
+
+def _merge_lone_edge(a, dist=70):
+    """缩小以后轮廓上一格一格的受光 / 背光边成了碎点（看着像一圈描边）：轮廓上自己一个颜色的单个像素，
+    颜色和旁边差得不多的，并进旁边最多的那个颜色。差得多的（红灯、白牙、诱饵灯、气泡）不动。"""
+    h, w = a.shape[:2]
+    src = a.copy()
+    al = src[..., 3] > 0
+    for y, x in zip(*np.nonzero(al)):
+        c = src[y, x, :3].astype(int)
+        nb, edge, same = [], False, False
+        for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            yy, xx = y + dy, x + dx
+            if not (0 <= yy < h and 0 <= xx < w) or not al[yy, xx]:
+                edge = True
+                continue
+            if (src[yy, xx, :3] == src[y, x, :3]).all():
+                same = True
+            nb.append(tuple(int(v) for v in src[yy, xx]))
+        if not edge or same or not nb:
+            continue
+        best = max(set(nb), key=nb.count)
+        if abs(np.array(best[:3]) - c).sum() < dist:
+            a[y, x] = best
 
 
 def build(name, fn, w0, h0, k, small):

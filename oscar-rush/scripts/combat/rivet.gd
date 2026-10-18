@@ -64,6 +64,8 @@ func _on_body_entered(body: Node) -> void:
 		# 打中的声音是短促的"噗"，和开枪的"哒"分得开；每次命中冒一小撮暖色火花
 		Game.sfx("rivet_hit", -11.0, 1.0, 0.15)
 		Game.sparks(get_parent(), global_position, Color(1.0, 0.85, 0.6), 4, 80.0, -velocity.normalized())
+		# 10-18：只加不减——命中一颗小星，打死了加一层击杀爆裂（HitFx）
+		HitFx.after_hit(body, global_position, velocity.normalized(), 0.0)
 		if _pierce > 0:
 			_pierce -= 1
 			return

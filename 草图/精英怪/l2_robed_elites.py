@@ -183,6 +183,11 @@ def chief_frames():
     # 7 倒下：整个人瘫下去，袍子堆在地上，线耷拉下来
     heap = crouch(still, 16, at=0.75)
     frames.append(over(_down(pad(co_cords(sway=1), 3), 14), heap))
+    # 8、9 走（10-18 夜间打磨：原来走路只用 0、1 两帧呼吸，看着是平移）：左脚踩、右脚踩，
+    # 中间夹第 1 帧（抬高一格）。长袍下摆跟着甩，背后的线反着晃
+    for f, sw in ((0, -1), (2, 1)):
+        st = R.stride(lean(body, 1, below=34), pad(co_arm(0), 3), f, (12, 28), CO_R[1], H - 1, hem_rows=12, amp=2)
+        frames.append(over(pad(co_cords(sway=sw), 3), st))
     return frames
 
 
@@ -323,6 +328,10 @@ def editor_frames():
     import math
     blade = shears(blank(FE_W + FE_PADL, H), (14 + FE_PADL, H - 2), math.radians(178), math.radians(186), length=18, handle=3)
     frames.append(over(heap, blade))
+    # 8、9 走：驼着背大步走，头往前探，剪刀跟着手前后甩（中间夹第 1 帧）
+    for f in (0, 2):
+        frames.append(R.stride(lean(body, 2, below=36), pad(fe_arm(0), 3), f, (19 + FE_PADL, 33 + FE_PADL),
+                               FE_R[1], H - 1, hem_rows=12, amp=2))
     return frames
 
 
@@ -370,8 +379,8 @@ def center_trim(frames, anchor):
 
 
 # 身子中线（画布 x）：总接线长的长袍中线，剪辑师的大褂中线（加上左边补的 FE_PADL）
-MONSTERS = [("chief_operator", "总接线长（E3）", chief_frames, [(0, "飘"), (2, "拽线预警"), (3, "拽线"), (4, "转线"), (5, "叫班"), (6, "挨打后仰"), (7, "倒下")]),
-            ("film_editor", "剪辑师（第一场换卷战）", editor_frames, [(0, "走"), (2, "冲刺预警"), (3, "冲刺"), (4, "剪"), (5, "跳剪落下"), (6, "挨打后仰"), (7, "倒下")])]
+MONSTERS = [("chief_operator", "总接线长（E3）", chief_frames, [(0, "飘"), (8, "走"), (2, "拽线预警"), (3, "拽线"), (4, "转线"), (5, "叫班"), (6, "挨打后仰"), (7, "倒下")]),
+            ("film_editor", "剪辑师（第一场换卷战）", editor_frames, [(0, "站"), (8, "走"), (2, "冲刺预警"), (3, "冲刺"), (4, "剪"), (5, "跳剪落下"), (6, "挨打后仰"), (7, "倒下")])]
 
 
 ANCHOR = {"chief_operator": 21, "film_editor": 27 + FE_PADL}
