@@ -95,7 +95,7 @@ static func kill(parent: Node, body: Node, pos: Vector2, dir: Vector2, pw: float
 	Splatter.spray(body if alive else parent, pos, d, (16 if big else 10) if flesh else (12 if big else 8), flesh, 1.2, 35.0)
 	if elite:
 		return
-	_silhouette(parent, body)
+	silhouette(parent, body)
 	var foot := pos.y + 6.0
 	if alive and body is Node2D:
 		foot = (body as Node2D).global_position.y
@@ -103,20 +103,7 @@ static func kill(parent: Node, body: Node, pos: Vector2, dir: Vector2, pw: float
 	var cols: Array = [Color8(150, 140, 125), Color8(255, 190, 120)]
 	if alive and body.get("death_spark_colors") is Array:
 		cols = body.get("death_spark_colors")
-	var n := 2 if flesh else (7 if big else 4)
-	for i in n:
-		var c := Chunk.new()
-		c.position = pos + Vector2(randf_range(-2, 2), randf_range(-2, 2))
-		c.velocity = Vector2(d.x * randf_range(90.0, 200.0) + randf_range(-25.0, 25.0),
-				minf(d.y, 0.0) * 120.0 - randf_range(70.0, 150.0))
-		c.ground_y = foot - 1.0
-		if flesh:
-			c.color = cols[0]
-			c.shape = Chunk.CLOTH
-		else:
-			c.color = [Color8(120, 115, 110), cols[0], Color8(200, 160, 90), Color8(90, 86, 84)][i % 4]
-			c.shape = Chunk.SCREW if i == n - 1 else (Chunk.BIG if i < 2 else Chunk.SMALL)
-		parent.add_child(c)
+	debris(parent, pos, d, foot, 2 if flesh else (7 if big else 4), flesh, cols[0])
 	if not flesh:
 		# 机器：一小股火花顺着打的方向喷出去（不是一圈）
 		Game.sparks(parent, pos, Color(1.0, 0.8, 0.45), 6, 150.0, d)
@@ -127,8 +114,28 @@ static func kill(parent: Node, body: Node, pos: Vector2, dir: Vector2, pw: float
 		Game.hitstop(0.05 if big else 0.035)
 
 
+## 顺着 dir 迸 n 块碎片，落到 foot_y 弹一下再一闪一闪没掉。精英、Boss 的死亡演出也用这个，保证风格统一。
+## flesh=true 迸布片（tint 色）；否则机器碎铁：头两块是 3×2 大块、最后一块是螺丝、其余 2×1 小块，tint 混在铁灰和黄铜色里
+static func debris(parent: Node, pos: Vector2, dir: Vector2, foot_y: float, n: int, flesh := false,
+		tint := Color8(150, 140, 125)) -> void:
+	var d := dir.normalized() if dir.length() > 0.1 else Vector2(1.0 if randf() < 0.5 else -1.0, 0.0)
+	for i in n:
+		var c := Chunk.new()
+		c.position = pos + Vector2(randf_range(-2, 2), randf_range(-2, 2))
+		c.velocity = Vector2(d.x * randf_range(90.0, 200.0) + randf_range(-25.0, 25.0),
+				minf(d.y, 0.0) * 120.0 - randf_range(70.0, 150.0))
+		c.ground_y = foot_y - 1.0
+		if flesh:
+			c.color = tint
+			c.shape = Chunk.CLOTH
+		else:
+			c.color = [Color8(120, 115, 110), tint, Color8(200, 160, 90), Color8(90, 86, 84)][i % 4]
+			c.shape = Chunk.SCREW if i == n - 1 else (Chunk.BIG if i < 2 else Chunk.SMALL)
+		parent.add_child(c)
+
+
 ## 怪死的那一下留一个纯白剪影（照它最后那一帧画），亮 3 帧。顿帧时跟着停住，正好"定格"
-static func _silhouette(parent: Node, body: Node) -> void:
+static func silhouette(parent: Node, body: Node) -> void:
 	if not is_instance_valid(body):
 		return
 	var spr = body.get("_sprite")
@@ -210,21 +217,74 @@ class Chunk extends Node2D:
 
 	func _process(delta: float) -> void:
 		_t += delta
-		if _bounces < 2:
+		if _bounces < 2 and delta > 0.0:
 			velocity.y += GRAVITY * delta
-			position += velocity * delta
-			if delta > 0.0:
-				_spin += 1
-			if position.y >= ground_y and velocity.y > 0.0:
-				position.y = ground_y
-				_bounces += 1
-				velocity = Vector2(velocity.x * 0.4, -absf(velocity.y) * 0.3)
-				if _bounces >= 2:
-					velocity = Vector2.ZERO
+			_spin += 1
+			_move(velocity * delta)
 		if _t > LIFE:
 			queue_free()
 			return
 		queue_redraw()
+
+	## 10-18 碰撞会话：飞的时候每帧打一条线段射线（实心地面 + 单向平台的顶面）。碰到墙弹回来，落到真正的地上；
+	## 原来只按出生时的脚底高度 ground_y 落，靠墙、台边死的怪，碎片会钻进墙里或停在台子外的半空。
+	## 底下没地（飞出台边）就一直往下掉，到寿命删掉。ground_y 只在射线漏掉、而那儿正好是地的时候兜底
+	func _move(step: Vector2) -> void:
+		var from := global_position
+		var to := from + step
+		var space := get_world_2d().direct_space_state
+		var q := PhysicsRayQueryParameters2D.create(from, to, 1 | 64)
+		q.hit_from_inside = true
+		var hit := space.intersect_ray(q)
+		if not hit.is_empty():
+			var n: Vector2 = hit["normal"]
+			var at: Vector2 = hit["position"]
+			if n == Vector2.ZERO:
+				# 已经在实心里了（弹起来斜着撞进坡里）：从上面 12 像素往下找到表面，落在上面
+				if not _one_way(hit):
+					var up := PhysicsRayQueryParameters2D.create(from + Vector2(0, -12), from, 1)
+					var top := space.intersect_ray(up)
+					if not top.is_empty() and (top["normal"] as Vector2).y < -0.5:
+						_land((top["position"] as Vector2).y - 1.0)
+						velocity = Vector2.ZERO
+						_bounces = 2
+						return
+			elif n.y < -0.5:
+				if velocity.y > 0.0:
+					_land(at.y - 1.0)
+					global_position.x = at.x
+					return
+			elif absf(n.x) > 0.5:
+				# 撞墙：弹回来一点（碎片从左上角往右下画，贴右墙时要多让出自己的宽度）
+				global_position = Vector2(at.x + (0.5 if n.x > 0.0 else -3.5), at.y)
+				velocity.x = -velocity.x * 0.35
+				return
+			elif not _one_way(hit):
+				# 撞到天花板：往下弹
+				global_position = at + Vector2(0, 1)
+				velocity.y = absf(velocity.y) * 0.3
+				return
+		global_position = to
+		if velocity.y > 0.0 and global_position.y >= ground_y and global_position.y < ground_y + 6.0:
+			var pq := PhysicsPointQueryParameters2D.new()
+			pq.position = Vector2(global_position.x, ground_y + 1.5)
+			pq.collision_mask = 1 | 64
+			if not get_world_2d().direct_space_state.intersect_point(pq, 1).is_empty():
+				_land(ground_y)
+
+	func _land(y: float) -> void:
+		global_position.y = y
+		_bounces += 1
+		velocity = Vector2(velocity.x * 0.4, -absf(velocity.y) * 0.3)
+		if _bounces >= 2:
+			velocity = Vector2.ZERO
+
+	func _one_way(hit: Dictionary) -> bool:
+		var co := hit["collider"] as CollisionObject2D
+		if co == null:
+			return false
+		var owner_node = co.shape_owner_get_owner(co.shape_find_owner(int(hit["shape"])))
+		return owner_node != null and owner_node.get("one_way_collision") == true
 
 	func _draw() -> void:
 		if _t > LIFE - 0.3 and int(_t * 20.0) % 2 == 0:

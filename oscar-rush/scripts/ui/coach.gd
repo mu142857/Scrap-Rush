@@ -59,7 +59,8 @@ func _ready() -> void:
 
 	_toast = Label.new()
 	_toast.label_settings = Hud.small_text(WARM)
-	_toast.position = Vector2(8, 24)
+	# 放在左上角零件数（parts_counter，y 26~42）下面：原来 y 24 和零件数叠成一团（质检 63 号，10-18）
+	_toast.position = Vector2(8, 44)
 	_toast.size = Vector2(120, 12)
 	_toast.text = "CHECKPOINT"
 	_toast.modulate.a = 0.0
@@ -174,6 +175,8 @@ func _process(delta: float) -> void:
 	_box.queue_redraw()
 	if _toast_t > 0.0:
 		_toast_t -= delta
+		# 新手提示框挪到画面上方（TOP_Y 30~48）时，存档点提示让到它下面
+		_toast.position.y = 44.0 if _box.position.y > 100.0 else _box.position.y + BOX.size.y + 4.0
 		_toast.modulate.a = clampf(_toast_t / 0.5, 0.0, 1.0) * (0.6 + 0.4 * absf(sin(_toast_t * 8.0)))
 
 
@@ -206,7 +209,11 @@ func _finished() -> bool:
 
 ## 每 0.15 秒看一眼：有没有怪靠近、马灯血量
 func _watch() -> void:
-	_card_on = false
+	# 屏幕中间的大横幅（Hud.show_banner）在的时候也让开，同一时间只出一段字（10-18 作者：不要有文字重叠）
+	_card_on = get_parent() != null and get_parent().has_method("banner_on") and get_parent().call("banner_on")
+	# 关卡开场（LevelIntro）的名字卡、精英名字卡在的时候也让开、不计时（10-18 游戏细节讨论会话：开场放开暂停以后提示会和名字卡叠字）
+	if not get_tree().get_nodes_in_group("name_card").is_empty():
+		_card_on = true
 	_elite_on = false
 	for e in get_tree().get_nodes_in_group("enemy"):
 		# Boss 房：屏幕底部是 Boss 血条，提示框也挪到上面

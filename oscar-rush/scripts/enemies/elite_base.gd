@@ -423,17 +423,26 @@ func _die() -> void:
 		Game.add_shake(3.0)
 		_flash = 1.0
 		return
+	# 10-18 作者："打死往外扩散的一圈粒子，这个不会让打击感更好"：改成顺着最后一下挨打的方向迸（同小怪击杀，HitFx / Splatter，游戏设计会话做的接口）
+	var hd := _hit_dir if _hit_dir != Vector2.ZERO else Vector2(-dir, -0.3).normalized()
+	var n := 10 if big or body_rect.size.x > 50.0 else 8
 	if death_scrap:
+		var tint: Color = death_colors[0] if not death_colors.is_empty() else Color8(150, 140, 125)
+		var body := Rect2(global_position + body_rect.position, body_rect.size)
 		if death_colors.is_empty():
-			EliteFx.scrap_burst(get_parent(), Rect2(global_position + body_rect.position, body_rect.size), 22)
+			EliteFx.scrap_dir(get_parent(), body, hd, n + 4)
 		else:
-			EliteFx.scrap_burst(get_parent(), Rect2(global_position + body_rect.position, body_rect.size), 22, death_colors)
+			EliteFx.scrap_dir(get_parent(), body, hd, n + 4, death_colors)
+		HitFx.debris(get_parent(), aim_point(), hd, global_position.y, 6, false, tint)
+		Splatter.spray(self, aim_point(), hd, 14, false)
 	else:
-		Game.dust(get_parent(), global_position + Vector2(-body_rect.size.x * 0.3, 0), 14)
-		Game.dust(get_parent(), global_position + Vector2(body_rect.size.x * 0.3, 0), 14)
+		HitFx.debris(get_parent(), aim_point(), hd, global_position.y, n, true)
+		Splatter.spray(self, aim_point(), hd, 16, true)
+		Game.dust(get_parent(), global_position + Vector2(hd.x * body_rect.size.x * 0.3, 0), 10, signf(hd.x))
 		Game.sfx("boom", -4.0, 0.55)
-	Game.sparks(get_parent(), aim_point(), death_spark_colors_big[0], 24, 160.0)
-	Game.sparks(get_parent(), aim_point(), death_spark_colors_big[1], 30, 140.0)
+	Game.sparks(get_parent(), aim_point(), death_spark_colors_big[0], 12, 160.0, hd)
+	Game.sparks(get_parent(), aim_point(), death_spark_colors_big[1], 15, 140.0, hd)
+	HitFx.silhouette(get_parent(), self)          # 白剪影亮 3 帧（顿帧时定格），和小怪击杀一样
 	Game.flash(Color(1, 0.9, 0.8), 0.25, 0.4)
 	Game.add_shake(6.0)
 	Game.hitstop(0.12, 0.3)
@@ -466,7 +475,7 @@ func _tick_death(delta: float) -> void:
 		var at := global_position + Vector2(randf_range(body_rect.position.x, body_rect.end.x) * 0.8,
 				randf_range(body_rect.position.y, body_rect.end.y) * 0.9)
 		if death_scrap:
-			Game.sparks(get_parent(), at, Color8(255, 210, 140), 4, 70.0)
+			Game.sparks(get_parent(), at, Color8(255, 210, 140), 3, 70.0, Vector2(randf_range(-0.5, 0.5), -1.0).normalized())   # 往上噼啪，不撒一圈
 			Game.sfx("hit", -16.0, randf_range(1.6, 2.4))
 		else:
 			Game.dust(get_parent(), Vector2(at.x, global_position.y), 2)
@@ -505,6 +514,8 @@ class EliteBar:
 
 	func _ready() -> void:
 		layer = 40
+		# 底部血条亮着的时候，hud 把同一行的操作说明藏起来（10-18 作者：不要有文字重叠）
+		add_to_group("hp_bar")
 		_root = Control.new()
 		_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_root.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -580,6 +591,8 @@ class IntroCard:
 
 	func _ready() -> void:
 		layer = 45
+		# 名字卡在的时候，hud 的横幅排队等它走完（同一时间只出一段字）
+		add_to_group("name_card")
 		_root = Control.new()
 		_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_root.set_anchors_preset(Control.PRESET_FULL_RECT)

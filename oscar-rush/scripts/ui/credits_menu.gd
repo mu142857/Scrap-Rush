@@ -3,11 +3,15 @@ extends Control
 ## 制作人员（开始菜单的"制作人员"）。作者 10-18 要的：照 Linger 的片尾（Linger/linger_bilibili/Shared/credits_roll.gd）
 ## 做成电影片尾的样子：黑底，一页一页地出现，每页的字一行一行慢慢淡入，停一会儿再淡出，中间留一段黑。
 ## 背后有几点很淡的火星慢慢往上飘，环境声换成空旷的风加很远的炉火（Ambience.override = "credits"）。
-##   第一页：木木
-##   第二页：奥斯卡 + 小奥斯卡
-##   第三页：梧桐（补充美术）、本2兔 + Rouri（音乐）
-##   最后一页：制作于 2026 年 10 月，底下小字：制作工具、字体和 Godot 的授权。按 L / 手柄 Y / 点小字看授权全文
+## 署名照作者 10-18 凌晨定的全文（监督会话转来）：
+##   1 木木：导演 程序 光影 特效      2 奥斯卡：策划 动画 场景设计 画风设计
+##   3 梧桐：立绘                     4 本2兔、Rouri：音乐
+##   5 工具与协作：Godot、Claude、小奥斯卡（作者："小奥斯卡算是一个工具，写到最后的claude那一页"）
+##   6：制作于 2026 年 10 月，底下小字：制作工具、字体和 Godot 的授权。按 L / 手柄 Y / 点小字看授权全文
 ## 确认键 / 鼠标左键：跳到下一页；Esc / B / 右键：直接回开始菜单。放完自己回去。
+## 每页名字上面放一段游戏里录的小动画（作者 10-18："显示名字的时候播放一些动画"）：SLIDES 的 clips，
+## 素材是 art/credits/ 的精灵图（CreditsClip，tools/make_credits_clips.py 拼的），一段放完一圈换下一段，跟着字一起淡入淡出。
+## 素材缺了就跳过那一段，一段都没有的页面照旧只有字。
 ## 用法照旧：var page := CreditsMenu.new(); 加到 UI 层; await page.closed（关掉时自己 queue_free）。
 ## 名字的中英文写法照 Linger（NAMES）；本2兔、小奥斯卡 Linger 里没有，先这样写，等作者确认（见报告）。
 
@@ -32,6 +36,8 @@ const WORDS_OUT := 0.7
 const BETWEEN := 0.8       # 两页之间留的黑
 const BLOCK_GAP := 18.0    # 一页里两组之间空多少
 const BOTTOM := 18.0       # 最后一页的小字离底边
+const CLIP_GAP := 12.0     # 动画和底下的字之间空多少
+const CLIP_EDGE := Color(0.22, 0.21, 0.2)  # 动画外面一圈细边
 
 ## 每个名字在各语言里的写法（只有写法不同的才写）。照 Linger 的 credits_roll.gd / title.gd
 const NAMES := {
@@ -43,18 +49,25 @@ const NAMES := {
 	"Rouri": {},
 }
 
-## 每页：blocks = 一组一组的 [小标题, 名字们, 职能们]，竖着排在屏幕中间；颜色是名字的颜色（Linger 里各人的颜色）。
+## 每页：blocks = 一组一组的 [小标题（可以空着）, 名字们, 职能们]，竖着排在屏幕中间；颜色是名字的颜色（Linger 里各人的颜色）。
 ## big：一行大字代替小标题和名字。then：底下一行一行的小字。hold：这页停多久（默认 HOLD）
 const SLIDES := [
-	{"blocks": [{"head": "Created by", "names": ["Mumu"], "color": "39e47a",
-		"roles": ["Game Design / Programming"]}]},
-	{"blocks": [{"head": "Art", "names": ["Oscar", "Little Oscar"], "color": "c8b83b",
-		"roles": ["Illustration / Animation / Environment Design"]}], "hold": 5.0},
+	{"blocks": [{"head": "", "names": ["Mumu"], "color": "39e47a",
+		"roles": ["Director / Programming / Lighting / VFX"]}], "clips": ["mumu_hammer", "mumu_lamp", "mumu_pressure"]},
+	{"blocks": [{"head": "", "names": ["Oscar"], "color": "c8b83b",
+		"roles": ["Game Design / Animation / Environment Design / Art Direction"]}], "hold": 5.0,
+		"clips": ["oscar_run", "oscar_elite"]},
+	{"blocks": [{"head": "", "names": ["Wutong"], "color": "e08638", "roles": ["Portraits"]}],
+		"clips": ["wutong_portraits"]},
+	{"blocks": [{"head": "", "names": ["Ben2tu", "Rouri"], "color": "3bbcc8", "roles": ["Music"]}],
+		"clips": ["music_furnace"]},
 	{"blocks": [
-		{"head": "Additional Art", "names": ["Wutong"], "color": "e08638", "roles": []},
-		{"head": "Music", "names": ["Ben2tu", "Rouri"], "color": "3bbcc8", "roles": []},
+		{"head": "Tools & Collaboration", "names": ["Godot Engine"], "color": "d8d4cc", "roles": []},
+		{"head": "", "names": ["Claude"], "color": "d8d4cc", "roles": ["Anthropic"]},
+		{"head": "", "names": ["Little Oscar"], "color": "d8d4cc", "roles": ["pixel character model"]},
 	]},
 	{"big": "Made in October 2026", "sub": "for Ludum Dare 60  /  Old Tech", "color": "d8d4cc", "hold": 7.0,
+		"clips": ["finale"],
 		"then": [
 			["Built with", "Godot Engine / Aseprite / Claude"],
 			["Engine", "Godot Engine, MIT License"],
@@ -66,6 +79,7 @@ var _black: ColorRect
 var _embers: Control
 var _words: Control
 var _lines: Array[Label] = []
+var _reel: Reel
 var _hint: Label
 var _license_hint: Label
 var _license: Control
@@ -155,6 +169,8 @@ func _play() -> void:
 
 func _show(slide: Dictionary) -> void:
 	_build(slide)
+	if _reel:
+		_reel.create_tween().tween_property(_reel, "modulate:a", 1.0, LINE_IN)
 	for i in _lines.size():
 		var l := _lines[i]
 		var tw := l.create_tween()
@@ -164,6 +180,8 @@ func _show(slide: Dictionary) -> void:
 	if _skip:
 		for l in _lines:
 			l.modulate.a = 1.0
+		if _reel:
+			_reel.modulate.a = 1.0
 	await _wait(slide.get("hold", HOLD), true)
 	await _fade(_words, 0.0, WORDS_OUT)
 	await _wait(BETWEEN, false)
@@ -174,6 +192,7 @@ func _build(slide: Dictionary) -> void:
 	for c in _words.get_children():
 		c.queue_free()
 	_lines.clear()
+	_reel = Reel.make(slide.get("clips", []))
 	_license_hint = null
 	_words.modulate.a = 1.0
 	var col := Color(slide.get("color", "d8d4cc"))
@@ -184,7 +203,8 @@ func _build(slide: Dictionary) -> void:
 	for b: Dictionary in slide.get("blocks", []):
 		if not rows.is_empty():
 			rows.append(null)
-		rows.append([tr(b["head"]), SMALL, HEAD_COLOR])
+		if b["head"] != "":
+			rows.append([tr(b["head"]), SMALL, HEAD_COLOR])
 		rows.append([_names(b["names"]), NAME, Color(b["color"])])
 		for r: String in b["roles"]:
 			rows.append([tr(r), SMALL, ROLE_COLOR])
@@ -192,8 +212,13 @@ func _build(slide: Dictionary) -> void:
 	for r in rows:
 		height += BLOCK_GAP if r == null else ROW[r[1]]
 	var foot: Array = slide.get("then", [])
+	var reel_h := (_reel.size.y + CLIP_GAP) if _reel else 0.0
 	# 有小字的页，大字整体往上挪一点，给底下的小字留地方
-	var top := roundf((SCREEN.y - height) * 0.5 - (ROW[SMALL] * (foot.size() + 1) * 0.5 if not foot.is_empty() else 0.0))
+	var top := roundf((SCREEN.y - height - reel_h) * 0.5 - (ROW[SMALL] * (foot.size() + 1) * 0.5 if not foot.is_empty() else 0.0))
+	if _reel:
+		_reel.position = Vector2(roundf((SCREEN.x - _reel.size.x) * 0.5), maxf(top, 6.0))
+		_words.add_child(_reel)
+		top = _reel.position.y + reel_h
 	var y := top
 	for r in rows:
 		if r == null:
@@ -404,3 +429,43 @@ class LicensePage extends Control:
 			handled = false
 		if handled:
 			get_viewport().set_input_as_handled()
+
+
+## 一页的动画：几段 CreditsClip 叠在一起，一次只显示一段，放完一圈换下一段；外面一圈 1 像素的细边
+class Reel extends Control:
+	var _clips: Array[CreditsClip] = []
+	var _at := 0
+
+	## 一段素材都没有就返回 null
+	static func make(names: Array) -> Reel:
+		var clips: Array[CreditsClip] = []
+		for n: String in names:
+			var c := CreditsClip.make(n)
+			if c:
+				clips.append(c)
+		if clips.is_empty():
+			return null
+		var r := Reel.new()
+		r._clips = clips
+		r.size = Vector2(CreditsClip.FRAME)
+		return r
+
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		modulate.a = 0.0
+		for i in _clips.size():
+			_clips[i].visible = i == 0
+			add_child(_clips[i])
+
+	func _process(_delta: float) -> void:
+		if _clips.size() > 1 and _clips[_at].loops() >= 1:
+			_clips[_at].visible = false
+			_at = (_at + 1) % _clips.size()
+			_clips[_at].restart()
+			_clips[_at].visible = true
+
+	func _draw() -> void:
+		draw_rect(Rect2(-1, -1, size.x + 2, 1), CLIP_EDGE)
+		draw_rect(Rect2(-1, size.y, size.x + 2, 1), CLIP_EDGE)
+		draw_rect(Rect2(-1, 0, 1, size.y), CLIP_EDGE)
+		draw_rect(Rect2(size.x, 0, 1, size.y), CLIP_EDGE)

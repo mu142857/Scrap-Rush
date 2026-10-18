@@ -756,6 +756,84 @@ def seat_back(c, x, y, w=12):
 
 
 # ================================================================ 各层
+
+# ---- 天桥上下的放映厅结构（10-18 夜间打磨：巡检说天桥上下大片几乎全黑）。都压得很暗，不抢胶片和怪
+CURT = [(36, 21, 20), (48, 28, 25), (62, 35, 31), (80, 45, 38)]         # 很暗的红丝绒
+SEAT = [(26, 21, 19), (36, 29, 25), (48, 37, 31), (62, 47, 38)]
+
+
+def theater_curtain(c, x0, x1, top, bottom):
+    """大幕：顶上一根暗铜杆、一排垂幔（半椭圆的兜），下面竖着的褶，褶里亮—中—暗三档。"""
+    for x in range(x0, x1):
+        fold = (x - x0) % 15
+        v = 2 if fold < 3 else 1 if fold < 9 else 0
+        fill(c, x, top + 8, x, bottom, CURT[v])
+        if fold == 2:
+            fill(c, x, top + 8, x, bottom, CURT[3])          # 褶上一道亮棱
+    fill(c, x0, top, x1, top + 2, (52, 44, 28))
+    fill(c, x0, top, x1, top, (70, 60, 36))
+    for cx in range(x0 + 30, x1, 60):                         # 垂幔：一兜一兜
+        for dx in range(-30, 31):
+            d = 14 * math.sqrt(max(0.0, 1 - (dx / 30) ** 2))
+            for y in range(top + 3, top + 6 + int(d)):
+                c.put(cx + dx, y, CURT[2] if y < top + 4 + int(d) - 2 else CURT[3])
+        fill(c, cx + 29, top + 3, cx + 31, top + 24, (60, 50, 30))   # 两兜之间垂下来的穗子
+        c.put(cx + 30, top + 25, (84, 70, 40))
+
+
+def seat_rows(c, x0, x1, rows, rng):
+    """胶片底下黑暗里的观众席：一排排椅背，偶尔一个人头的剪影（都在看天上那条胶片）。越上越远、越暗。"""
+    for i, y in enumerate(rows):
+        col, hi = SEAT[min(i, 1)], SEAT[min(i + 1, 3)]
+        off = 8 if i % 2 else 0
+        for x in range(x0 + off, x1 - 12, 16):
+            fill(c, x, y, x + 12, y + 8, col)
+            fill(c, x + 1, y - 1, x + 11, y - 1, col)
+            fill(c, x + 1, y - 1, x + 11, y - 1, hi)
+            if rng.random() < 0.18:                              # 一个人头
+                sellipse(c, x + 6, y - 5, 4, 4, SEAT[0])
+                fill(c, x + 3, y - 2, x + 9, y, SEAT[0])
+        fill(c, x0, y + 9, x1, y + 12, SEAT[0])
+
+
+def light_beams(c, beams, rng):
+    """斜着漏下来的放映光：光柱里的东西提亮一档、偏暖，再撒几颗被照亮的灰。"""
+    beam = Canvas(MW, MH)
+    for pts in beams:
+        beam.poly(pts, (1, 1, 1))
+    m = beam.mask & (c.a[..., 3] > 0)
+    ys, xs = np.nonzero(m)
+    cache = {}
+    for y, x in zip(ys, xs):
+        col = tuple(int(v) for v in c.a[y, x, :3])
+        if col not in cache:
+            cache[col] = step_color(col, 2, hue_deg=10)
+        c.put(x, y, cache[col])
+    for _ in range(len(ys) // 400):
+        i = int(rng.integers(len(ys)))
+        c.put(xs[i], ys[i], (96, 80, 60))
+
+
+def film_rack(c, x, top, bottom):
+    """片盒架：两根立柱、一层层隔板，每层几只扁圆的片盒（侧面看是长方块，上下一道亮边）。"""
+    w = 60
+    rng = np.random.default_rng(x)
+    fill(c, x, top, x + 1, bottom, DARK[4])
+    fill(c, x + w, top, x + w + 1, bottom, DARK[3])
+    for y in range(top + 4, bottom, 24):
+        fill(c, x, y, x + w + 1, y + 1, BRASS[0])
+        fill(c, x, y, x + w + 1, y, BRASS[1])
+        cx = x + 4
+        while cx < x + w - 12:
+            h = 9 if rng.random() < 0.7 else 0
+            if h:
+                fill(c, cx, y - h, cx + 11, y - 1, (62, 58, 54))
+                fill(c, cx, y - h, cx + 11, y - h, (86, 80, 72))
+                fill(c, cx, y - 2, cx + 11, y - 2, (34, 32, 30))
+                c.put(cx + 5, y - h + 3, (88, 70, 46))           # 标签上一点褪色的字
+            cx += 13
+
+
 def draw_far(design):
     L = Layer(0.55, design)
     c = L.c
@@ -780,6 +858,9 @@ def draw_far(design):
     for _ in range(40):                                  # 远处零星的信号灯
         c.put(int(rng.integers(L.X(-40), L.X(1040))), int(rng.integers(L.Y(20), L.Y(580))),
               LAMP_OFF if rng.random() < 0.7 else LAMP)
+    # 天桥背后：一整面放映厅的大幕（胶片上面露出来的那条），胶片下面是黑暗里一排排的观众席
+    theater_curtain(c, L.X(A_X1), L.X(B_X0), L.Y(132), L.Y(250))
+    seat_rows(c, L.X(A_X1), L.X(B_X0), [L.Y(y) for y in (326, 348, 372, 398)], np.random.default_rng(12))
     # 天桥背后：黑暗里投着几块巨大的、很暗的画面（录像里的家，和最后一关呼应）
     dim = [(21, 19, 18), (27, 24, 21), (34, 29, 25), (42, 35, 28)]
     for k, (x, y, w, h) in enumerate(((1180, 50, 260, 150), (1720, 330, 220, 130), (2260, 60, 280, 160))):
@@ -808,6 +889,12 @@ def draw_far(design):
     for x, y, r in ((1320, 110, 90), (2080, 480, 120), (2640, 140, 80), (1600, 560, 70)):
         dim_reel(c, L.X(x), L.Y(y), r)
         fill(c, L.X(x), 0, L.X(x) + 1, L.Y(y) - r, DARK[3])
+    # 从左上高窗斜着漏下来的几道放映光（穿过胶片后面，照亮一截大幕和底下的观众席）
+    beams = []
+    for x in (1120, 1560, 2040, 2520):
+        top, bot = L.Y(120), L.Y(420)
+        beams.append([(L.X(x), top), (L.X(x) + 10, top), (L.X(x) + 70, bot), (L.X(x) + 30, bot)])
+    light_beams(c, beams, np.random.default_rng(21))
     # 后半段背后：观众厅很高的后墙，竖向装饰肋
     for x in range(2760, 3800, 36):
         X = L.X(x)
@@ -851,6 +938,9 @@ def draw_mid(design):
         X = L.X(x)
         hang_rod(c, X, L.Y(FILM_BOT) + 4, L.Y(400) - 9)
         coil(c, X, L.Y(400))
+    # 胶片底下几座片盒架（放映厅的片库一直延到天桥底下）
+    for x in (1120, 1620, 2160, 2420):
+        film_rack(c, L.X(x), L.Y(FILM_BOT) + 18, L.Y(MH))
     for k, x in enumerate(range(1080, 2800, 160)):
         hanging_bulb(c, L.X(x), 0, L.Y(60 + (k * 53) % 110))
     # 后半段：观众厅的吊灯（黄铜 + 暖光）

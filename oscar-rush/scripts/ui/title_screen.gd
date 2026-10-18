@@ -72,16 +72,17 @@ const BOOK := [
 	"#o########",
 	".ooooooooo",
 ]
+## 齿轮：8 个齿都贴着外圈（上下左右 + 四个斜角），中间 2×2 的方孔（美术巡检 10-18：原来像菱形 / 眼睛）
 const GEAR := [
 	"....##....",
-	".#.####.#.",
-	"..######..",
-	".###oo###.",
+	".##.##.##.",
+	".########.",
+	"..##oo##..",
 	"####..####",
 	"####..####",
-	".###oo###.",
-	"..######..",
-	".#.####.#.",
+	"..##oo##..",
+	".########.",
+	".##.##.##.",
 	"....##....",
 ]
 const CODEX_PATH := "res://scripts/ui/codex_menu.gd"
@@ -109,6 +110,9 @@ var _lobby_root: Control
 var _lobby_info: Label
 ## 每个船员位置上是谁："" 表示空着，否则是输入前缀（kb_left / kb_right / pad0 ……）
 var _slots: Array[String] = ["", "", "", ""]
+## 选武器界面按返回时设上：回到标题后直接打开选关页（合作时加入界面先按 Run.players 恢复好、藏着），
+## 不从开始菜单重来（10-18 质检 / 监督会话：返回要回上一步）
+static var return_to_levels := false
 var _slot_labels: Array[Label] = []
 ## 合作：加入界面按攻击以后去选关卡；选关卡按返回回到加入界面（人还在）
 var _coop := false
@@ -141,6 +145,27 @@ func _ready() -> void:
 	_build_ui()
 	Controls.device_changed.connect(_on_device_changed)
 	_animate_in()
+	if return_to_levels:
+		return_to_levels = false
+		_resume_levels.call_deferred()
+
+
+## 从选武器返回：直接回选关页。合作时把加入界面按已经加入的人恢复好再藏起来，选关页再返回就回到加入界面，人还在
+func _resume_levels() -> void:
+	_busy = true
+	_hide_menu()
+	_coop = Run.players.size() > 1
+	if _coop:
+		await _enter_lobby()
+		for p in Run.players:
+			var i := Run.SKINS.find(p["skin"])
+			if i >= 0:
+				_slots[i] = p["input"]
+		_refresh_lobby()
+		_lobby = false
+		_lobby_root.visible = false
+	_ready_for_input = true
+	_open_levels()
 
 
 ## W/S、左摇杆、C 这些菜单键在 Settings 自动加载里统一加了
@@ -392,7 +417,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	# 跳关只在开发者模式（F8）里用数字键，开始界面本身不认数字键（作者 2026-10-17 定的）
 	if _lobby:
-		if event is InputEventKey and event.pressed and event.physical_keycode == KEY_ESCAPE:
+		# Esc、鼠标右键都是返回上一步（10-18 质检：合作加入界面右键不能返回）
+		if (event is InputEventKey and event.pressed and event.physical_keycode == KEY_ESCAPE) \
+				or (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT):
 			_leave_lobby()
 		return
 	if not _ready_for_input:

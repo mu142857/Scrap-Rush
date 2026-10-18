@@ -9,6 +9,7 @@ extends CanvasLayer
 ## 顺手管鼠标：关卡里鼠标 1.5 秒不动就藏起来，一动或打开菜单就出来。
 
 const TITLE_SCENE := "res://scenes/title.tscn"
+const WEAPON_SELECT_SCENE := "res://scenes/weapon_select.tscn"
 const WARM := Color8(255, 211, 138)
 const DIM := Color(0.55, 0.55, 0.6)
 const LIT := Color(1, 1, 1)
@@ -90,6 +91,9 @@ func can_open() -> bool:
 		return false
 	var cur := get_tree().current_scene
 	if cur == null or cur.scene_file_path == TITLE_SCENE or cur.scene_file_path == "":
+		return false
+	# 选武器界面里 Esc 是"返回上一步"（weapon_select.gd 自己接），不开暂停（10-18 质检报的）
+	if cur.scene_file_path == WEAPON_SELECT_SCENE:
 		return false
 	# 切场景的黑幕（SceneFade）还在的时候不开：不然菜单开着、底下换了场景，"重开本关"会重开到新场景去
 	for c in get_tree().root.get_children():

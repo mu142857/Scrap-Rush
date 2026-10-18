@@ -107,6 +107,7 @@ func _ready() -> void:
 	# 字放在地面上方 72 像素（不低于天花板）：镜头放大 2 倍时只看得到地面上方约 100 像素，
 	# 原来挂在天花板下面，上层场子的天花板在画面外，AMBUSH / CLEAR 根本看不到
 	_label.position = Vector2((left + right) / 2.0 - 60.0, maxf(ceil_y + 6.0, minf(floor_left, floor_right) - 72.0))
+	_label_home = _label.position
 	_label.visible = false
 	var unshaded := CanvasItemMaterial.new()
 	unshaded.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
@@ -392,6 +393,34 @@ func _tick_label(delta: float) -> void:
 	_label_t -= delta
 	_label.modulate.a = clampf(_label_t / 0.4, 0.0, 1.0)
 	_label.visible = _label_t > 0.0
+	_keep_label_on_screen()
+
+
+## AMBUSH / CLEAR 那行字挂在世界里；镜头一拉近，它可能落到右上角情绪表、左上角马灯血条、或者画面外面。
+## 每帧把它夹进屏幕安全区：离上边至少 LABEL_SAFE_TOP，离左右边至少 LABEL_SAFE_SIDE（10-18 质检 63：第二关 E3 的"有埋伏"压在情绪表下面）
+const LABEL_SAFE_TOP := 48.0
+const LABEL_SAFE_SIDE := 90.0
+const LABEL_SAFE_BOTTOM := 210.0
+## 字原来的位置离画面超过这么多（屏幕像素）就当作"不在这儿"，不显示
+const LABEL_NEAR := 60.0
+var _label_home := Vector2.ZERO
+
+
+func _keep_label_on_screen() -> void:
+	var xf := get_viewport().get_canvas_transform() * get_global_transform()
+	var home_tl := xf * _label_home
+	var home_br := xf * (_label_home + _label.size)
+	var w := home_br.x - home_tl.x
+	var h := home_br.y - home_tl.y
+	var screen := get_viewport().get_visible_rect().size
+	# 这场根本不在画面附近（镜头在别的房间）：不显示，也别把字拽进画面里，不然会和眼前这场的字叠成两行
+	if not Rect2(Vector2.ZERO, screen).grow(LABEL_NEAR).intersects(Rect2(home_tl, Vector2(w, h))):
+		_label.visible = false
+		return
+	var tl := home_tl
+	tl.x = clampf(tl.x, LABEL_SAFE_SIDE, maxf(LABEL_SAFE_SIDE, screen.x - LABEL_SAFE_SIDE - w))
+	tl.y = clampf(tl.y, LABEL_SAFE_TOP, maxf(LABEL_SAFE_TOP, minf(LABEL_SAFE_BOTTOM, screen.y - h)))
+	_label.position = (xf.affine_inverse() * tl).round()
 
 
 func _add_gate(x: float, floor_y: float) -> Gate:

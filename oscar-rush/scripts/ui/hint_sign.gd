@@ -66,7 +66,8 @@ func _process(delta: float) -> void:
 		if zone.has_point((p as Node2D).global_position):
 			inside = true
 			break
-	var want := inside and not _elite_on_screen()
+	# 关卡开场的名字卡、精英名字卡在屏幕上时也先藏着（name_card 组），放完再淡出来
+	var want := inside and not _elite_on_screen() and get_tree().get_nodes_in_group("name_card").is_empty()
 	_alpha = move_toward(_alpha, 1.0 if want else 0.0, delta * FADE_SPEED)
 	modulate.a = _alpha
 	visible = _alpha > 0.0

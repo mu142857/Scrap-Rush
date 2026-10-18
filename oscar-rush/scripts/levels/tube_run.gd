@@ -10,16 +10,14 @@ extends Node2D
 ## - 中途有存档点（CHECKPOINT）：马灯碎了从存档点重来，没到存档点就从管道起点重来。
 ## - 终点：管子往下一折，胶囊砸穿接线员大厅的天花板，直接落进埋伏（level2.gd 的落地演出，落地就开打）。
 ## - 双人：每人一只胶囊，前后错开，各换各的道，马灯共用一盏（Run 的血量）。
-## 速度感：远景、中景两张循环背景按 0.15 / 0.45 倍速卷，管壁上的铜箍和前景的钢梁按 1 / 1.6 倍速闪过，加速时出速度线。
+## 速度感：背后是 TubeBackdrop 的五层视差（夜空、大厅、继电器、中景、近景钢箍，放映机会话做的），管壁上的铜箍按 1 倍速闪过，加速时出速度线。
 ## 单独打开：Godot --path . scenes/level2_tube.tscn；调试：-- --tubeauto（自动驾驶）、--tubeat=<距离>（从中途开始）
 
 const L2 := preload("res://scripts/levels/level2.gd")
 const LEVEL_SCENE := "res://scenes/level2.tscn"
-const FAR_TEX := preload("res://art/levels/level2_tube_far.png")
-const MID_TEX := preload("res://art/levels/level2_tube_mid.png")
 ## 管里的风（草图/第二关/level2_sfx.py 合成的 2 秒循环），音量、音高跟着速度走
 const WIND := preload("res://sfx/level2_tube_wind.wav")
-## 开场动画：胶片很快地卷过去、卡住、烧白，接着就是管道冲刺（只在第一次进来时播）
+## 开场动画：胶片很快地卷过去、卡住、烧白，接着就是管道冲刺（三关共用的 LevelIntro 框架播，一局只播第一次）
 const INTRO := preload("res://scripts/levels/level2_intro.gd")
 
 const LANES: Array[float] = [104.0, 140.0, 176.0]
@@ -56,8 +54,8 @@ var _slow_t := 0.0
 var _ending := false
 var _retrying := false
 var _auto := false
-var _far: Sprite2D
-var _mid: Sprite2D
+## 背后的多层视差（放映机会话做的，scripts/levels/tube_backdrop.gd）
+var _backdrop: TubeBackdrop
 var _track: Track
 var _cam: Camera2D
 var _switches := 0
@@ -93,15 +91,13 @@ func _ready() -> void:
 		if arg.begins_with("--tubeat="):
 			resume_d = arg.trim_prefix("--tubeat=").to_float()
 			_debug_start = true
-	# 要在 start_level 之前看：它会把"正在重来"的标记清掉
-	var play_intro: bool = INTRO.wanted()
 	Run.start_level()
 	Run.crystal_broken.connect(_on_crystal_broken)
 	dist = resume_d
 	_build_course()
 
-	_far = _bg(FAR_TEX, -20)
-	_mid = _bg(MID_TEX, -19)
+	_backdrop = TubeBackdrop.new()
+	add_child(_backdrop)
 	_track = Track.new()
 	_track.run = self
 	add_child(_track)
@@ -133,20 +129,11 @@ func _ready() -> void:
 	# 开场不打"冲进气动管"横幅：它正好压在中间那条管上，玩家这时候正在学换道（10-18 夜间打磨）
 	if resume_d > 0.0 and not _debug_start:
 		hud.show_banner("CHECKPOINT", 0.8)
-	if play_intro:
-		add_child(INTRO.new())
-
-
-func _bg(tex: Texture2D, z: int) -> Sprite2D:
-	var s := Sprite2D.new()
-	s.texture = tex
-	s.centered = false
-	s.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
-	s.region_enabled = true
-	s.region_rect = Rect2(0, 0, 480, 270)
-	s.z_index = z
-	add_child(s)
-	return s
+	if LevelIntro.should_play(self):
+		add_child(LevelIntro.make(2, "PICTURE HOUSE", INTRO.new()))
+	# 测开场动画的跳过和重来（真窗口，框架不认 -- 调试参数，所以用环境变量）：SCRAP_L2INTRO_TEST=1
+	if OS.get_environment("SCRAP_L2INTRO_TEST") == "1":
+		_intro_test.call_deferred()
 
 
 ## 赛道（距离按像素算；底速每秒 250，全程约 40 秒）
@@ -239,8 +226,7 @@ func _physics_process(delta: float) -> void:
 		var target_db := -60.0 if _ending else lerpf(-22.0, -11.0, k)
 		_wind.volume_db = move_toward(_wind.volume_db, target_db, delta * 40.0)
 		_wind.pitch_scale = lerpf(0.85, 1.35, k)
-	_far.region_rect.position.x = dist * 0.15
-	_mid.region_rect.position.x = dist * 0.45
+	_backdrop.scroll(dist, speed, delta)
 	_cam.offset = Game.shake_offset(1.0)
 	_track.queue_redraw()
 	if _auto:
@@ -434,6 +420,31 @@ func _finish() -> void:
 	SceneFade.go(get_tree(), LEVEL_SCENE, 0.25, 0.05, 0.25)
 
 
+## 开场动画测试：播到 1.5 秒按一下空格（应该跳过、马上能玩），再按重来（应该不再播）
+static var _intro_test_stage := 0
+
+
+func _intro_test() -> void:
+	var tree := get_tree()
+	if _intro_test_stage == 0:
+		await tree.create_timer(1.5, true, false, true).timeout
+		var ev := InputEventKey.new()
+		ev.physical_keycode = KEY_SPACE
+		ev.keycode = KEY_SPACE
+		ev.pressed = true
+		Input.parse_input_event(ev)
+		await tree.create_timer(0.6, true, false, true).timeout
+		var d0 := dist
+		await tree.create_timer(1.0, true, false, true).timeout
+		print("[introtest] after skip: paused=%s intro_left=%d moved=%.0f" % [tree.paused, find_children("*", "LevelIntro", true, false).size(), dist - d0])
+		_intro_test_stage = 1
+		_retry()
+	else:
+		await tree.create_timer(1.0, true, false, true).timeout
+		print("[introtest] after retry: paused=%s intro_left=%d dist=%.0f" % [tree.paused, find_children("*", "LevelIntro", true, false).size(), dist])
+		tree.quit()
+
+
 ## 暂停菜单的"重开本关"（有这个函数菜单才显示）：从管道起点重来，不用中途存档点
 func _retry() -> void:
 	# 终点已经往下掉、正在切到第二关：不许重来
@@ -587,21 +598,7 @@ class Track extends Node2D:
 		# 玻璃管前半边的高光（压在胶囊上面，像隔着玻璃）
 		for ly in TubeRun.LANES:
 			draw_rect(Rect2(0, ly - TubeRun.TUBE_R + 2, 480, 1), Color(GLASS_HI, 0.55))
-		# 前景钢梁按 1.6 倍速擦过（很暗的剪影）。三条道那一段只留很淡的影子，不挡障碍（10-18 新玩家报告：
-		# 原来整根黑的，正好挡住阀门时那一下看不见）；道的上下各留一截实的，加一块铆着的连接板
-		var off3 := fposmod(d * 1.6, 700.0)
-		var gx := roundf(480.0 - off3)
-		var band0 := TubeRun.LANES[0] - TubeRun.TUBE_R - 6.0
-		var band1 := TubeRun.LANES[TubeRun.LANES.size() - 1] + TubeRun.TUBE_R + 6.0
-		for seg in [Vector2(0, band0), Vector2(band1, 270)]:
-			draw_rect(Rect2(gx, seg.x, 18, seg.y - seg.x), Color8(12, 10, 10))
-			draw_rect(Rect2(gx + 18, seg.x, 2, seg.y - seg.x), Color8(28, 24, 22))
-		draw_rect(Rect2(gx - 3, band0 - 6, 24, 6), Color8(22, 19, 17))
-		draw_rect(Rect2(gx - 3, band1, 24, 6), Color8(22, 19, 17))
-		for k in 3:
-			draw_rect(Rect2(gx + k * 8, band0 - 4, 1, 1), Color8(60, 52, 44))
-			draw_rect(Rect2(gx + k * 8, band1 + 2, 1, 1), Color8(60, 52, 44))
-		draw_rect(Rect2(gx, band0, 18, band1 - band0), Color(0.05, 0.04, 0.04, 0.22))
+		# 前景钢梁现在在 TubeBackdrop 的近景层里（1.9 倍速的大钢箍，道那一段只留淡影子）
 		if run.speed > 300.0:
 			# 加速：满屏的速度线
 			for k in 14:

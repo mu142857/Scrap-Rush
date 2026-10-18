@@ -39,7 +39,9 @@ func _setup() -> void:
 	texture_path = "res://art/enemies/scavenger.png"
 	hframes = 6
 	frame_size = Vector2i(36, 14)
-	body_rect = Rect2(-6, -10, 12, 10)
+	# 10-18 贴图加了车后推车的人（脚底右边 7~13 格，朝右时翻到左边）。body_rect 不跟着朝向翻，
+	# 所以左右对称放宽到 ±13：两个朝向都框得住人，车头那边也没超出夹子伸出去的范围
+	body_rect = Rect2(-13, -11, 26, 11)
 	led_pixel = Vector2i(13, 6)
 	max_hp = 120.0  # 10-18 按每场同屏怪数重平衡（作者：一关比一关难），原来 200；表见 夜间打磨/商店经济压力马灯_报告.md 第 27 节
 	contact_damage = 10.0

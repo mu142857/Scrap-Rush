@@ -99,7 +99,6 @@ A/D  choose      Space / C  start      Esc  back      You can swap tools in the 
 "Hold %s: charge, release: shoot",按住 %s 蓄力，松手发射
 Hold %s: fire,按住 %s 开火
 %s: steam blast,%s 喷蒸汽
-%s Move   %s Jump (hold in air: fly)   %s   %s Drop/pick lantern   R Restart,%s 移动   %s 跳（空中按住飞）   %s   %s 放/拿马灯   R 重来
 CHECKPOINT,存档点
 %s  Move      %s  Jump,%s  移动      %s  跳
 Hold %s to fire nonstop,按住 %s 一直连发
@@ -357,7 +356,6 @@ Up/Down,↑/↓
 %s scroll    %s page    %s back,%s 滚动    %s 翻页    %s 返回
 %s  choose      %s  start      %s  back      You can swap tools in the shop,%s  选择      %s  出发      %s  返回      商店里可以换家伙
 %s Move   %s Jump (hold in air: fly)   %s   %s Drop/pick lantern   %s,%s 移动   %s 跳（空中按住飞）   %s   %s 放/拿马灯   %s
-R Restart,R 重来
 %s Pause,%s 暂停
 PERFECT RUN  -  THE LANTERN NEVER DIMMED,满血通关  -  马灯一直亮着
 parts: one drops after every fight,零件：每打完一场掉一个
@@ -663,3 +661,9 @@ Loading tape #3,读取录像带 3 号
 HOME,家
 Rewinding to the last good frame,倒带到最后一格好画面
 Press DEL to remember,按 DEL 键回忆
+"gear (1+ parts): small boost, up to Lv3",装备（1 个零件起）：小加成，最多 3 级
+Director / Programming / Lighting / VFX,导演　程序　光影　特效
+Game Design / Animation / Environment Design / Art Direction,策划　动画　场景设计　画风设计
+Portraits,立绘
+Tools & Collaboration,工具与协作
+pixel character model,像素角色生成模型

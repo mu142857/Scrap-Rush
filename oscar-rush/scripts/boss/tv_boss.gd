@@ -730,6 +730,9 @@ func _phase_roar() -> void:
 		if bl.has_method("fizzle"):
 			bl.call("fizzle")
 		else:
+			# 光柱、雪花分身、闪电没有 fizzle：原地迸一下再没，不凭空消失（10-18）
+			if bl is Node2D:
+				Game.sparks(get_parent(), (bl as Node2D).global_position, Color(0.85, 0.85, 0.95), 3, 40.0)
 			bl.queue_free()
 	_pause_t = 0.8
 

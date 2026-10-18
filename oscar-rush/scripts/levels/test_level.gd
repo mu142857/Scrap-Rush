@@ -208,12 +208,16 @@ func _ready() -> void:
 			t.set("out_dir", arg.trim_prefix("--autotest="))
 			add_child(t)
 
+	# 开场动画（游戏细节讨论会话，10-18）：一局里第一次进第一关时，奥斯卡的开场帧把画面关上再打开（LevelIntro）
+	if LevelIntro.should_play(self):
+		var intro := LevelIntro.make(1, "BOILER BAY", Level1Opening.new())
+		intro.start_covered = false
+		add_child(intro)
+
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.physical_keycode:
-			KEY_R:
-				_retry()
 			KEY_F3:
 				_debug = not _debug
 				queue_redraw()

@@ -1,5 +1,5 @@
 class_name L3BootIntro
-extends CanvasLayer
+extends Control
 ## 第三关开场：老电脑开机（2026-10-18 作者："第三关可以是电脑开机画面……要做出电影感，高级感，流畅的动画"）。
 ## 和结局里老电视"自己重新开机"首尾呼应：都是显像管从一个亮点 → 一条横线 → 整屏。
 ##   0.00  黑。显像管上电"咚"一声，高压包细细地啸叫
@@ -9,10 +9,12 @@ extends CanvasLayer
 ##   1.05  BIOS 自检一行行跳出来：内存计数、检测磁带机、马灯、船员、家乡信号……每行硬盘"嗒"一声
 ##   2.75  读取录像带的进度条
 ##   3.50  镜头扎进屏幕：画面放大、红青串色越拉越开，碎成像素溶解，露出第三关
-## 总长约 4.4 秒。按任意键跳过（直接进最后的扎进屏幕，0.4 秒）。播的时候整棵树暂停，自己照常走。
-## 只在进关时播（从存档点重来不播），由 level3.gd 调 L3BootIntro.play(self)。
+## 总长约 4.4 秒。10-18 起作为三关共用开场框架 LevelIntro（游戏细节讨论会话）的内容播：
+##   黑边、跳过、整棵树暂停、只在一局第一次进关时播，都由框架管；
+##   扎进屏幕碎完的那一刻调 intro.reveal()：镜头拉回、名字卡"第三关 · 屏幕世界"淡入（BIOS 的字已经碎光，不会叠字）。
+## 框架上下各有 24 像素黑边，所以字都放在 y 40～240 之间。
 
-signal finished
+signal _ended
 
 const BG := Color(0.03, 0.04, 0.07)
 const TEXT := Color(0.78, 0.86, 0.9)
@@ -31,7 +33,6 @@ const T_BAR := 2.75
 const T_BAR_END := 3.45
 const T_DIVE := 3.5
 const DIVE_TIME := 0.9
-const SKIP_DIVE := 0.45
 
 ## 自检的每一行：[出现时刻, 左半, 右半, 右半颜色]。左半在 _draw 里 tr()，右半有的是数字
 const LINES := [
@@ -49,6 +50,7 @@ var _t := 0.0
 var _dive_at := T_DIVE
 var _dive_len := DIVE_TIME
 var _done := false
+var _intro: LevelIntro
 var _hum: AudioStreamPlayer
 var _clicked := {}
 var _canvas: Control
@@ -77,16 +79,17 @@ void fragment() {
 """
 
 
-static func play(parent: Node) -> L3BootIntro:
-	var intro := L3BootIntro.new()
-	parent.add_child(intro)
-	return intro
+## LevelIntro 调：一直播到扎进屏幕碎完（或者被跳过）
+func run(intro: LevelIntro) -> void:
+	_intro = intro
+	if not _done:
+		await _ended
 
 
 func _ready() -> void:
-	layer = 60
+	size = Vector2(W, H)
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	get_tree().paused = true
 	_canvas = Control.new()
 	_canvas.size = Vector2(W, H)
 	_canvas.pivot_offset = Vector2(W, H) * 0.5
@@ -107,6 +110,12 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	if _done:
+		return
+	if _intro and _intro.skipped:
+		_done = true
+		_ended.emit()
+		return
 	var before := _t
 	_t += delta
 	_cues(before, _t)
@@ -123,25 +132,15 @@ func _process(delta: float) -> void:
 	_canvas.queue_redraw()
 
 
-func _unhandled_input(event: InputEvent) -> void:
-	if _done or _t < 0.3 or _t >= _dive_at:
-		return
-	if (event is InputEventKey or event is InputEventJoypadButton or event is InputEventMouseButton) and event.is_pressed():
-		get_viewport().set_input_as_handled()
-		_dive_at = _t
-		_dive_len = SKIP_DIVE
-
-
 func _finish() -> void:
 	_done = true
-	get_tree().paused = false
+	# 碎完了：撤掉自己的黑底，镜头拉回、名字卡淡入（框架管），嗡嗡声跟着淡掉
+	visible = false
+	if _intro:
+		_intro.reveal()
 	if _hum.playing:
-		var tw := create_tween()
-		tw.tween_property(_hum, "volume_db", -40.0, 0.5)
-		tw.tween_callback(queue_free)
-	else:
-		queue_free()
-	finished.emit()
+		create_tween().tween_property(_hum, "volume_db", -40.0, 0.5)
+	_ended.emit()
 
 
 ## 音效：到点放一次
@@ -210,12 +209,12 @@ func _draw_bios(c: Control) -> void:
 	if _t >= _dive_at:
 		ca = clampf((_t - _dive_at) / _dive_len, 0.0, 1.0) * 4.0
 	var x0 := 26.0
-	var y := 30.0
+	var y := 46.0
 	# 抬头：厂牌 + 右上角一台小电视图标
 	_text(c, font, Vector2(x0, y), "SCRAP-TEK 86   BIOS v1.986", AMBER, fs, ca)
 	_text(c, font, Vector2(x0, y + 13), tr("Old Tech Inc. - all signals reserved"), DIM, fs, ca)
-	_draw_logo(c, Vector2(W - 70, 18))
-	y += 40.0
+	_draw_logo(c, Vector2(W - 70, 40))
+	y += 34.0
 	for i in LINES.size():
 		var at: float = LINES[i][0]
 		if _t < at:
@@ -254,17 +253,17 @@ func _draw_bios(c: Control) -> void:
 		var shown := floorf(k * 24.0 + sin(k * 9.0) * 1.5) / 24.0
 		shown = clampf(shown, 0.0, 1.0)
 		var bx := x0
-		var by := H - 52.0
+		var by := H - 74.0
 		var bw := W - x0 * 2.0
 		c.draw_rect(Rect2(bx - 2, by - 2, bw + 4, 12), DIM, false, 1.0)
 		var cells := 40
 		for i in int(shown * cells):
 			c.draw_rect(Rect2(bx + i * bw / cells + 1, by + 1, bw / cells - 2, 6), AMBER if i % 8 != 7 else AMBER.lightened(0.3))
-		_text(c, font, Vector2(bx, by + 24), "%s  %d%%" % [tr("Rewinding to the last good frame"), int(shown * 100.0)], DIM, fs, ca)
+		_text(c, font, Vector2(bx, by + 22), "%s  %d%%" % [tr("Rewinding to the last good frame"), int(shown * 100.0)], DIM, fs, ca)
 	# 底下一行彩蛋 + 闪烁光标
 	if _t >= 1.3:
 		var cur := "_" if int(_t * 3.0) % 2 == 0 else ""
-		_text(c, font, Vector2(x0, H - 16.0), tr("Press DEL to remember") + "  " + cur, DIM.darkened(0.25), fs, ca)
+		_text(c, font, Vector2(x0, H - 34.0), tr("Press DEL to remember") + "  " + cur, DIM.darkened(0.25), fs, ca)
 
 
 ## 三层字：红、青往两边错开 ca 像素（串色），中间原色

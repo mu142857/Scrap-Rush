@@ -223,6 +223,9 @@ func _load_art(key: String) -> void:
 			leds[k] = led_by_frame[k] * 2
 		led_by_frame = leds
 		led_pixel = led_by_frame.get(0, Vector2i(-1, -1))
+	# 碰撞框（也是挨打框）一定要到脚底：框底比脚底高，站在地上时脚就陷进地里（10-18 第三关自检报 fr_stump、weather_storm 陷 3、6 像素）
+	if body_rect.end.y < 0.0:
+		body_rect.size.y -= body_rect.end.y
 
 
 func _ready() -> void:

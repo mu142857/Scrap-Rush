@@ -28,21 +28,50 @@ static func row(name_w: float, bar_w: float, bar_h: float) -> Array:
 	return [name_pos, bar]
 
 
+## 每个血条上次真算 crowded 的时间和结果（instance_id → [毫秒, 结果]）
+static var _memo := {}
+
+
 ## 屏幕上 rect 这块后面有没有东西：主角、怪、Boss 的子弹，以及关卡根节点下直接挂的 Area2D / 角色（各种子弹、碎块）
+## 真算一次很贵（第三关根节点下两千多个子节点，网页版 CPU 降速 4 倍时一次 1.4~4ms），
+## 同一个血条 0.1 秒内只真算一次，其余帧用上次的结果；淡入淡出本来就要 0.2 秒，看不出差别（10-18 网页性能复查）
 static func crowded(from: Node, rect: Rect2) -> bool:
+	var now := Time.get_ticks_msec()
+	var id := from.get_instance_id()
+	var m: Variant = _memo.get(id)
+	if m != null and now - int(m[0]) < 100:
+		return m[1]
+	if _memo.size() > 32:
+		_memo.clear()
+	var hit := _crowded_now(from, rect)
+	_memo[id] = [now, hit]
+	return hit
+
+
+static func _crowded_now(from: Node, rect: Rect2) -> bool:
 	var tree := from.get_tree()
 	var xf := from.get_viewport().get_canvas_transform()
 	var r := rect.grow(MARGIN)
 	for g in [&"player", &"enemy", &"boss_bullet"]:
 		for n in tree.get_nodes_in_group(g):
-			if n is Node2D and r.has_point(xf * (n as Node2D).global_position):
+			if n is Node2D and r.has_point(xf * _point(n as Node2D)):
 				return true
 	var lvl := tree.current_scene
 	if lvl:
 		for n in lvl.get_children():
-			if (n is Area2D or n is CharacterBody2D) and r.has_point(xf * (n as Node2D).global_position):
+			if (n is Area2D or n is CharacterBody2D) and r.has_point(xf * _point(n as Node2D)):
 				return true
 	return false
+
+
+## 拿来判断"在不在血条后面"的那一点：人和怪用身子中间（aim_point，没有就脚底往上 8 像素），子弹用自己的位置。
+## 原来人和怪按脚底算，第三关有些屏幕地面就在 y 247~250，站在地上的怪让血条整场淡着（10-18 质检 62）
+static func _point(n: Node2D) -> Vector2:
+	if n.has_method("aim_point"):
+		return n.call("aim_point")
+	if n is CharacterBody2D:
+		return n.global_position + Vector2(0, -8)
+	return n.global_position
 
 
 ## 不透明度往目标走一步

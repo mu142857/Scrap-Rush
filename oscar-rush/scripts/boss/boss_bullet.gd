@@ -77,9 +77,12 @@ func _ready() -> void:
 		Kind.SNOW: 2.0, Kind.SCAN: 2.0}[kind]
 	shape.shape = c
 	add_child(shape)
-	var unshaded := CanvasItemMaterial.new()
-	unshaded.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
-	material = unshaded
+	# 所有子弹共用一个材质：每颗各 new 一个就没法合批，Boss3 雪花帘 85 颗同屏时
+	# 绘制次数 124、网页版 CPU 降速 4 倍掉到 6~15 帧；共用以后绘制次数 54、52 帧（10-18 网页性能复查）
+	if _unshaded == null:
+		_unshaded = CanvasItemMaterial.new()
+		_unshaded.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+	material = _unshaded
 	if get_meta("lit", false):
 		var l := PointLight2D.new()
 		l.texture = Game.light_texture()
@@ -88,6 +91,9 @@ func _ready() -> void:
 		l.texture_scale = 0.7
 		add_child(l)
 	body_entered.connect(_on_body)
+
+
+static var _unshaded: CanvasItemMaterial
 
 
 func _physics_process(delta: float) -> void:
@@ -123,8 +129,13 @@ func _physics_process(delta: float) -> void:
 	if _trail.size() > (5 if kind == Kind.RIVET else 3):
 		_trail.pop_back()
 	position += velocity * delta
-	if not arena.grow(24.0).has_point(position) or _life > 8.0:
+	# 出了画面才直接删（看不见）；画面里飞够 8 秒的碎散掉，不凭空没（作者 10-18："子弹消失"）
+	if not arena.grow(24.0).has_point(position):
 		queue_free()
+		return
+	if _life > 8.0:
+		fizzle()
+		return
 	queue_redraw()
 
 
@@ -147,10 +158,10 @@ func fizzle(push := Vector2.ZERO) -> void:
 	if _done:
 		return
 	_done = true
-	if push == Vector2.ZERO:
-		Game.sparks(get_parent(), global_position, Color(0.85, 0.85, 0.9), 2, 30.0)
-	else:
-		Game.sparks(get_parent(), global_position, Color(0.95, 0.95, 1.0), 4, 90.0, push)
+	# 10-18：碎成几片自己颜色的像素往外散（被吹散的顺着吹的方向飞），比两颗淡火花看得清
+	_shatter(push, 4)
+	if push != Vector2.ZERO:
+		Game.sparks(get_parent(), global_position, Color(0.95, 0.95, 1.0), 3, 90.0, push)
 	queue_free()
 
 
@@ -161,8 +172,74 @@ func _pop() -> void:
 		col = [Color(1.0, 0.3, 0.6), Color(0.3, 0.95, 1.0), Color(0.6, 1.0, 0.4)][randi() % 3]
 	elif gravel:
 		col = Color(0.66, 0.6, 0.52)
-	Game.sparks(get_parent(), global_position, col, 4, 50.0)
+	Game.sparks(get_parent(), global_position, col, 3, 50.0)
+	_shatter(-velocity.normalized() * 0.5, 5)
 	queue_free()
+
+
+## 子弹自己的颜色（碎片用）
+func _colors() -> Array[Color]:
+	if crt:
+		return [Color(1.0, 0.25, 0.35), Color(0.35, 1.0, 0.45), Color(0.3, 0.55, 1.0)]
+	if gravel:
+		return [Color(0.66, 0.6, 0.52), Color(0.45, 0.4, 0.36)]
+	match kind:
+		Kind.SNOW:
+			return [Color(0.95, 0.95, 1.0), Color(0.7, 0.72, 0.8)]
+		Kind.SCAN:
+			return [Color.WHITE, Color(0.55, 0.95, 1.0)]
+		Kind.WAVE:
+			return [Color(1.0, 0.88, 0.6), Color(0.85, 0.6, 0.35)]
+		Kind.NOTE:
+			return [Color(0.98, 0.92, 0.72), Color(1.0, 0.85, 0.5)]
+		Kind.RIVET:
+			return [Color(0.95, 0.92, 0.86), Color(1.0, 0.45, 0.2)]
+		Kind.COAL:
+			return [Color(0.4, 0.24, 0.16), Color(1.0, 0.45, 0.12)]
+	return [Color(1.0, 0.72, 0.3), Color(1.0, 0.42, 0.1)]
+
+
+## 碎成 n 片：一个节点画全部碎片（不是每片一个节点），0.3 秒散开、最后一闪一闪没掉。用子弹共用的那个材质
+func _shatter(push: Vector2, n: int) -> void:
+	if get_parent() == null:
+		return
+	var sh := Shards.new()
+	sh.position = position
+	sh.cols = _colors()
+	for i in n:
+		var a := TAU * (i + randf() * 0.6) / n
+		sh.vels.append(Vector2(cos(a), sin(a)) * randf_range(25.0, 55.0) + push * 70.0)
+		sh.pts.append(Vector2.ZERO)
+	sh.material = _unshaded
+	get_parent().add_child(sh)
+
+
+class Shards extends Node2D:
+	const LIFE := 0.3
+	var pts: Array[Vector2] = []
+	var vels: Array[Vector2] = []
+	var cols: Array[Color] = []
+	var _t := 0.0
+
+	func _ready() -> void:
+		z_index = 8
+
+	func _process(delta: float) -> void:
+		_t += delta
+		if _t > LIFE:
+			queue_free()
+			return
+		for i in pts.size():
+			vels[i] *= 1.0 - 4.0 * delta
+			vels[i].y += 120.0 * delta
+			pts[i] += vels[i] * delta
+		queue_redraw()
+
+	func _draw() -> void:
+		if _t > LIFE - 0.1 and int(_t * 30.0) % 2 == 0:
+			return
+		for i in pts.size():
+			draw_rect(Rect2(pts[i].round(), Vector2(2, 2) if i == 0 and _t < 0.12 else Vector2.ONE), cols[i % cols.size()])
 
 
 ## 子弹都画大一圈、带一圈深色描边：弹幕游戏里子弹必须一眼看清

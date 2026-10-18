@@ -244,6 +244,11 @@ func _pressed(what: String) -> bool:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	# 鼠标右键 = 返回上一步（和 Esc、手柄 B 一样；合作时也认，返回不分是谁）
+	if not _busy and _ready_t <= 0.0 and event is InputEventMouseButton and event.pressed \
+			and event.button_index == MOUSE_BUTTON_RIGHT:
+		_back()
+		return
 	# 合作时鼠标不知道算谁的，不认
 	if _busy or _ready_t > 0.0 or _coop:
 		return
@@ -297,6 +302,8 @@ func _choose() -> void:
 func _back() -> void:
 	_busy = true
 	Game.sfx("ui_back", -6.0)
+	# 返回上一步是选关页，不是开始菜单（title_screen.gd 的 return_to_levels；用 load 取，不写类名）
+	(load("res://scripts/ui/title_screen.gd") as GDScript).set("return_to_levels", true)
 	SceneFade.go(get_tree(), TITLE_SCENE, 0.4)
 
 

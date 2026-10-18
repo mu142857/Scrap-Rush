@@ -20,7 +20,7 @@ extends EliteBase
 ## 0、1 走（唱片转）；2 横扫预警（唱臂抬起）；3 横扫（唱臂甩到前面朝下）；4 声波预警（喇叭口亮、唱片转出拖影）；
 ## 5 声波（喇叭口张大）。
 
-enum State { MOVE, SWEEP_WARN, SWEEP, WAVE_WARN, WAVE, RECOVER }
+enum State { MOVE, SWEEP_WARN, SWEEP, WAVE_WARN, WAVE, RECOVER, THUMP_WARN, THUMP }
 
 const MOVE_SPEED := 13.0
 const WALK_FRAME_TIME := 0.25
@@ -42,6 +42,10 @@ const SWEEP_WARN := 0.8
 ## 横扫最长等多久（来回那种 5 秒内也收回来了）
 const SWEEP_MAX := 6.0
 const WAVE_WARN := 0.9
+## 重低音（10-18 加的变招，占横扫三次里的第二次）：喇叭对着主角脚下连轰三下。
+## 每下先在地上标红框 Thump.WARN 秒再轰，走出红框就躲开（跳不躲：声柱有 THUMP_H 高）
+const THUMP_WARN := 0.5
+const THUMP_TIMES := [0.0, 0.65, 1.3]
 const RECOVER_TIME := 0.4
 ## 帧内像素（朝左）：横扫时的臂尖、喇叭口中心
 const ARM_TIP := Vector2i(10, 30)
@@ -85,6 +89,8 @@ var _next := 0
 var _attack_dir := -1
 var _needle: Needle = null
 var _sweeps := 0
+## 重低音已经轰了几下
+var _thumps := 0
 ## 这次声波的弹幕型、已经放了几圈
 var _wave := "slow"
 var _wave_bag: Array[String] = []
@@ -176,6 +182,21 @@ func _tick(delta: float) -> void:
 			set_frame(5 if _state_t - last < 0.3 else 4)
 			if _rings_done >= times.size() and _state_t >= times[-1] + 0.3:   # 10-18：最后一圈放完停 0.5 → 0.3
 				_enter(State.RECOVER)
+		State.THUMP_WARN:
+			_brake(delta)
+			set_frame(4 if int(_state_t / 0.08) % 2 == 0 else 0)
+			if _state_t >= THUMP_WARN:
+				_thumps = 0
+				_enter(State.THUMP)
+		State.THUMP:
+			_brake(delta)
+			while _thumps < THUMP_TIMES.size() and _state_t >= THUMP_TIMES[_thumps]:
+				_thump()
+				_thumps += 1
+			var last: float = THUMP_TIMES[_thumps - 1] if _thumps > 0 else 0.0
+			set_frame(5 if _state_t - last < 0.25 else 4)
+			if _thumps >= THUMP_TIMES.size() and _state_t >= THUMP_TIMES[-1] + Thump.WARN + Thump.BLAST:
+				_enter(State.RECOVER)
 		State.RECOVER:
 			_brake(delta)
 			set_frame(int(_time / WALK_FRAME_TIME) % 2)
@@ -195,7 +216,13 @@ func _enter(s: State) -> void:
 func _start_attack(p: Player) -> void:
 	_face(p)
 	_attack_dir = dir
-	if _next == 0:
+	if _next == 0 and _sweeps % 3 == 1:
+		# 横扫三次里的第二次换成重低音
+		_sweeps += 1
+		warn(THUMP_WARN)
+		_enter(State.THUMP_WARN)
+		Game.sfx("charge", -8.0, 0.45)
+	elif _next == 0:
 		warn(SWEEP_WARN)
 		_enter(State.SWEEP_WARN)
 		Game.sfx("tvclick", -6.0, 0.7)
@@ -335,6 +362,23 @@ func _sweep() -> void:
 	_needle = n
 	Game.sfx("scrape", -4.0, 0.8)
 	Game.add_shake(1.5)
+
+
+## 重低音的一下：落在主角现在站的那块地上（主角在空中就往下找地面）。找不到地面就不轰
+func _thump() -> void:
+	var p := nearest_player(ATTACK_RANGE + 60.0)
+	if p == null:
+		return
+	var x := roundf(p.global_position.x)
+	var q := PhysicsRayQueryParameters2D.create(Vector2(x, p.global_position.y - 4.0), Vector2(x, p.global_position.y + 120.0), 1)
+	var hit := get_world_2d().direct_space_state.intersect_ray(q)
+	if hit.is_empty() or (hit.normal as Vector2).y > -0.5:
+		return
+	var t := Thump.new()
+	t.elite = self
+	get_parent().add_child(t)
+	t.global_position = Vector2(x, roundf((hit.position as Vector2).y))
+	Game.sfx("dial", -12.0, 0.5 + 0.1 * _thumps)
 
 
 ## 声波缺口摆在哪：
@@ -843,6 +887,90 @@ class SoundRing:
 				drawn[p] = true
 				draw_rect(Rect2(p, Vector2.ONE), c)
 
+
+
+## 重低音的一下：地上先标红框（两头的竖杠 + 一条底线 + 往下指的小箭头，越来越快地闪）WARN 秒，
+## 然后从地面冒起一柱一圈圈的声纹 BLAST 秒；轰的那一刻主角身子碰到框里那一柱（宽 2*HALF、高 HEIGHT）就挨 DAMAGE
+class Thump:
+	extends Node2D
+
+	const WARN := 0.6
+	const BLAST := 0.3
+	const HALF := 18.0
+	const HEIGHT := 34.0
+	const DAMAGE := 10.0
+	const COL := Color(1.0, 0.6, 0.3)
+	const RED := Color(1.0, 0.3, 0.2)
+
+	var elite: Gramophone
+	var _t := 0.0
+	var _boomed := false
+
+	func _ready() -> void:
+		z_index = 6
+		var unshaded := CanvasItemMaterial.new()
+		unshaded.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+		material = unshaded
+
+	func _physics_process(delta: float) -> void:
+		_t += delta
+		# 留声机死了：还没轰的就不轰了，淡掉
+		if (not is_instance_valid(elite) or elite.dead or elite._dying >= 0.0) and not _boomed:
+			queue_free()
+			return
+		if not _boomed and _t >= WARN:
+			_boomed = true
+			_boom()
+		if _t >= WARN + BLAST:
+			queue_free()
+			return
+		queue_redraw()
+
+	func _boom() -> void:
+		Game.sfx("boom", -8.0, 0.55, 0.05)
+		Game.sfx("bell", -12.0, 0.5)
+		Game.add_shake(2.0)
+		Game.dust(get_parent(), global_position, 6)
+		var r := Rect2(global_position + Vector2(-HALF, -HEIGHT), Vector2(HALF * 2.0, HEIGHT))
+		for n in get_tree().get_nodes_in_group("player"):
+			var p := n as Player
+			if p and r.intersects(Rect2(p.global_position + Vector2(-3, -16), Vector2(6, 16))):
+				p.hurt(global_position + Vector2(0, 4), DAMAGE * EnemyBase.damage_mult())
+		for n in get_tree().get_nodes_in_group("crystal"):
+			var c := n as Crystal
+			if c and c.carrier == null and r.intersects(Rect2(c.global_position + Vector2(-2.5, -8), Vector2(5, 8))):
+				c.take_hit(global_position + Vector2(0, 4), DAMAGE * EnemyBase.damage_mult())
+
+	func _draw() -> void:
+		draw_set_transform(global_position.round() - global_position)
+		if not _boomed:
+			var k := _t / WARN
+			if int(_t / lerpf(0.12, 0.04, k)) % 2 == 1:
+				return
+			var c := Color(RED, 0.45 + 0.45 * k)
+			for side in [-1.0, 1.0]:
+				var ex: float = side * HALF
+				draw_rect(Rect2(ex, -5.0, 1, 5), c)
+				draw_rect(Rect2(ex if side < 0.0 else ex - 2.0, -5.0, 3, 1), c)
+			draw_rect(Rect2(-HALF, -1.0, HALF * 2.0 + 1.0, 1), Color(c, c.a * 0.4))
+			# 往下指的小箭头，越接近越往下压
+			var ay := -14.0 + roundf(4.0 * k)
+			for i in 3:
+				draw_rect(Rect2(-2 + i, ay + i, 5 - 2 * i, 1), c)
+			return
+		# 声柱：一圈圈扁扁的弧从地面往上冒，越往上越淡
+		var b := (_t - WARN) / BLAST
+		for i in 4:
+			var h := fmod(b * HEIGHT * 1.6 + i * HEIGHT / 4.0, HEIGHT)
+			var a := minf(1.0, 1.3 * (1.0 - h / HEIGHT)) * (1.0 - b * 0.5)
+			var w := HALF * (0.55 + 0.45 * h / HEIGHT)
+			for x in range(int(-w), int(w) + 1):
+				var bend := roundf(2.0 * (1.0 - pow(x / maxf(w, 1.0), 2.0)))
+				draw_rect(Rect2(x, -roundf(h) - bend, 1, 1), Color(COL, a))
+		draw_rect(Rect2(-HALF, -1.0, HALF * 2.0 + 1.0, 1), Color(COL, 0.8 * (1.0 - b)))
+		# 轰的头一下：框里整块亮一下
+		if b < 0.25:
+			draw_rect(Rect2(-HALF, -HEIGHT, HALF * 2.0 + 1.0, HEIGHT), Color(COL, 0.18 * (1.0 - b / 0.25)))
 
 
 ## "站进绿点"：一行淡绿色的小字，在缺口那段地面的绿点正上方，淡入、停一会儿、淡出（共 HOLD 秒）。不吃场景压暗

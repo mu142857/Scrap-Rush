@@ -154,7 +154,8 @@ func _input(event: InputEvent) -> void:
 	elif event.is_action_pressed("ui_accept"):
 		_confirm()
 	elif event.is_action_pressed("ui_cancel") \
-			or (event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_ESCAPE):
+			or (event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_ESCAPE) \
+			or (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT):
 		_finish(0)
 	elif event is InputEventMouseMotion:
 		var i := _card_at()

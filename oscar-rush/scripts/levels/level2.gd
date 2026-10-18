@@ -73,6 +73,11 @@ const WANDER_CLEAR := 60.0
 const RESUME_WAIT := 1.2
 
 const SCROLL_SPEED := 70.0
+## 开卷先慢后快（10-18 新玩家体验报告第 7 条：第一次玩不知道左边的火会追上来）：
+## 从 SCROLL_SPEED 的 ROLL_EASE_FROM 倍加到全速，第一次开卷用 ROLL_EASE_FIRST 秒，换卷打完再开卷用 ROLL_EASE_AGAIN 秒
+const ROLL_EASE_FROM := 0.35
+const ROLL_EASE_FIRST := 2.5
+const ROLL_EASE_AGAIN := 1.0
 ## 走上胶片多远开始卷；开卷前停顿一下（"胶片开始转"），镜头先挪到起始位置
 const BRIDGE_TRIGGER := D.A_X1 + 16.0
 const ROLL_DELAY := 1.4
@@ -116,6 +121,9 @@ var _wander_t := 0.0
 var _wanderers: Array[Node2D] = []
 var _wander_queue: Array = []
 var _resume_wait := 0.0
+## 这一次开卷已经卷了几秒、加速要用几秒（见 ROLL_EASE_*）
+var _roll_t := 0.0
+var _roll_ease := ROLL_EASE_FIRST
 var _burn: BurnEdge
 var _encounters: Array[Encounter] = []
 var _tube_lamps: Array[TubeLamp] = []
@@ -468,8 +476,6 @@ func _add_lights() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.physical_keycode:
-			KEY_R:
-				_retry()
 			KEY_F3:
 				_debug = not _debug
 				queue_redraw()
@@ -524,6 +530,8 @@ func _physics_process(delta: float) -> void:
 			_cam.scroll_x = lerpf(_cam.scroll_x, ROLL_START_X, 1.0 - exp(-3.0 * delta))
 			if _t >= ROLL_DELAY:
 				_state = ROLL
+				_roll_t = 0.0
+				_roll_ease = ROLL_EASE_FIRST
 				_burn.visible = true
 				Game.sfx("whistle", -4.0, 0.7)
 		ROLL:
@@ -621,7 +629,9 @@ func _roll(delta: float) -> void:
 	if _resume_wait > 0.0:
 		_resume_wait -= delta
 		return
-	_cam.scroll_x += SCROLL_SPEED * delta
+	_roll_t += delta
+	var ease := smoothstep(0.0, _roll_ease, _roll_t)
+	_cam.scroll_x += SCROLL_SPEED * lerpf(ROLL_EASE_FROM, 1.0, ease) * delta
 	# 换卷：提前闪提示，到点停下打精英怪
 	if _reel_i < D.REEL_CHANGES.size():
 		var rc: float = D.REEL_CHANGES[_reel_i]
@@ -696,6 +706,8 @@ func _start_reel(i: int) -> void:
 	enc.finished.connect(func():
 		_reel_i += 1
 		_state = ROLL
+		_roll_t = 0.0
+		_roll_ease = ROLL_EASE_AGAIN
 		# 打完先停一下再接着卷：人常站在场子左边，紧挨着烧穿边，马上卷就会被烧（10-18 夜间打磨）
 		_resume_wait = RESUME_WAIT
 		Game.sfx("rivets", -8.0, 0.7))

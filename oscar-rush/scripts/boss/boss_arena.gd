@@ -419,8 +419,6 @@ func _retry() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.physical_keycode:
-			KEY_R:
-				_retry()
 			KEY_F3:
 				_debug = not _debug
 				queue_redraw()

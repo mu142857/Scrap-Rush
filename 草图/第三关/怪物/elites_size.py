@@ -369,6 +369,8 @@ def main():
         for m in big + small:
             Image.fromarray(m.strip()).save(OUT_PNG / f"{m.name}.png")
             br = m.body_rect
+            # 框底贴着脚底（end.y = 0），不然站在地上会陷进地里（布谷鸟钟会话 10-18：树桩、风暴云原来高 3、6 像素）
+            br = (br[0], br[1], br[2], -br[1])
             leds = ", ".join(f"{i}: Vector2i({x}, {y})" for i, (x, y) in sorted(m.leds.items()))
             size = "big" if m in big else "small"
             lines.append(f'\t"{m.name}": {{"size": "{size}", "texture": "res://art/enemies/l3/size/{m.name}.png", '

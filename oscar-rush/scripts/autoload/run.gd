@@ -58,6 +58,8 @@ func reset_run() -> void:
 	_reset_static("res://scripts/boss/boss_arena.gd", "_retried_scene", "")
 	_reset_static("res://scripts/levels/tube_run.gd", "resume_d", 0.0)
 	_reset_static("res://scripts/ui/hud.gd", "fights_cleared", 0)
+	# 三关的开场动画：新一局每关第一次进都要再播（LevelIntro 按场景记播过没有）
+	_reset_static("res://scripts/ui/level_intro.gd", "_played", {})
 
 
 func _reset_static(path: String, prop: String, value: Variant) -> void:

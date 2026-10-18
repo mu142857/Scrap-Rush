@@ -64,6 +64,10 @@ var _wake_t := 0.0
 ## 场子屏幕：清场以后回访刷怪用，{rect, enc, smalls, tint, floor, inside, left_clear, last}
 var _revisit: Array = []
 var _modes: Array[L3Mode] = []
+## 关卡里的指路牌（横幅出来的时候藏起来，见 _process）
+var _signs: Array[HintSign] = []
+## 开场横幅还没出来（开场动画放着、或者动画放完到横幅出来之间那 1.2 秒）：指路牌先别出来，免得闪一下又被横幅藏掉
+var _opening_pending := false
 ## 回访刷怪的几率（自测时可以改成 1）
 var revisit_chance := REVISIT_CHANCE
 ## 出口：家门口。门在山坡上，比屏幕地面高一点，所以一直延到地面，走到门前就算
@@ -155,17 +159,9 @@ func _ready() -> void:
 		m.hud = hud
 	# 开场说清目标（新玩家报告第 1 条：不知道往哪走）。从存档点重来就不再出
 	if not retrying:
-		# 开场：老电脑开机（l3_boot_intro.gd）。播的时候整棵树暂停，开场横幅的计时器也跟着停，放完才出。
-		# 自测参数（--l3auto、--l3mode、--l3fix……）跳过开场，不然每次测试多等 4 秒
-		var testing := false
-		for a in OS.get_cmdline_user_args():
-			if a.begins_with("--l3") or a.begins_with("--tour"):
-				testing = true
-		if not testing or OS.get_cmdline_user_args().has("--l3intro"):
-			L3BootIntro.play(self)
-		_after(1.2, func() -> void:
-			if is_instance_valid(hud) and not _leaving:
-				hud.show_banner(tr("Find the house from the tape. Up and to the right."), 3.0))
+		# 开场横幅在开场动画（LevelIntro，_ready 最后接）整段放完以后再出：
+		# 名字卡和横幅都在屏幕中间，不能叠（框架以后可能在名字卡时就放开暂停，所以不靠暂停来等，等它的 finished）
+		_opening_pending = true
 
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--tour="):
@@ -212,6 +208,24 @@ func _ready() -> void:
 			var t: Node = load("res://scripts/debug/autotest.gd").new()
 			t.set("out_dir", arg.trim_prefix("--autotest="))
 			add_child(t)
+
+	# 开场动画：老电脑开机（l3_boot_intro.gd），用三关共用的 LevelIntro 框架播（黑边、跳过、名字卡、
+	# 只在一局第一次进关时播、测试时不播都归框架）。开机画面自己从黑屏开始画，所以不要框架的黑底
+	if LevelIntro.should_play(self):
+		var intro := LevelIntro.make(3, "SCREENS", L3BootIntro.new())
+		intro.start_covered = false
+		intro.finished.connect(_opening_banner)
+		add_child(intro)
+	elif _opening_pending:
+		_opening_banner()
+
+
+## 开场横幅"去录像里那栋房子"：开场动画放完（或者没放）1.2 秒后出
+func _opening_banner() -> void:
+	_after(1.2, func() -> void:
+		_opening_pending = false
+		if is_instance_valid(hud) and not _leaving:
+			hud.show_banner(tr("Find the house from the tape. Up and to the right."), 3.0))
 
 
 func _tiled_layer(layer: String, z: int, tint: Color, unshaded: bool) -> Node2D:
@@ -581,6 +595,45 @@ func _place_hints() -> void:
 		sign.arrow = h["arrow"]
 		sign.level_width = D.BOUNDS.size.x
 		add_child(sign)
+		_signs.append(sign)
+
+
+## 画面上正显示着的提示框（屏幕坐标）：新手提示框（Coach，在顶上或底下）、底部的按键提示条
+func _ui_boxes() -> Array[Rect2]:
+	var out: Array[Rect2] = []
+	if hud == null:
+		return out
+	var coach: Node = hud.get("_coach")
+	if coach:
+		var box: Control = coach.get("_box")
+		if box and box.modulate.a > 0.01:
+			out.append(box.get_global_rect().grow(4.0))
+	var hint: Control = hud.get("_hint")
+	if hint and hint.modulate.a > 0.01:
+		out.append(hint.get_global_rect().grow(4.0))
+	return out
+
+
+## 指路牌的字在屏幕上压到了某个提示框：先藏起来（两段字不叠在一起）
+func _sign_blocked(sg: HintSign, boxes: Array[Rect2]) -> bool:
+	if boxes.is_empty():
+		return false
+	var lb: Label = sg.get("_label")
+	if lb == null:
+		return false
+	var xf := lb.get_global_transform_with_canvas()
+	var r := Rect2(xf.origin, lb.size * xf.get_scale())
+	for b in boxes:
+		if r.intersects(b):
+			return true
+	return false
+
+
+func _banner_showing() -> bool:
+	if hud == null:
+		return false
+	var b: Label = hud.get("_banner")
+	return b != null and b.visible and b.modulate.a > 0.01
 
 
 ## 往上爬的洞口：开口正下方、顺着电线有三个小"^"，从下往上一个接一个亮，开口里一小团绿光慢慢一明一暗。
@@ -636,6 +689,19 @@ func _place_beacons() -> void:
 
 func _process(delta: float) -> void:
 	_follow_far()
+	# 屏幕中间有横幅（开场"去录像里那栋房子"、特殊玩法的标题、到家、通关）的时候，指路牌全藏起来，
+	# 横幅消失以后再淡回来：两段字不叠在一起（2026-10-18 作者实机截图："注意不要有这种文字重叠"）
+	var banner := _opening_pending or _banner_showing()
+	var boxes := _ui_boxes()
+	for sg in _signs:
+		if banner or _sign_blocked(sg, boxes):
+			# 牌子自己每帧按淡入淡出设 visible，所以藏的时候连它的处理一起停掉，透明度清零，横幅走了再从零淡入
+			sg.process_mode = Node.PROCESS_MODE_DISABLED
+			sg.visible = false
+			sg.set("_alpha", 0.0)
+			sg.modulate.a = 0.0
+		elif sg.process_mode == Node.PROCESS_MODE_DISABLED:
+			sg.process_mode = Node.PROCESS_MODE_INHERIT
 	for b in _beacons:
 		b.set_meta("t", float(b.get_meta("t")) + delta)
 		b.queue_redraw()
@@ -687,8 +753,6 @@ func _physics_process(_delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.physical_keycode:
-			KEY_R:
-				_retry()
 			KEY_F3:
 				_debug = not _debug
 				queue_redraw()

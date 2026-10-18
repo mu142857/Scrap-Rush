@@ -22,6 +22,10 @@ const OPEN_FRAME := 23
 
 ## 本次运行播过没有；从关卡回到开始界面不再播
 static var played := false
+## 开始界面还播不播奥斯卡的开场帧。10-18 起这段改到第一关开场播（Level1Opening + LevelIntro），
+## 开始界面默认不播，打开游戏直接是菜单；网页版照样先停在"点击或按任意键"（浏览器要等这一下才放声音）。
+## 作者想在开始界面也留着，把它改成 true
+const FRAMES_ON_TITLE := false
 
 var _frames: Array[Texture2D] = []
 var _sprite: Sprite2D
@@ -81,6 +85,8 @@ func _ready() -> void:
 		_prompt.position = Vector2(0, 196)
 		_prompt.size = Vector2(480, 17)
 		add_child(_prompt)
+	elif not FRAMES_ON_TITLE:
+		_finish.call_deferred()
 
 
 func _process(delta: float) -> void:
@@ -118,6 +124,10 @@ func _input(event: InputEvent) -> void:
 
 
 func _start() -> void:
+	if not FRAMES_ON_TITLE:
+		Game.sfx("ui_confirm", -10.0)
+		_finish()
+		return
 	_waiting = false
 	_time = 0.0
 	_splash.queue_free()

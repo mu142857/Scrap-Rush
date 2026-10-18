@@ -27,7 +27,7 @@ var _shown_hp := 100.0
 ## Boss 房里关掉底部按键提示（那里放 Boss 血条）
 var show_hint := true
 var _in_fight := false
-## 这一局打完了几场遭遇战（Run.checkpoint_saved 计数）。打完两场以后，底部说明缩成"马灯 / 重来"两项，不再整局挂一长串
+## 这一局打完了几场遭遇战（Run.checkpoint_saved 计数）。打完两场以后，底部说明缩成"马灯 / 暂停"两项，不再整局挂一长串
 static var fights_cleared := 0
 const SHORT_HINT_AFTER := 2
 ## 底部说明要连续这么久没有"该藏"的理由才淡回来
@@ -129,12 +129,15 @@ func _process(delta: float) -> void:
 	if _fight_poll <= 0.0:
 		_fight_poll = 0.25
 		_in_fight = _enemies_near()
-	var hide := low or not show_hint or _coach.busy() or _dialog_open() or _in_fight
+	var hide := low or not show_hint or _coach.busy() or _dialog_open() or _in_fight or _hp_bar_up()
 	if get_tree().get_nodes_in_group("player").is_empty():
 		hide = true
 	# 藏的理由消失以后，还要安静 2.5 秒才淡回来：刚落地、刚进场景、刚打完都不会马上冒出来
 	_calm = 0.0 if hide else _calm + delta
 	_hint.modulate.a = move_toward(_hint.modulate.a, 1.0 if _calm > CALM_TIME else 0.0, delta * 5.0)
+	if not _banner_queue.is_empty() and not _overlay_busy():
+		var nxt: Array = _banner_queue.pop_front()
+		_show_banner_now(nxt[0], nxt[1])
 	# 马灯快灭了：血条一直红着闪
 	if Run.crystal_hp / Run.crystal_max < LOW_HP:
 		_bar.queue_redraw()
@@ -154,6 +157,14 @@ func _enemies_near() -> bool:
 	return false
 
 
+## 精英 / Boss 的血条亮着：血条和名字就在画面最底下这一行（BarFade.ROW_Y），操作说明让开（10-18 作者：不要有文字重叠）
+func _hp_bar_up() -> bool:
+	for b in get_tree().get_nodes_in_group("hp_bar"):
+		if b.get("visible"):
+			return true
+	return false
+
+
 ## 有对话框开着（对话框的框底下会露出这行提示）
 func _dialog_open() -> bool:
 	for d in get_tree().get_nodes_in_group("dialog_box"):
@@ -162,7 +173,37 @@ func _dialog_open() -> bool:
 	return false
 
 
+## 横幅排队（10-18 作者：不要有文字重叠）：屏幕上已经有横幅或精英名字卡时，hold > 0 的横幅先排队，
+## 等它们走完再出；新手提示在横幅出来时自己藏起来。hold = 0 的（马上要切场景、重来）不排队，直接盖上去，并清掉队列
+var _banner_queue: Array = []
+
+
 func show_banner(text: String, hold := 0.0) -> void:
+	if hold > 0.0 and _overlay_busy():
+		_banner_queue.append([text, hold])
+		return
+	if hold <= 0.0:
+		_banner_queue.clear()
+	_show_banner_now(text, hold)
+
+
+## 横幅现在在不在屏幕上（coach 用它让开）
+func banner_on() -> bool:
+	return _banner.visible and _banner.modulate.a > 0.05
+
+
+## 屏幕上有没有别的大字：横幅、精英名字卡。新手提示不算：横幅一出来提示自己会让开（coach 的 _card_on），
+## 不然提示要等人学会才走，横幅可能一直排不上
+func _overlay_busy() -> bool:
+	if _banner.visible:
+		return true
+	for c in get_tree().get_nodes_in_group("name_card"):
+		if c.get("visible"):
+			return true
+	return false
+
+
+func _show_banner_now(text: String, hold := 0.0) -> void:
 	_banner.text = text
 	_banner.visible = true
 	_banner.modulate.a = 0.0
@@ -190,10 +231,9 @@ func _update_hint() -> void:
 			attack_text = tr("Hold %s: fire") % atk
 		"hammer":
 			attack_text = tr("%s: steam blast") % atk
-	# 键盘：R 重来；手柄没有 R，改成"Start 暂停"（重来在暂停菜单里）
-	var last := tr("R Restart")
-	if s == "solo" and Controls.using_pad or s.begins_with("pad"):
-		last = tr("%s Pause") % Controls.label("pause")
+	# 最后一项是"暂停"（Esc / Start）：重开本关在暂停菜单里、要确认。
+	# 作者 10-18："不用重来，R 键都可以删掉，因为容易误触"——R 立刻重来删了
+	var last := tr("%s Pause") % Controls.label("pause")
 	if fights_cleared >= SHORT_HINT_AFTER:
 		_hint.text = tr("%s Drop/pick lantern   %s") % [Controls.key_name(s, "crystal"), last]
 		return

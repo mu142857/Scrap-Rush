@@ -39,6 +39,11 @@ LEVEL=res://scenes/level3.tscn BOUNDS=0,0,4994,1200 SET=l3 TRIALS_PER_KIND=$(n 1
 for L in "test_level|0,0,1006,426" "level2|0,0,3700,600" "level3|0,0,4994,1200"; do
   LEVEL=res://scenes/${L%%|*}.tscn BOUNDS=${L##*|} TRIALS=$(n 30 120) SEED=4 run lantern_${L%%|*} 400 "^LANTERN" --headless --fixed-fps 120 --path . -s tools/qa/lantern_fuzz.gd
 done
+# 击杀碎片、血 / 机油溅会不会卡进墙、停在半空、出地图、删不掉（10-18）
+for L in "test_level|0,0,1006,426" "level2|0,0,3700,600" "level3|0,0,4994,1200" "boss3|0,0,320,180"; do
+  LEVEL=res://scenes/${L%%|*}.tscn BOUNDS=${L##*|} TRIALS=$(n 40 120) SEED=1 run debris_${L%%|*} 400 "^DEBRIS DONE" --headless --fixed-fps 120 --path . -s tools/qa/debris_fuzz.gd
+  grep -E "^DEBRIS .*: n=" "$OUT/debris_${L%%|*}.out" | sed 's/^/    /'
+done
 run gate_coop 120 "^CASE" --headless --fixed-fps 120 --path . -s tools/qa/gate_coop.gd -- --players=2
 grep -E "^CASE" "$OUT/gate_coop.out" | sed 's/^/    /'
 run gate_outside 120 "^C after" --headless --fixed-fps 120 --path . -s tools/qa/gate_outside.gd
@@ -48,6 +53,8 @@ for side in right left; do
 done
 run encounter_death 240 "^3 " --headless --fixed-fps 120 --path . -s tools/qa/encounter_death.gd
 grep -E "^[123] " "$OUT/encounter_death.out" | sed 's/^/    /'
+LEVEL=res://scenes/test_level.tscn BOUNDS=0,0,1006,426 run checkpoints_l1 300 "^CHECKPOINTS DONE" --headless --fixed-fps 120 --path . -s tools/qa/checkpoint_all.gd
+LEVEL=res://scenes/level3.tscn BOUNDS=0,0,4994,1200 run checkpoints_l3 900 "^CHECKPOINTS DONE" --headless --fixed-fps 120 --path . -s tools/qa/checkpoint_all.gd
 run route_bot1 600 "^BOT (reached|STUCK)" --headless --fixed-fps 120 --path . -s tools/qa/route_bot1.gd
 STEP_TIMEOUT=300 run route_bot3 1500 "^BOT (reached|STUCK)" --headless --fixed-fps 120 --path . -s tools/qa/route_bot3.gd
 echo "全部跑完。看不懂哪一项就打开 $OUT/<名字>.out。"

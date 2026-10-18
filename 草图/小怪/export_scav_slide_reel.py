@@ -115,6 +115,91 @@ def scav_frames():
     ]
 
 
+# ---------------------------------------------------------------- 拾荒者上色、加推车的人（10-18 夜间打磨，放映机会话）
+# 原来只有一辆深灰的小推车（7 个颜色），放进暖光机房里只剩一块黑加一个红点，也看不出"推着小车的偷灯贼"。
+# 车的形状、红灯、夹子、轮子一格不动，只是：车按明暗换成生锈的铁皮色（车沿一道黄铜），车斗里冒出捡来的破烂，
+# 车后面（帧右边原来空着的 10 格）站一个驼背的小个子拾荒者：破布帽兜、两只暖色的眼睛、手搭在推把上。
+sys.path.insert(0, "/Users/jiamulin/Desktop/程序programs/AI Oscar")
+from oscarkit.paint import light_planes  # noqa: E402
+from oscarkit.palette import ramp as okramp  # noqa: E402
+
+SC_IRON = [(52, 39, 33), (64, 47, 38), (80, 57, 41), (104, 74, 50), (132, 96, 62), (160, 122, 80)]
+SC_BRASS = [(104, 74, 50), (160, 130, 74), (206, 172, 106)]
+SC_RAG = okramp((150, 132, 108), n=6, L_span=0.5, hue_shift=10)
+SC_DARK = SC_IRON[0]
+SC_EYE = (226, 178, 116)
+
+
+def scav_dress(img, i):
+    """img：36 宽的一帧（车在左边 26 格里）。i：帧号（0、1 走，2 预警，3 夹，4、5 拖灯跑）。"""
+    out = img.copy()
+    led = (SCAV_LED[0], SCAV_LED[1])
+    al = out[..., 3] > 0
+    # 车：灰度按明暗映射到锈铁的 6 档（红灯不动）
+    lum = out[..., :3].astype(int).sum(-1)
+    vals = sorted(set(lum[al].tolist()))
+    for y, x in zip(*np.nonzero(al)):
+        if (x, y) == led:
+            continue
+        k = vals.index(lum[y, x])
+        out[y, x, :3] = SC_IRON[min(len(SC_IRON) - 1, round(k * (len(SC_IRON) - 1) / max(1, len(vals) - 1)))]
+    ox = SCAV_OX
+    for x in range(ox + 2, ox + 14):                                    # 车沿一道黄铜
+        if out[4, x, 3]:
+            out[4, x, :3] = SC_BRASS[1] if x < ox + 9 else SC_BRASS[0]
+    # 车斗里冒出来的破烂：一截弯管、一颗灯泡、半个齿轮（拖灯跑的帧里车斗上放着马灯，少放一点）
+    junk = [(ox + 6, 3, SC_IRON[3]), (ox + 7, 3, SC_IRON[4]), (ox + 7, 2, SC_IRON[3]),      # 弯管
+            (ox + 10, 3, SC_BRASS[1]), (ox + 11, 3, SC_BRASS[2]), (ox + 12, 3, SC_BRASS[0]),  # 齿轮
+            (ox + 11, 2, SC_BRASS[1])]
+    if i < 4:
+        junk += [(ox + 4, 3, SC_BRASS[2]), (ox + 4, 2, SC_EYE)]                            # 灯泡
+    for x, y, c in junk:
+        if not out[y, x, 3]:
+            out[y, x] = (*c, 255)
+    # 推车的人
+    run = i >= 4
+    lean = 1 if run else 0
+    step = i % 2
+    W, H = out.shape[1], out.shape[0]
+    hx = ox + 17                                                         # 人的中线
+    top = 2 + (1 if run else 0)
+    body = [(hx - 2 - lean, top + 1), (hx, top - 1 + (0 if step else 0)), (hx + 2, top),
+            (hx + 3, top + 4), (hx + 4, H - 3), (hx - 2, H - 3), (hx - 3, top + 5)]
+    from PIL import Image as _I, ImageDraw as _D
+    m = _I.new("L", (W, H), 0)
+    _D.Draw(m).polygon(body, fill=1)
+    m = np.asarray(m).astype(bool)
+    rag = light_planes(m, SC_RAG, light=(-1.0, -0.8), contrast=0.6, ambient=0.6, top_dark=0.4, rim=1,
+                       folds=[((hx, top + 3), (hx - 1, H - 3), 2)])
+    for y in range(H - 3, H - 1):                                        # 破布下摆参差
+        for x in range(hx - 2, hx + 5):
+            if (x + y + step) % 3 == 0 and rag[y - 1, x, 3]:
+                rag[y, x] = rag[y - 1, x]
+    mm = rag[..., 3] > 0
+    out[mm] = rag[mm]
+    # 帽兜开口（朝左）+ 两只暖色眼睛
+    fx, fy = hx - 2 - lean, top + 2
+    for x, y in ((fx, fy), (fx + 1, fy), (fx, fy + 1), (fx + 1, fy + 1), (fx + 1, fy - 1)):
+        out[y, x] = (*SC_DARK, 255)
+    out[fy, fx] = (*SC_EYE, 255)
+    out[fy + 1, fx + 1] = (*SC_BRASS[1], 255)
+    # 手臂：从肩膀伸到推把头上（推把头 ox+15, 1）
+    hand = (ox + 15, 2) if not run else (ox + 15, 3)
+    for t in range(4):
+        x = round(hx - 3 - lean + (hand[0] - (hx - 3 - lean)) * t / 3)
+        y = round(top + 4 + (hand[1] - (top + 4)) * t / 3)
+        out[y, x] = (*SC_RAG[2], 255)
+    out[hand[1], hand[0] + 1] = (*SC_RAG[5], 255)
+    # 两只脚：走路左右交替，跑的时候迈得更开
+    g = H - 1
+    feet = [(hx - 2, hx + 2), (hx - 1, hx + 3)][step] if not run else [(hx - 3, hx + 3), (hx - 1, hx + 4)][step]
+    for fxx in feet:
+        out[g, fxx] = (*SC_DARK, 255)
+        out[g, fxx - 1] = (*SC_RAG[1], 255)
+        out[g - 1, fxx] = (*SC_RAG[1], 255)
+    return out
+
+
 # ---------------------------------------------------------------- 幻灯机（草图 34×13，ox = 16；只取 x ≥ 16 的机身，瞄准线脚本画）
 # 帧：0 走 A（草图待机）、1 走 B（腿反过来）、2 瞄准（片盒推进去、散热罩亮）、3 开火（往后坐 1 格、镜头一圈白）
 PROJ_OX = 16
@@ -231,7 +316,7 @@ def check_led(name, img, w, n, led):
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     # 拾荒者：车斗中点 17.5，右边补 10 格 → 36 宽帧，车斗落在正中
-    sc, scw = strip(scav_frames(), pad_right=10)
+    sc, scw = strip([scav_dress(np.pad(f, ((0, 0), (0, 10), (0, 0))), i) for i, f in enumerate(scav_frames())])
     Image.fromarray(sc).save(OUT / "scavenger.png")
     # 幻灯机：机身 18 宽，左右各补 1 格 → 20 宽帧（开火帧往后坐 1 格也放得下）
     pr, prw = strip(proj_frames(), pad_left=1, pad_right=1)

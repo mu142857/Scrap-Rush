@@ -150,9 +150,10 @@ func _ready() -> void:
 		Upgrades.apply(p)
 
 	var exit_sign := HintSign.new()
-	# 人走到能看见出口牌子的地方（镜头 2 倍放大，右边 120 像素）牌子就亮
-	exit_sign.zone = Rect2(300, 150, 180, 120)
-	exit_sign.position = Vector2(462, 236)
+	# 人走到 x 360 才亮：这时镜头已经到最右边（视野 240 宽），字在牌子原位；再早亮，字会被 HintSign 推进画面、压在变异货架上（质检 10-18）
+	exit_sign.zone = Rect2(360, 150, 120, 120)
+	# x 466："出口"不再贴着变异货架第 4 格的右边框（质检 10-18）；再往右会被 HintSign 的离屏 6 像素推回来
+	exit_sign.position = Vector2(466, 236)
 	exit_sign.text = "Exit"
 	exit_sign.arrow = "right"
 	add_child(exit_sign)
@@ -316,7 +317,7 @@ func _info(st: ShopStand) -> Dictionary:
 			var n: Array = NAMES[st.id]
 			if lv >= Upgrades.MAX_LEVEL:
 				return {"title": tr("%s  MAX") % tr(n[0]), "detail": _gear_detail(st.id, lv), "maxed": true}
-			var price: int = Upgrades.PRICE["gear"]
+			var price: int = Upgrades.gear_price(lv)
 			return {"title": tr("%s  Lv%d > %d") % [tr(n[0]), lv, lv + 1], "detail": _gear_detail(st.id, lv + 1),
 					"price": price, "can_buy": parts >= price}
 		"repair":
@@ -462,7 +463,10 @@ func _show_intro() -> void:
 	_card_icon = "part"
 	_card_kind = "intro"
 	if _guide:
-		var page: Array = GUIDE[mini(int(_guide_t / GUIDE_PAGE), GUIDE.size() - 1)]
+		var page: Array = GUIDE[mini(int(_guide_t / GUIDE_PAGE), GUIDE.size() - 1)].duplicate()
+		# 装备按等级涨价打开时，"装备（1 个零件）"改成"1 个零件起"
+		if Upgrades.tiered_gear_price and page[1] == "gear (1 part): small boost, up to Lv3":
+			page[1] = "gear (1+ parts): small boost, up to Lv3"
 		_card_icon = page[3]
 		var third: String = page[2] if page[2] != "" else tr("%s: BUY      EXIT: KEEP RIGHT") % _key
 		_set_info([page[0], page[1], third], [UiStyle.WARM, UiStyle.TEXT, UiStyle.WARM if page[2] == "" else UiStyle.TEXT])

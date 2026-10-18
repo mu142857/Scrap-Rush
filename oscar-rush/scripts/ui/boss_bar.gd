@@ -23,6 +23,8 @@ var _appeared := false
 
 
 func _ready() -> void:
+	# 底部血条亮着的时候，hud 把同一行的操作说明藏起来（10-18 作者：不要有文字重叠）
+	add_to_group("hp_bar")
 	layer = 11
 	_root = Control.new()
 	_root.set_anchors_preset(Control.PRESET_FULL_RECT)

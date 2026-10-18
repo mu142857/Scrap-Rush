@@ -1,19 +1,17 @@
-extends CanvasLayer
+extends Control
 ## 第二关开场动画（10-18 作者："第二关可以是电影胶片很快的过去"，要电影感、高级感、流畅）。
-## 放在气动管开场（tube_run.gd）最上面一层，播的时候整棵树暂停，管道还没开始跑。
+## 是三关共用开场框架 LevelIntro（scripts/ui/level_intro.gd，游戏细节讨论会话做的）的内容，挂在气动管开场（tube_run.gd）上。
+## 黑边、名字卡"第二关 · 放映厅"、镜头拉回、跳过、整棵树暂停、一局只播一次，都是框架管的；这里只画胶片。
 ##
 ##   0.00  倒计时片头 3、2、1：全屏的老胶片片头（圆圈、十字线、扫过的扇形），每个数字 0.3 秒
 ##   0.90  一条胶片横着从右往左卷过画面，越转越快（指数加速）：格子里是第二关的地方和精英的剪影
 ##         快了以后带拖影、上下抖、闪得更厉害，声音从一下下咔嗒连成一片嗡
 ##   3.20  卡住：最后一格（接线员大厅的气动管口）停在正中，片门里打滑抖两下
 ##   3.50  烧片：从画面中间烧出一个洞，一圈焦黑、一圈橙、里面白，0.45 秒烧满
-##   3.95  全白，这一刻放开暂停、气动管开始跑；白慢慢退掉（0.55 秒），露出管道
+##   3.95  全白，这一刻 intro.reveal()（撤黑底、镜头拉回、名字卡淡入）；白慢慢退掉（0.55 秒），露出管道
 ##
 ## 素材：草图/第二关/level2_intro_art.py（胶片带、片头、烧穿噪声），声音：草图/第二关/level2_sfx.py intro（和这里同一张时间表）。
-## 只在第一次进气动管时播（按 R / 暂停菜单重来不播），任意键跳过（0.25 秒以后）。
-## 调试：--intro 强制播；--tubeauto、--tubeat 这些调试参数默认不播。
-
-signal finished
+## 录像看效果：SCRAP_LEVEL_INTRO=1 Godot --path . -w --write-movie x.avi scenes/level2_tube.tscn（不能带 -- 调试参数，框架会不播）。
 
 const STRIP := preload("res://art/levels/level2_intro_strip.png")
 const LEADER := preload("res://art/levels/level2_intro_leader.png")
@@ -33,14 +31,11 @@ const SCALE := 2.0
 const PITCH := 100.0
 const STRIP_W := 1400.0
 const STRIP_H := 88.0
-const SKIP_AFTER := 0.25
-const BAR_H := 22.0
 
 const SEPIA_DARK := Color8(28, 19, 15)
 const WHITE := Color(1.0, 0.97, 0.9)
 
 var _t := 0.0
-var _released := false
 var _view: Node2D
 var _burn: ColorRect
 var _burn_mat: ShaderMaterial
@@ -52,23 +47,9 @@ var _scratch: Array = []
 var _dust: Array = []
 
 
-## 要不要播：第一次进气动管才播（重来不播），调试参数默认不播
-static func wanted() -> bool:
-	var args := OS.get_cmdline_user_args()
-	if args.has("--intro"):
-		return true
-	if Run.get("_resuming"):
-		return false
-	for a in args:
-		if a.begins_with("--tube"):
-			return false
-	return true
-
-
 func _ready() -> void:
-	layer = 120
-	process_mode = Node.PROCESS_MODE_ALWAYS
-	get_tree().paused = true
+	size = Vector2(480, 270)
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_view = Node2D.new()
 	_view.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_view.draw.connect(_draw_view)
@@ -87,9 +68,18 @@ func _ready() -> void:
 	_sound = AudioStreamPlayer.new()
 	_sound.stream = SOUND
 	_sound.volume_db = -4.0
-	_sound.process_mode = Node.PROCESS_MODE_ALWAYS
 	add_child(_sound)
 	_sound.play()
+
+
+## LevelIntro 调：画面按 _process 的时间轴走，这里只在全白那一刻露出关卡，等白退完再交回框架
+func run(intro: LevelIntro) -> void:
+	var t_fade := LEADER_T + ROLL_T + JAM_T + BURN_T
+	await get_tree().create_timer(t_fade, true, false, true).timeout
+	if intro.skipped or not is_inside_tree():
+		return
+	intro.reveal()
+	await get_tree().create_timer(FADE_T, true, false, true).timeout
 
 
 static func _burn_shader() -> Shader:
@@ -113,19 +103,6 @@ void fragment() {
 }
 """
 	return s
-
-
-func _input(event: InputEvent) -> void:
-	if _released or _t < SKIP_AFTER:
-		return
-	var pressed: bool = (event is InputEventKey and event.pressed and not event.echo) \
-		or (event is InputEventJoypadButton and event.pressed) \
-		or (event is InputEventMouseButton and event.pressed)
-	if pressed:
-		get_viewport().set_input_as_handled()
-		_t = LEADER_T + ROLL_T + JAM_T + BURN_T
-		var tw := create_tween()
-		tw.tween_property(_sound, "volume_db", -60.0, 0.3)
 
 
 func _process(delta: float) -> void:
@@ -157,13 +134,8 @@ func _process(delta: float) -> void:
 		_burn_mat.set_shader_parameter("progress", (_t - t_burn) / BURN_T)
 	elif _t >= t_fade:
 		_burn.visible = false
-	# 全白那一刻放开暂停，气动管开始跑；白慢慢退
-	if _t >= t_fade and not _released:
-		_released = true
-		get_tree().paused = false
 	if _t >= t_end:
-		finished.emit()
-		queue_free()
+		_view.visible = false
 		return
 	_view.queue_redraw()
 
@@ -214,9 +186,6 @@ func _draw_view() -> void:
 		_view.draw_rect(Rect2(s.x, s.y, 1, s.z), Color(1.0, 0.95, 0.85, 0.3))
 	for p in _dust:
 		_view.draw_rect(Rect2(p, Vector2(2, 2)), Color(0.05, 0.03, 0.02, 0.6))
-	# 上下黑边（电影画幅）
-	_view.draw_rect(Rect2(0, 0, 480, BAR_H), Color.BLACK)
-	_view.draw_rect(Rect2(0, 270 - BAR_H, 480, BAR_H), Color.BLACK)
 
 
 ## 胶片带：贴图首尾相接，横着铺满画面

@@ -21,6 +21,22 @@ static func scrap_burst(parent: Node, rect: Rect2, n: int, colors: Array = SCRAP
 		parent.add_child(c)
 
 
+## 精英真炸的那一下（10-18 作者嫌一圈对称的粒子没打击感）：顺着最后一下挨打的方向迸，
+## 头几块是 4～6 格宽的大铁板，后面是小碎块；从身体各处飞出去，但都往 dir 那边走、往上抛
+static func scrap_dir(parent: Node, rect: Rect2, dir: Vector2, n: int, colors: Array = SCRAP) -> void:
+	var d := dir.normalized() if dir.length() > 0.1 else Vector2(1.0, 0.0)
+	var side := signf(d.x) if absf(d.x) > 0.05 else 1.0
+	for i in n:
+		var c := Chunk.new()
+		c.position = Vector2(randf_range(rect.position.x, rect.end.x), randf_range(rect.position.y, rect.end.y * 0.6 + rect.position.y * 0.4))
+		var big := i < maxi(3, n / 3)
+		var sp := randf_range(60.0, 130.0) if big else randf_range(90.0, 200.0)
+		c.velocity = Vector2(side * sp + randf_range(-20.0, 20.0), minf(d.y, 0.0) * 100.0 - randf_range(90.0, 180.0) * (0.8 if big else 1.0))
+		c.color = colors[randi() % colors.size()]
+		c.size = Vector2(randi_range(4, 6), randi_range(2, 3)) if big else Vector2(randi_range(1, 3), randi_range(1, 2))
+		parent.add_child(c)
+
+
 ## 一块碎片：受重力，碰到地面弹一下就停，停 LIE 秒后淡掉
 class Chunk:
 	extends Node2D
@@ -34,6 +50,9 @@ class Chunk:
 	var size := Vector2(2, 1)
 	var _rest := -1.0
 	var _bounced := false
+	## 飞了多久（10-18 碰撞会话：飞出地面以外的碎块原来会一直往下掉、删不掉，飞满 MAX_FLY 秒就删）
+	var _fly := 0.0
+	const MAX_FLY := 3.0
 
 	func _ready() -> void:
 		z_index = 3
@@ -49,11 +68,24 @@ class Chunk:
 				queue_free()
 			queue_redraw()
 			return
+		_fly += delta
+		if _fly > MAX_FLY:
+			queue_free()
+			return
 		velocity.y += GRAVITY * delta
 		var to := global_position + velocity * delta
 		var q := PhysicsRayQueryParameters2D.create(global_position, to, 1)
 		var hit := get_world_2d().direct_space_state.intersect_ray(q)
-		if not hit.is_empty():
+		if not hit.is_empty() and absf((hit.normal as Vector2).x) > 0.5:
+			# 撞到墙的侧面：弹回来接着掉，不粘在墙上（碎块从左边往右画，贴右墙时让出自己的宽度）
+			var at := hit.position as Vector2
+			global_position = Vector2(at.x + (0.5 if (hit.normal as Vector2).x > 0.0 else -size.x - 0.5), at.y)
+			velocity.x = -velocity.x * 0.3
+		elif not hit.is_empty() and (hit.normal as Vector2).y > 0.5:
+			# 撞到天花板：往下弹，不粘在顶上
+			global_position = (hit.position as Vector2) + Vector2(0, size.y + 0.5)
+			velocity.y = absf(velocity.y) * 0.3
+		elif not hit.is_empty():
 			global_position = (hit.position as Vector2) - Vector2(0, 0.5)
 			if _bounced or absf(velocity.y) < 60.0:
 				_rest = 0.0

@@ -9,6 +9,14 @@ const GEAR: Array[String] = ["charge", "fuel", "plating", "damping"]
 const WEAPONS: Array[String] = ["flash", "rivet", "hammer"]
 const MUTATIONS: Array[String] = ["rage", "slave", "echo", "dynamo"]
 const PRICE := {"gear": 1, "repair": 1, "mutation": 2, "weapon": 3, "refresh": 1}
+## 装备按等级涨价（夜间打磨报告第 17 节、拍板清单第 1 条：零件从第二个商店起花不完）：
+## 打开后升到 1 级 1 个、2 级 2 个、3 级 3 个，全满要 24 个。默认关，等作者一句话改成 true
+static var tiered_gear_price := false
+
+
+## 装备升到下一级要几个零件（lv 是现在的等级）
+static func gear_price(lv: int) -> int:
+	return lv + 1 if tiered_gear_price else PRICE["gear"]
 const REPAIR_AMOUNT := 25.0
 ## 镀层：每隔这么多秒挡一次对水晶的伤害（按等级 0~3）
 const PLATING_INTERVAL: Array[float] = [0.0, 20.0, 15.0, 10.0]
