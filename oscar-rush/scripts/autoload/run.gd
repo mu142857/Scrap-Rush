@@ -13,6 +13,28 @@ signal checkpoint_saved
 ## 重来（马灯碎了、按 R、Boss 房重打）重载以后、人摆好了、重生动画开始放时发出；有没有存档点都发
 signal respawned
 
+## —— 难度（10-18 作者：「选择关卡的换成选择难度」）——
+## 0 简单、1 普通（原来的数值）、2 困难。开始菜单选难度时设 Run.difficulty，存进存档；新开一局不重置（记住上次选的）。
+## 所有地方读下面三个倍率：马灯受伤（damage_crystal）、怪 / 精英 / Boss 的血（EnemyBase、Crawler、BossArena）、马灯回血（heal_crystal）
+const DIFFICULTY_NAMES: Array[String] = ["EASY", "NORMAL", "HARD"]
+const DAMAGE_TAKEN_MULT: Array[float] = [0.6, 1.0, 1.3]
+const ENEMY_HP_MULT: Array[float] = [0.8, 1.0, 1.3]
+const HEAL_MULT: Array[float] = [1.0, 1.0, 0.7]
+var difficulty := 1
+
+
+func damage_taken_mult() -> float:
+	return DAMAGE_TAKEN_MULT[clampi(difficulty, 0, 2)]
+
+
+func enemy_hp_mult() -> float:
+	return ENEMY_HP_MULT[clampi(difficulty, 0, 2)]
+
+
+func heal_mult() -> float:
+	return HEAL_MULT[clampi(difficulty, 0, 2)]
+
+
 ## 人越多，水晶血量越少（1~4 人）
 const CRYSTAL_MAX_BY_PLAYERS: Array[float] = [100.0, 80.0, 65.0, 55.0]
 const SKINS: Array[String] = ["red", "robot", "bird", "dino"]
@@ -39,9 +61,37 @@ var _drops := 0
 
 func _ready() -> void:
 	reset_run()
+	_check_launch.call_deferred()
+
+
+# —— 能不能写作者真正的存档（10-18 监督会话：各会话编译检查时直接开 test_level，进关自动存档覆盖了作者的 run.cfg）——
+## 只有"正常开的游戏"才写 user:// 下的存档（run.cfg、图鉴、打到第几关）：
+## 正式导出的游戏或编辑器里按运行，并且是从主场景（开始菜单）开起来的，并且不是 headless / 录像 / 带 -- 测试参数。
+## 直接打开关卡场景、-s 测试脚本、命令行跑的测试一律不写（设了 SCRAP_*_PATH 的测试照常写到它们自己的文件）。
+var _real_launch := false
+
+
+func _check_launch() -> void:
+	var cs := get_tree().current_scene
+	var main := str(ProjectSettings.get_setting("application/run/main_scene", ""))
+	if main.begins_with("uid://"):
+		main = ResourceUID.get_id_path(ResourceUID.text_to_id(main))
+	var from_main := cs != null and cs.scene_file_path == main
+	var proper := OS.has_feature("template")
+	for a in OS.get_cmdline_args():
+		if a == "--editor-pid" or a.begins_with("--remote-debug"):
+			proper = true
+	_real_launch = from_main and proper and DisplayServer.get_name() != "headless" \
+			and Engine.get_write_movie_path() == "" and OS.get_cmdline_user_args().is_empty()
+
+
+## 这次运行能不能写作者真正的存档文件（图鉴、打到第几关也用这个）
+func real_launch() -> bool:
+	return _real_launch
 
 
 func reset_run() -> void:
+	load("res://scripts/ui/achievements.gd").call("on_run_start")   # 成就：清这一局的记录（立绘添加会话，10-18）
 	Upgrades.reset()
 	crystal_max = CRYSTAL_MAX_BY_PLAYERS[clampi(players.size(), 1, 4) - 1]
 	crystal_hp = crystal_max
@@ -80,6 +130,9 @@ func start_level() -> void:
 		_drops = 0
 		level_start_hp = crystal_hp
 		level_start_parts = parts
+		# 每进一关存一次（只在三关的第一个场景，重来不存）
+		if LEVEL_START_SCENES.has(_scene_path()):
+			save_run()
 	_resuming = false
 	crystal_changed.emit(crystal_hp, crystal_max)
 	# 重来的话放重生动画。call_deferred 按顺序跑，排在 _apply_checkpoint 后面：人先挪到存档点再放
@@ -171,9 +224,12 @@ var crystal_locked := false
 func damage_crystal(amount: float) -> void:
 	if crystal_hp <= 0.0 or Game.invincible or crystal_locked:
 		return
-	crystal_hp = maxf(crystal_hp - amount, 0.0)
+	crystal_hp = maxf(crystal_hp - amount * damage_taken_mult(), 0.0)
 	crystal_changed.emit(crystal_hp, crystal_max)
 	if crystal_hp <= 0.0:
+		# 倒带磁带（变异）：这一关还没用过，就倒回 5 秒前，不碎（商店会话 10-18 加的一行）
+		if Mutations.try_rewind():
+			return
 		crystal_broken.emit()
 
 
@@ -182,7 +238,7 @@ func heal_crystal(amount: float) -> void:
 	if crystal_hp <= 0.0 or amount <= 0.0:
 		return
 	var before := crystal_hp
-	crystal_hp = minf(crystal_hp + amount, crystal_max)
+	crystal_hp = minf(crystal_hp + amount * heal_mult(), crystal_max)
 	crystal_changed.emit(crystal_hp, crystal_max)
 	if crystal_hp > before:
 		crystal_healed.emit(crystal_hp - before)
@@ -196,3 +252,103 @@ func add_part(n := 1) -> void:
 	parts += n
 	_drops = maxi(_drops - n, 0)
 	parts_changed.emit(parts)
+
+
+
+# —— 存档（10-18 作者：「每进一关存一次」，开始菜单的「继续」从最远那关的开头接着打）——
+## 存在 user://run.cfg；测试时设环境变量 SCRAP_RUN_PATH=别的文件，不碰作者的存档。
+## 存：难度、到了第几关（和那关开头的场景）、零件、四项升级、变异、马灯血量（占满血的比例）、每个玩家（输入方案、角色、武器）、
+## 这一局的统计（时间、死了几次、花了多少零件）。
+## 给开始菜单用：has_save() 有没有存档、save_info() 读出来显示（第几关、难度、几个人）、continue_run() 恢复并返回要进的场景。
+
+const SAVE_VERSION := 1
+## 三关各自的第一个场景 → 第几关（第二关从气动管开始）
+const LEVEL_START_SCENES := {"res://scenes/test_level.tscn": 1, "res://scenes/level2_tube.tscn": 2, "res://scenes/level3.tscn": 3}
+
+
+func save_path() -> String:
+	var env := OS.get_environment("SCRAP_RUN_PATH")
+	return env if env != "" else "user://run.cfg"
+
+
+## 进关时自动调（start_level 里）；别处一般不用调。没设 SCRAP_RUN_PATH 又不是正常开的游戏（直接开关卡、测试）就不写
+func save_run() -> void:
+	if OS.get_environment("SCRAP_RUN_PATH") == "" and not _real_launch:
+		return
+	var scene := _scene_path()
+	var c := ConfigFile.new()
+	c.set_value("run", "version", SAVE_VERSION)
+	c.set_value("run", "difficulty", difficulty)
+	c.set_value("run", "level", int(LEVEL_START_SCENES.get(scene, 1)))
+	c.set_value("run", "scene", scene)
+	c.set_value("run", "parts", parts)
+	c.set_value("run", "hp_ratio", crystal_hp / maxf(crystal_max, 1.0))
+	c.set_value("run", "upgrades", Upgrades.levels.duplicate())
+	c.set_value("run", "mutation", Upgrades.mutation)
+	c.set_value("run", "weapon", Upgrades.weapon)
+	var ps: Array = []
+	for e in players:
+		ps.append({"input": e.get("input", "solo"), "skin": e.get("skin", "red"), "weapon": e.get("weapon", Upgrades.weapon)})
+	c.set_value("run", "players", ps)
+	c.set_value("run", "stats", Game.run_stats.duplicate())
+	c.set_value("run", "saved_at", Time.get_datetime_string_from_system())
+	c.save(save_path())
+
+
+func has_save() -> bool:
+	var c := ConfigFile.new()
+	return c.load(save_path()) == OK and int(c.get_value("run", "version", 0)) == SAVE_VERSION
+
+
+## 给开始菜单显示用：{level: 1~3, difficulty: 0~2, players: 人数, weapons: [每人的武器 id], saved_at}；没有存档返回 {}
+func save_info() -> Dictionary:
+	var c := ConfigFile.new()
+	if c.load(save_path()) != OK:
+		return {}
+	var ps: Array = c.get_value("run", "players", [])
+	return {"level": int(c.get_value("run", "level", 1)), "difficulty": int(c.get_value("run", "difficulty", 1)),
+		"players": ps.size(), "weapons": ps.map(func(e): return e.get("weapon", "flash")),
+		"saved_at": str(c.get_value("run", "saved_at", ""))}
+
+
+## 「继续」：把存档读回来（难度、人、武器、零件、升级、变异、马灯），返回要进的场景路径（那关的开头）；
+## 调的人负责切过去（SceneFade.go）。没有存档返回 ""
+func continue_run() -> String:
+	var c := ConfigFile.new()
+	if c.load(save_path()) != OK:
+		return ""
+	var ps: Array = c.get_value("run", "players", [])
+	if not ps.is_empty():
+		var restored: Array[Dictionary] = []
+		for e in ps:
+			restored.append({"input": e.get("input", "solo"), "skin": e.get("skin", "red"), "weapon": e.get("weapon", "flash")})
+		players = restored
+	reset_run()
+	difficulty = int(c.get_value("run", "difficulty", 1))
+	var ups: Dictionary = c.get_value("run", "upgrades", {})
+	for k in ups:
+		Upgrades.levels[k] = int(ups[k])
+	Upgrades.mutation = str(c.get_value("run", "mutation", ""))
+	# reset_run 会清掉每人的武器：从存档里再放回去
+	for i in mini(players.size(), ps.size()):
+		players[i]["weapon"] = ps[i].get("weapon", "flash")
+	Upgrades.weapon = players[0].get("weapon", str(c.get_value("run", "weapon", "flash"))) if not players.is_empty() else "flash"
+	parts = int(c.get_value("run", "parts", 0))
+	crystal_hp = crystal_max * clampf(float(c.get_value("run", "hp_ratio", 1.0)), 0.1, 1.0)
+	level_start_hp = crystal_hp
+	level_start_parts = parts
+	var st = c.get_value("run", "stats", null)
+	if st is Dictionary:
+		for k in st:
+			Game.run_stats[k] = st[k]
+	parts_changed.emit(parts)
+	crystal_changed.emit(crystal_hp, crystal_max)
+	return str(c.get_value("run", "scene", "res://scenes/test_level.tscn"))
+
+
+## 删掉存档（通关、或者开始菜单里玩家选了「新游戏」并确认覆盖时可以调）
+func clear_save() -> void:
+	if OS.get_environment("SCRAP_RUN_PATH") == "" and not _real_launch:
+		return
+	if FileAccess.file_exists(save_path()):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(save_path()) if save_path().begins_with("user://") else save_path())

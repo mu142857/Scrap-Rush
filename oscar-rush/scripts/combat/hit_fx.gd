@@ -25,6 +25,8 @@ var _t := 0.0
 
 ## 打中以后调：命中星 + 溅一点（机油或血）+ 看看死没死。返回 true 表示这一下打死了
 static func after_hit(body: Node, pos: Vector2, dir: Vector2, power := 0.0) -> bool:
+	# 变异：真空管预热认连续打同一个目标、保险丝熔断在打中处炸一圈（商店会话 10-18 加的一行）
+	Mutations.on_hit(body, pos)
 	var parent := _parent_of(body)
 	if parent == null:
 		return false

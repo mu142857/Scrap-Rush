@@ -40,6 +40,58 @@ const DYNAMO_HEAL := 5.0
 const DYNAMO_COLOR := Color8(170, 230, 255)
 
 static var dynamo_kills := 0
+
+# ---- 10-18 新变异（作者定的 4 个，设计见 夜间打磨/商店换武器和变异_方案.md）----
+## 保险丝熔断：每第 FUSE_EVERY 次出招伤害 ×FUSE_MULT（子弹变橙），紧接着第一次打中怪的地方炸一小圈
+const FUSE_EVERY := 5
+const FUSE_MULT := 3.0
+const FUSE_WINDOW := 0.8
+const FUSE_RADIUS := 22.0
+const FUSE_BLAST := 40.0
+const FUSE_COLOR := Color8(255, 150, 60)
+static var _fuse_n := 0
+static var _fuse_until := -1.0
+## 真空管预热：连续打中同一个目标，每次 +VALVE_STEP，最多 VALVE_MAX 档；打别的目标（隔 VALVE_GRACE 秒以上）清零。
+## 同一下的多颗弹丸（霰弹枪）只算一次；电钳跳到别的怪不会马上清零（有 VALVE_GRACE 的宽限）
+const VALVE_STEP := 0.05
+const VALVE_MAX := 10
+const VALVE_GRACE := 0.25
+const VALVE_ONCE := 0.1
+const VALVE_COLOR := Color8(255, 170, 90)
+static var _valve_target := 0
+static var _valve_streak := 0
+static var _valve_last := -10.0
+## 显像管残影：怪死的地方留一个冷蓝的残影，BURNIN_DELAY 秒后炸开，伤害是它最后挨那一下的 BURNIN_RATIO（至少 BURNIN_MIN）。
+## 残影炸死的怪不再留残影，免得一路连锁
+const BURNIN_DELAY := 1.0
+const BURNIN_RADIUS := 26.0
+const BURNIN_RATIO := 0.5
+const BURNIN_MIN := 20.0
+const BURNIN_COLOR := Color8(120, 150, 190)
+static var _burnin_busy := false
+## 倒带磁带：马灯碎的时候不重来，人、马灯倒回 REWIND_SECONDS 秒前的位置，马灯血量回到那时候（至少 REWIND_MIN_HP）。
+## 每关一次（进关 reset_level 重置），用过 HUD 图标变灰
+const REWIND_SECONDS := 5.0
+const REWIND_STEP := 0.25
+const REWIND_MIN_HP := 0.35
+const REWIND_INVULN := 1.5
+const REWIND_COLOR := Color8(200, 160, 255)
+static var rewind_used := false
+## 刚倒带：EmotionFx 看到大于 0 就放一下"倒带"的画面（读完自己清零）
+static var rewind_fx := 0.0
+static var _snaps: Array = []
+static var _snap_t := 0.0
+
+## 商店信息卡"★ 和你的 XX 很配"：每个变异特别配哪几把枪（倒带磁带对谁都一样，不标）
+const COMBOS := {
+	"rage": ["hammer", "shotgun", "laser"],
+	"slave": ["flash", "laser", "tongs"],
+	"echo": ["laser", "hammer", "record"],
+	"dynamo": ["tongs", "shotgun", "rivet"],
+	"fuse": ["hammer", "laser", "shotgun"],
+	"valve": ["rivet", "tongs", "record"],
+	"burnin": ["laser", "shotgun", "hammer"],
+}
 ## 变异最近一次真的起作用（怒火加成、回声出招、从闪补射、发电机回血）是哪个物理帧：
 ## HUD 上的变异图标看到它变了就跳一下（EmotionFx 读）
 static var proc_frame := -1
@@ -59,6 +111,7 @@ static func rage_mult() -> float:
 static func on_attack(p: Node2D, shot: Node2D) -> void:
 	if p == null or shot == null or shot.get_meta("mutation_copy", false):
 		return
+	_pre_fire([shot])
 	match Upgrades.mutation:
 		"rage":
 			_rage(shot)
@@ -77,6 +130,7 @@ static func on_weapon_fire(p: Node2D, weapon_id: String, shots: Array, refire: C
 	for s in shots:
 		if s is Node and (s as Node).get_meta("mutation_copy", false):
 			return
+	_pre_fire(shots)
 	match Upgrades.mutation:
 		"rage":
 			var first := true
@@ -113,6 +167,9 @@ static var _fire_n := {}
 
 ## 怪死的时候调（EnemyBase、Crawler）
 static func on_kill(_enemy: Node) -> void:
+	if Upgrades.mutation == "burnin":
+		_burnin(_enemy)
+		return
 	if Upgrades.mutation != "dynamo":
 		return
 	dynamo_kills += 1
@@ -128,6 +185,188 @@ static func on_kill(_enemy: Node) -> void:
 		var n := c as Node2D
 		Game.sparks(n.get_parent(), n.global_position + Vector2(0, -5), DYNAMO_COLOR, 12, 90.0)
 	Game.sfx("buzz", -8.0, 1.4)
+
+
+static func _now() -> float:
+	return Engine.get_physics_frames() / float(Engine.physics_ticks_per_second)
+
+
+## 出招前（还没打中）：保险丝熔断数次数、真空管预热按连击乘伤害
+static func _pre_fire(shots: Array) -> void:
+	match Upgrades.mutation:
+		"fuse":
+			_fuse_n += 1
+			if _fuse_n % FUSE_EVERY != 0:
+				return
+			_fuse_until = _now() + FUSE_WINDOW
+			proc_frame = Engine.get_physics_frames()
+			for s in shots:
+				if s is Node:
+					_damage_mul(s, FUSE_MULT)
+					if "color" in s:
+						s.set("color", FUSE_COLOR)
+			Game.sfx("clang", -8.0, 1.7, 0.05)
+		"valve":
+			if _valve_streak <= 0:
+				return
+			var k := 1.0 + VALVE_STEP * _valve_streak
+			for s in shots:
+				if s is Node:
+					_damage_mul(s, k)
+
+
+## 打中怪的时候调（HitFx.after_hit，7 把武器都走那里）
+static func on_hit(body: Node, pos: Vector2) -> void:
+	if body == null or not body.is_in_group("enemy"):
+		return
+	match Upgrades.mutation:
+		"valve":
+			var now := _now()
+			var id := body.get_instance_id()
+			if id == _valve_target:
+				if now - _valve_last >= VALVE_ONCE and _valve_streak < VALVE_MAX:
+					_valve_streak += 1
+					proc_frame = Engine.get_physics_frames()
+					if _valve_streak % 3 == 0 or _valve_streak == VALVE_MAX:
+						Game.sparks(body.get_parent(), pos, VALVE_COLOR, 2 + _valve_streak / 3, 40.0)
+				if now - _valve_last >= VALVE_ONCE:
+					_valve_last = now
+			elif now - _valve_last > VALVE_GRACE:
+				_valve_target = id
+				_valve_streak = 0
+				_valve_last = now
+		"fuse":
+			if _now() > _fuse_until:
+				return
+			_fuse_until = -1.0
+			_blast(body.get_parent(), pos, FUSE_RADIUS, FUSE_BLAST, FUSE_COLOR, body)
+			Game.sfx("boom", -10.0, 1.4, 0.05)
+			Game.add_shake(2.0)
+
+
+## 一小圈爆炸：半径里没死的怪各挨 dmg（except 那只不算，它刚挨过）
+static func _blast(parent: Node, at: Vector2, radius: float, dmg: float, col: Color, except: Node = null) -> void:
+	if parent == null:
+		return
+	var tree := parent.get_tree()
+	for e in tree.get_nodes_in_group("enemy"):
+		var n := e as Node2D
+		if n == null or n == except or n.get("dead") or not n.has_method("hurt"):
+			continue
+		var aim: Vector2 = n.call("aim_point") if n.has_method("aim_point") else n.global_position
+		if aim.distance_to(at) <= radius:
+			n.call("hurt", dmg, (aim - at).normalized(), false)
+	Game.sparks(parent, at, col, 12, 90.0)
+	var ring := BlastRing.new()
+	ring.position = at.round()
+	ring.radius = radius
+	ring.color = col
+	parent.add_child(ring)
+
+
+static func _burnin(enemy: Node) -> void:
+	if _burnin_busy or not (enemy is Node2D) or not enemy.is_inside_tree():
+		return
+	var e := enemy as Node2D
+	var parent := e.get_parent()
+	if parent == null:
+		return
+	var g := BurnIn.new()
+	g.position = e.global_position
+	g.dmg = maxf(float(e.get_meta("last_hit_dmg", 40.0)) * BURNIN_RATIO, BURNIN_MIN)
+	g.aim = e.call("aim_point") if e.has_method("aim_point") else e.global_position
+	var src = e.get("_sprite")
+	if src is Sprite2D:
+		var sp := Sprite2D.new()
+		var ss := src as Sprite2D
+		sp.texture = ss.texture
+		sp.hframes = ss.hframes
+		sp.vframes = ss.vframes
+		sp.frame = ss.frame
+		sp.flip_h = ss.flip_h
+		sp.centered = ss.centered
+		sp.offset = ss.offset
+		sp.position = ss.position
+		sp.region_enabled = ss.region_enabled
+		sp.region_rect = ss.region_rect
+		g.ghost = sp
+	parent.add_child.call_deferred(g)
+
+
+## EmotionFx 每帧调：带着倒带磁带时，每 REWIND_STEP 秒记一次人、马灯的位置和马灯血量，只留最近 REWIND_SECONDS 秒
+static func tick(tree: SceneTree, delta: float) -> void:
+	if Upgrades.mutation != "rewind" or rewind_used or tree == null:
+		return
+	_snap_t -= delta
+	if _snap_t > 0.0:
+		return
+	_snap_t = REWIND_STEP
+	if Run.crystal_hp <= 0.0:
+		return
+	var players: Array = []
+	for n in tree.get_nodes_in_group("player"):
+		players.append((n as Node2D).global_position)
+	var snap := {"players": players, "hp": Run.crystal_hp}
+	for c in tree.get_nodes_in_group("crystal"):
+		snap["crystal"] = (c as Node2D).global_position
+	_snaps.append(snap)
+	while _snaps.size() > int(REWIND_SECONDS / REWIND_STEP) + 1:
+		_snaps.pop_front()
+
+
+## 马灯碎的时候 Run.damage_crystal 先问这里：带着倒带磁带、这一关还没用过，就倒回 5 秒前，返回 true（不碎、不重来）
+static func try_rewind() -> bool:
+	if Upgrades.mutation != "rewind" or rewind_used or _snaps.is_empty():
+		return false
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree == null:
+		return false
+	rewind_used = true
+	var snap: Dictionary = _snaps[0]
+	_snaps.clear()
+	var pp: Array = snap["players"]
+	var ps := tree.get_nodes_in_group("player")
+	for i in ps.size():
+		var p := ps[i] as Node2D
+		if i < pp.size():
+			p.global_position = pp[i]
+		if "velocity" in p:
+			p.set("velocity", Vector2.ZERO)
+		if p.has_method("reset_physics_interpolation"):
+			p.call("reset_physics_interpolation")
+		if "_invuln" in p:
+			p.set("_invuln", REWIND_INVULN)
+	if snap.has("crystal"):
+		for c in tree.get_nodes_in_group("crystal"):
+			var cn := c as Node2D
+			if cn.get("carrier") == null:
+				cn.global_position = snap["crystal"]
+				if cn.has_method("reset_physics_interpolation"):
+					cn.call("reset_physics_interpolation")
+	Run.crystal_hp = maxf(float(snap["hp"]), Run.crystal_max * REWIND_MIN_HP)
+	Run.crystal_changed.emit(Run.crystal_hp, Run.crystal_max)
+	proc_frame = Engine.get_physics_frames()
+	rewind_fx = 1.0
+	Game.sfx("tvclick", -4.0, 0.7)
+	Game.sfx("static", -10.0, 0.8)
+	return true
+
+
+## 进一关（EmotionFx 建起来时）和新开一局时调：倒带重新可用，连击、计数清零
+static func reset_level() -> void:
+	rewind_used = false
+	rewind_fx = 0.0
+	_snaps.clear()
+	_snap_t = 0.0
+	_valve_target = 0
+	_valve_streak = 0
+	_fuse_n = 0
+	_fuse_until = -1.0
+
+
+## 这个变异和这把枪是不是特别配（商店信息卡的"★ 很配"）
+static func combos_with(mutation: String, weapon: String) -> bool:
+	return weapon in COMBOS.get(mutation, [])
 
 
 static func _damage_mul(shot: Node, k: float) -> void:
@@ -320,3 +559,64 @@ static func _kind(shot: Node) -> String:
 		BLAST_PATH:
 			return "blast"
 	return ""
+
+
+## 熔断、残影炸开时的一圈像素圆环（往外扩，0.25 秒）
+class BlastRing:
+	extends Node2D
+	var radius := 20.0
+	var color := Color.WHITE
+	var _t := 0.0
+
+	func _ready() -> void:
+		var unshaded := CanvasItemMaterial.new()
+		unshaded.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+		material = unshaded
+		z_index = 6
+
+	func _process(delta: float) -> void:
+		_t += delta
+		if _t >= 0.25:
+			queue_free()
+			return
+		queue_redraw()
+
+	func _draw() -> void:
+		var k := _t / 0.25
+		UiStyle.pixel_ring(self, Vector2.ZERO, int(4.0 + k * (radius - 4.0)), Color(color, 1.0 if k < 0.6 else 0.5))
+
+
+## 显像管残影：怪死的地方留一个冷蓝的影子（复制它最后一帧），一闪一闪，到时间炸开
+class BurnIn:
+	extends Node2D
+	var dmg := 20.0
+	var aim := Vector2.ZERO
+	var ghost: Sprite2D
+	var _t := 0.0
+	var _boomed := false
+
+	func _ready() -> void:
+		var unshaded := CanvasItemMaterial.new()
+		unshaded.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+		material = unshaded
+		z_index = 5
+		if ghost:
+			ghost.modulate = Color(Mutations.BURNIN_COLOR, 0.75)
+			ghost.use_parent_material = true
+			add_child(ghost)
+
+	func _process(delta: float) -> void:
+		_t += delta
+		if ghost:
+			# 越接近炸开闪得越快
+			var rate := 6.0 + 18.0 * clampf(_t / Mutations.BURNIN_DELAY, 0.0, 1.0)
+			ghost.visible = not _boomed and int(_t * rate) % 2 == 0
+		if not _boomed and _t >= Mutations.BURNIN_DELAY:
+			_boomed = true
+			Mutations._burnin_busy = true
+			Mutations._blast(get_parent(), aim, Mutations.BURNIN_RADIUS, dmg, Mutations.BURNIN_COLOR)
+			Mutations._burnin_busy = false
+			Mutations.proc_frame = Engine.get_physics_frames()
+			Game.sfx("tvoff", -12.0, 1.3, 0.05)
+		if _t >= Mutations.BURNIN_DELAY + 0.1:
+			queue_free()

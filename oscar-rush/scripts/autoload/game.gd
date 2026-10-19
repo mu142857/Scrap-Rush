@@ -70,6 +70,7 @@ func _ready() -> void:
 	pause_menu = PauseMenu.new()                                     # Esc / 手柄 Start 暂停
 	add_child(pause_menu)
 	add_child(Ambience.new())                                        # 各区域的环境声
+	add_child(Music.new())                                           # 背景音乐（本2兔的两首，按场景交叉淡入淡出）
 
 
 ## F11 或 Alt+Enter 切换全屏（默认全屏），切完记进设置。

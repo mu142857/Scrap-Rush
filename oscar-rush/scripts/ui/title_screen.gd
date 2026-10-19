@@ -5,8 +5,9 @@ extends Node2D
 ## 作者 10-18 重排：中间只有三项 开始 / 制作人员 / 退出（网页版没有退出）；
 ## 右上角两个像素小图标：书（图鉴，CodexMenu）和齿轮（设置）。按上键从"开始"跳到图标，左右换，下键回来；
 ## 手柄 Select 直接开设置；鼠标指着就选。
-## 开始 → 单人 / 合作（ModeSelect）→ 选关卡（LevelSelect，有锁）→ 选武器 → 进关。
-## 合作不换页面：四个船员先暗下去，谁在自己的设备上按跳跃，对应的船员就亮起来，按攻击再去选关卡。
+## 开始 → 单人 / 合作（ModeSelect）→ 选难度（DifficultySelect）→ 选武器 → 第一关（10-18 作者：不再自选关卡）。
+## 有存档时最上面多一项"继续"，默认选中。
+## 合作不换页面：四个船员先暗下去，谁在自己的设备上按跳跃，对应的船员就亮起来，按攻击再去选难度。
 ## 每一步按返回都回到上一步。
 ##
 ## 带调试参数（--autotest / --probe / --arc / --tour / --fx / --players）启动时直接进关卡，
@@ -48,10 +49,15 @@ const OPTION_STEP := 20.0
 
 var _options: Array[String] = ["START", "CREDITS", "QUIT"]
 var _option_hints: Array[String] = [
-	"Play alone or together, then pick a level.",
+	"Play alone or together, then pick a difficulty.",
 	"Who made this, and the licenses.",
 	"",
 ]
+## "继续"（作者 10-18 同意）：有存档时才出现，放在"开始"上面、默认选中，从打到过的最远那关开头接着打。
+## 存档归游戏设计会话：按 SAVE_PATHS 用 load 找它的脚本（不写类名，没做好时这里照样能编译），
+## 要的接口是 has_save() -> bool 和 continue_run()（自己恢复 Run、切到那关开头；返回场景路径的话由这里切）。
+## 存档还没有时退一步：Progress.reached() 打到过第二关以上就出"继续"，从那关开头开始，起始装备按 LEVEL_STARTS 给
+const SAVE_PATHS: Array[String] = ["res://scripts/autoload/save_game.gd", "res://scripts/autoload/save.gd"]
 
 # —— 右上角的两个图标：书（图鉴）、齿轮（设置） ——
 ## 图标是 10×10 的像素图，放大 2 倍画；左上角的位置
@@ -116,6 +122,8 @@ static var return_to_levels := false
 var _slot_labels: Array[Label] = []
 ## 合作：加入界面按攻击以后去选关卡；选关卡按返回回到加入界面（人还在）
 var _coop := false
+## 有存档时选了"开始"并确认会覆盖；真开新局（_launch）时才删旧档
+var _overwrite_ok := false
 
 
 func _ready() -> void:
@@ -132,6 +140,9 @@ func _ready() -> void:
 			var shots: Node = load("res://scripts/debug/title_shots.gd").new()
 			shots.set("out_dir", arg.trim_prefix("--titleshots="))
 			add_child(shots)
+	if _has_continue():
+		_options.insert(0, "CONTINUE")
+		_option_hints.insert(0, _continue_hint())
 	# 网页版关不掉页面，不放 QUIT
 	if OS.has_feature("web"):
 		var qi := _options.find("QUIT")
@@ -150,7 +161,7 @@ func _ready() -> void:
 		_resume_levels.call_deferred()
 
 
-## 从选武器返回：直接回选关页。合作时把加入界面按已经加入的人恢复好再藏起来，选关页再返回就回到加入界面，人还在
+## 从选武器返回：直接回选难度页（静态变量名 return_to_levels 是原来回选关页时起的，weapon_select 在设它）。合作时把加入界面按已经加入的人恢复好再藏起来，选关页再返回就回到加入界面，人还在
 func _resume_levels() -> void:
 	_busy = true
 	_hide_menu()
@@ -165,7 +176,7 @@ func _resume_levels() -> void:
 		_lobby = false
 		_lobby_root.visible = false
 	_ready_for_input = true
-	_open_levels()
+	_open_difficulty()
 
 
 ## W/S、左摇杆、C 这些菜单键在 Settings 自动加载里统一加了
@@ -309,6 +320,57 @@ func _animate_in() -> void:
 		while Input.is_action_pressed("ui_accept"):
 			await get_tree().process_frame
 	_ready_for_input = true
+	_headphones_note()
+
+
+## 建议佩戴耳机（10-18 接背景音乐时作者要的）：打开游戏、开始界面第一次出现时，左上角一个像素耳机加一行小字，
+## 慢慢浮出来、停 4 秒、淡掉。不挡操作（不吃鼠标），一次运行只出一次
+static var _headphones_shown := false
+const HEADPHONES := [
+	"..####..",
+	".#....#.",
+	"#......#",
+	"#......#",
+	"##....##",
+	"##....##",
+	"##....##",
+]
+
+
+func _headphones_note() -> void:
+	if _headphones_shown:
+		return
+	_headphones_shown = true
+	var box := Control.new()
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.position = Vector2(10, 12)
+	box.size = Vector2(200, 16)
+	box.modulate.a = 0.0
+	var icon := Control.new()
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icon.size = Vector2(8, 7)
+	icon.position = Vector2(0, 2)
+	icon.draw.connect(func() -> void:
+		for y in HEADPHONES.size():
+			var row: String = HEADPHONES[y]
+			for x in row.length():
+				if row[x] == "#":
+					icon.draw_rect(Rect2(x, y, 1, 1), DIM))
+	box.add_child(icon)
+	var l := Label.new()
+	l.label_settings = Hud.small_text(DIM)
+	l.text = tr("Headphones recommended")
+	l.position = Vector2(12, -1)
+	l.size = Vector2(190, 12)
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(l)
+	_ui.add_child(box)
+	var tw := box.create_tween()
+	tw.tween_interval(0.6)
+	tw.tween_property(box, "modulate:a", 1.0, 0.8)
+	tw.tween_interval(4.0)
+	tw.tween_property(box, "modulate:a", 0.0, 1.2)
+	tw.tween_callback(box.queue_free)
 
 
 func _fade_in(c: CanvasItem, duration: float) -> void:
@@ -478,8 +540,10 @@ func _move(step: int) -> void:
 
 func _confirm() -> void:
 	match _options[_selected]:
+		"CONTINUE":
+			_continue_run()
 		"START":
-			_open_mode()
+			_start_new()
 		"CREDITS":
 			_open_credits()
 		"QUIT":
@@ -506,7 +570,7 @@ func _open_mode(sound := true) -> void:
 		ModeSelect.SOLO:
 			_coop = false
 			Run.players = [{"input": "solo", "skin": Run.SKINS[0]}]
-			_open_levels()
+			_open_difficulty()
 		ModeSelect.COOP:
 			_coop = true
 			_enter_lobby()
@@ -516,20 +580,22 @@ func _open_mode(sound := true) -> void:
 
 ## 回到开始菜单本身（三项 + 图标）
 func _back_to_menu() -> void:
+	_overwrite_ok = false
 	_show_menu(_menu_items())
 	await get_tree().process_frame
 	_busy = false
 	_refresh()
 
 
-## 单人 / 合作选好以后：选关卡。返回时单人回到单人 / 合作，合作回到加入界面
-func _open_levels() -> void:
+## 单人 / 合作选好以后：选难度（10-18 起不再自选关卡，选关页 LevelSelect 不进流程，跳关用 F8 开发者面板）。
+## 选好就新开一局、从第一关开始；返回时单人回到单人 / 合作，合作回到加入界面
+func _open_difficulty() -> void:
 	_busy = true
-	var page := LevelSelect.new()
+	var page := DifficultySelect.new()
 	_ui.add_child(page)
-	var level: int = await page.chosen
-	if level > 0:
-		_launch(level)
+	var difficulty: int = await page.chosen
+	if difficulty != DifficultySelect.BACK:
+		_launch(1, difficulty)
 		return
 	await get_tree().process_frame
 	if _coop and is_instance_valid(_lobby_root):
@@ -541,11 +607,16 @@ func _open_levels() -> void:
 		_open_mode(false)
 
 
-## 新开一局：从第 level 关开始，先进选武器
-func _launch(level: int) -> void:
+## 新开一局：从第 level 关开始，先进选武器。difficulty 交给 Run（倍率归游戏设计会话）
+func _launch(level: int, difficulty := DifficultySelect.NORMAL) -> void:
 	_busy = true
 	_lobby = false
+	# 新开一局、玩家确认过覆盖：旧档这时才删（在选难度、选武器之间反悔退出的话旧档还在）。进第一关会存新档
+	if _overwrite_ok and Run.has_method("clear_save"):
+		Run.call("clear_save")
+	_overwrite_ok = false
 	Run.reset_run()
+	_set_difficulty(difficulty)
 	Game.reset_stats()
 	_apply_level_start(level)
 	await _fade_to(1.0, 0.5)
@@ -622,6 +693,122 @@ func _open_settings() -> void:
 	await get_tree().process_frame
 	_busy = false
 	_refresh()
+
+
+func _set_difficulty(d: int) -> void:
+	if Run.has_method("set_difficulty"):
+		Run.call("set_difficulty", d)
+	elif "difficulty" in Run:
+		Run.set("difficulty", d)
+
+
+## 存档脚本（游戏设计会话做的）；没有就是 null
+func _save_api() -> Object:
+	if Run.has_method("has_save"):
+		return Run
+	for path in SAVE_PATHS:
+		if ResourceLoader.exists(path):
+			var sc := load(path) as GDScript
+			if sc:
+				return sc
+	return null
+
+
+func _has_continue() -> bool:
+	var api := _save_api()
+	if api and api.has_method("has_save"):
+		return bool(api.call("has_save"))
+	return Progress.reached() > 1
+
+
+## 存档是第几关（Run.save_info；没有存档功能时用 Progress 兜底）
+func _save_level() -> int:
+	var api := _save_api()
+	if api and api.has_method("save_info"):
+		return int((api.call("save_info") as Dictionary).get("level", 1))
+	return Progress.reached()
+
+
+## "继续"下面那行说明："从这关开头接着打：第二关 · 困难 · 2 人"（Run.save_info）
+func _continue_hint() -> String:
+	var level := Progress.reached()
+	var diff := DifficultySelect.last
+	var players := 1
+	var api := _save_api()
+	if api and api.has_method("save_info"):
+		var info: Dictionary = api.call("save_info")
+		level = int(info.get("level", level))
+		diff = int(info.get("difficulty", diff))
+		players = int(info.get("players", 1))
+	var names := ["EASY", "NORMAL", "HARD"]
+	var detail := tr("LEVEL %d" % clampi(level, 1, 3)) + " · " + tr(names[clampi(diff, 0, 2)])
+	if players > 1:
+		detail += " · " + tr("%d PLAYERS") % players
+	return tr("Pick up at the start of: %s") % detail
+
+
+## 存档里用到、现在却没插上的手柄（pad0 → 第 1 个手柄）。没插的话那个人进游戏动不了，"继续"之前先提醒
+func _missing_pads() -> Array[int]:
+	var out: Array[int] = []
+	if not Run.has_method("save_path"):
+		return out
+	var c := ConfigFile.new()
+	if c.load(Run.call("save_path")) != OK:
+		return out
+	var connected := Input.get_connected_joypads()
+	for e in c.get_value("run", "players", []):
+		var inp := str(e.get("input", ""))
+		if inp.begins_with("pad"):
+			var dev := inp.trim_prefix("pad").to_int()
+			if not dev in connected:
+				out.append(dev)
+	return out
+
+
+## "开始"：有存档时先问"会覆盖第 N 关的存档，确定吗？"（默认取消），没存档直接往下走
+func _start_new() -> void:
+	if not _has_continue():
+		_open_mode()
+		return
+	_busy = true
+	Game.sfx("ui_confirm", -8.0)
+	var box := ConfirmBox.make(tr("Starting a new game overwrites your level %d save. Are you sure?") % _save_level())
+	_ui.add_child(box)
+	var ok: bool = await box.answered
+	await get_tree().process_frame
+	if ok:
+		_overwrite_ok = true
+		_open_mode(false)
+	else:
+		# 选"取消"的那一下确认键别漏回菜单、又按一次"开始"：等它松开
+		while Input.is_action_pressed("ui_accept"):
+			await get_tree().process_frame
+		await get_tree().process_frame
+		_busy = false
+		_refresh()
+
+
+## "继续"：交给存档；还没有存档功能时从打到过的最远那关开头开始（单人、上次选的难度），先进选武器
+func _continue_run() -> void:
+	_busy = true
+	Game.sfx("ui_confirm", -4.0)
+	var pads := _missing_pads()
+	if not pads.is_empty():
+		Game.sfx("ui_back", -8.0, 0.8)
+		_hint.text = tr("Connect gamepad %d to continue.") % (pads[0] + 1)
+		_busy = false
+		return
+	var api := _save_api()
+	if api and api.has_method("continue_run"):
+		# Run.continue_run 恢复难度、人、武器、零件、升级、变异、马灯，返回那关开头的场景，切场景由这里管
+		var to: Variant = api.call("continue_run")
+		if to is String and to != "":
+			SceneFade.go(get_tree(), to)
+			return
+		_busy = false
+		return
+	Run.players = [{"input": "solo", "skin": Run.SKINS[0]}]
+	_launch(Progress.reached(), DifficultySelect.last)
 
 
 ## 选关直接开第二关、第三关时的起始状态（商店会话按零件经济定的，见它报告第 17 节）：
@@ -765,7 +952,7 @@ func _refresh_lobby() -> void:
 		_lobby_info.text = tr("%d players ready  -  any player: press ATTACK to start\n(lantern key: leave)") % n
 
 
-## 人齐了按攻击：记下谁是谁，去选关卡（加入界面先藏着，选关卡按返回会再出来）
+## 人齐了按攻击：记下谁是谁，去选难度（加入界面先藏着，选难度按返回会再出来）
 func _start_coop() -> void:
 	_busy = true
 	_lobby = false
@@ -775,4 +962,4 @@ func _start_coop() -> void:
 			Run.players.append({"input": _slots[i], "skin": Run.SKINS[i]})
 	Game.sfx("ui_confirm", -4.0)
 	_lobby_root.visible = false
-	_open_levels()
+	_open_difficulty()

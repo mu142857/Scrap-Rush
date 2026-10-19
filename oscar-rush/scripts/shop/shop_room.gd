@@ -50,7 +50,17 @@ const NAMES := {
 	"slave": ["SLAVE FLASH", "the lantern on the ground shoots too"],
 	"echo": ["TAPE ECHO", "each attack repeats at 50%"],
 	"dynamo": ["DYNAMO", "every 10 kills: lantern +5"],
+	"fuse": ["BLOWN FUSE", "every 5th attack: x3 and a small blast"],
+	"valve": ["WARM VALVE", "keep hitting one target: up to +50%"],
+	"burnin": ["CRT BURN-IN", "kills leave a ghost that blows up"],
+	"rewind": ["REWIND TAPE", "lantern breaks: rewind 5s, once a level"],
 }
+
+## 修一次马灯加多少：和别的回血一样乘难度倍率（困难 ×0.7，Run.heal_mult）。
+## 不走 Run.heal_crystal：那里会发"回血了"的信号，新手提示和回血特效会在商店里跳
+func _repair_amount() -> float:
+	return Upgrades.REPAIR_AMOUNT * Run.heal_mult()
+
 
 ## 名字和一行说明：武器从武器登记表（WeaponRegistry）读，别的从 NAMES 读（游戏设计会话 10-18，7 把武器）
 func _names(id: String) -> Array:
@@ -264,10 +274,11 @@ func _add_stands() -> void:
 		st.icon = st.id
 	var rep := _stand("repair", Vector2(REPAIR_X, BENCH_Y - 8))
 	rep.icon = "repair"
+	# 10-18 作者："商店不卖武器"（武器改成打精英掉，布谷鸟钟会话做）：架子上 4 格全卖变异
 	for i in 4:
-		var st := _stand("weapon" if i < 2 else "mutation", Vector2(SHELF_X[i], SHELF_Y + 10))
+		var st := _stand("mutation", Vector2(SHELF_X[i], SHELF_Y + 10))
 		st.zone_half = 13.0
-		(_weapon_slots if i < 2 else _mutation_slots).append(st)
+		_mutation_slots.append(st)
 	var ref := _stand("refresh", Vector2(REFRESH_X - 3, FLOOR_HIGH - 12))
 	ref.icon = "refresh"
 	ref.get_child(0).visible = false        # 拉杆画在房间图里了，不再放图标
@@ -286,15 +297,10 @@ func _stand(id: String, pos: Vector2) -> ShopStand:
 	return st
 
 
-## 武器 2 把、变异 2 个：从身上没有的里面随机挑。
-## 武器只有 3 把，去掉身上的正好剩 2 把，所以武器格刷新只是补货（买走的那格补回来）。
-## 变异去掉身上的剩 3 个、摆 2 个：刷新时先放刚才没摆出来的，保证至少换出一个新的，不会花了零件还是原样
+## 变异 4 格：从身上没有的里面随机挑（8 个去掉身上的还剩 7 个）。
+## 刷新时先放刚才没摆出来的，保证至少换出新的，不会花了零件还是原样；买走的那格补回来
 func _restock() -> void:
-	# 双人各拿各的武器时（Run.players 里存了 "weapon"），只去掉所有人都有的那把；单人就是去掉身上那把
-	var owned: Array = Run.players.map(func(e): return e.get("weapon", Upgrades.weapon))
-	var w := Upgrades.WEAPONS.filter(func(x): return owned.count(x) < maxi(owned.size(), 1))
 	var m := Upgrades.MUTATIONS.filter(func(x): return x != Upgrades.mutation)
-	w.shuffle()
 	var shown: Array = []
 	for st in _mutation_slots:
 		if st.item != "":
@@ -304,8 +310,7 @@ func _restock() -> void:
 	fresh.shuffle()
 	old.shuffle()
 	var pick: Array = fresh + old
-	for i in 2:
-		_weapon_slots[i].item = w[i] if i < w.size() else ""
+	for i in _mutation_slots.size():
 		_mutation_slots[i].item = pick[i] if i < pick.size() else ""
 	_update_all()
 
@@ -338,7 +343,7 @@ func _info(st: ShopStand) -> Dictionary:
 			var price: int = Upgrades.PRICE["repair"]
 			var full := Run.crystal_hp >= Run.crystal_max
 			return {"title": NAMES["repair"][0],
-					"detail": "lantern is fine" if full else tr("lantern +25   (%d/%d)") % [ceili(Run.crystal_hp), int(Run.crystal_max)],
+					"detail": "lantern is fine" if full else tr("lantern +%d   (%d/%d)") % [roundi(_repair_amount()), ceili(Run.crystal_hp), int(Run.crystal_max)],
 					"price": 0 if full else price, "can_buy": not full and parts >= price}
 		"refresh":
 			var price: int = 0 if not _refresh_used else Upgrades.PRICE["refresh"]
@@ -401,7 +406,8 @@ func _on_buy(st: ShopStand, p: Player) -> void:
 			for n in get_tree().get_nodes_in_group("player"):
 				Upgrades.apply(n as Player)
 		"repair":
-			Run.crystal_hp = minf(Run.crystal_hp + Upgrades.REPAIR_AMOUNT, Run.crystal_max)
+			Achievements.on_heal()   # 成就"省电模式"：修马灯也算回血（立绘添加会话，10-18）
+			Run.crystal_hp = minf(Run.crystal_hp + _repair_amount(), Run.crystal_max)
 			Run.crystal_changed.emit(Run.crystal_hp, Run.crystal_max)
 		"refresh":
 			_refresh_used = true
@@ -413,6 +419,7 @@ func _on_buy(st: ShopStand, p: Player) -> void:
 				Upgrades.weapon = st.item
 			st.item = ""
 		"mutation":
+			Achievements.on_mutation(st.item)   # 成就"磁带收藏"：买过几种变异（立绘添加会话，10-18）
 			Upgrades.mutation = st.item
 			st.item = ""
 	if price > 0:
@@ -558,6 +565,9 @@ func _update_info_box(delta: float) -> void:
 				detail_col = UiStyle.POOR
 		elif focus.id == "mutation" and info.get("swap", false):
 			detail_col = UiStyle.POOR
+		if focus.id == "mutation":
+			# 信息卡底部"★ 和你的 XX 很配"：看站在货架前那个人手上的枪
+			_card_cur = _weapon_of(_buyer(focus))
 		if _confirm_st == focus:
 			price_line = tr("%s AGAIN: SWAP") % _key
 			price_col = UiStyle.WARM if int(_time * 6.0) % 2 == 0 else UiStyle.POOR
@@ -643,6 +653,11 @@ func _draw_card() -> void:
 				for j in range(cv, nv):
 					box.draw_rect(Rect2(bx + j * 6.0, y1, 5, 3), UiStyle.BAR_OFF.lerp(UiStyle.WARM, 0.5 + 0.5 * sin(_time * 8.0)))
 				UiStyle.bars(box, Vector2(bx, y2), cv, 5, 5.0, 3.0, 1.0, UiStyle.DIM)
+		"mutation":
+			if _card_item != "" and Mutations.combos_with(_card_item, _card_cur):
+				var line: String = tr("★ great with your %s") % tr(_names(_card_cur)[0])
+				box.draw_string(Hud.font(), Vector2(60, 48), line, HORIZONTAL_ALIGNMENT_LEFT, -1, 11,
+						UiStyle.WARM.lerp(Color.WHITE, 0.15 + 0.15 * sin(_time * 4.0)))
 		"charge", "fuel", "plating", "damping":
 			var lv := Upgrades.level(_card_kind)
 			box.draw_string(Hud.font(), Vector2(60, y + 5), tr("LEVEL"), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, UiStyle.DIM)
@@ -652,7 +667,7 @@ func _draw_card() -> void:
 			var ratio := Run.crystal_hp / maxf(Run.crystal_max, 1.0)
 			box.draw_string(Hud.font(), Vector2(60, y + 5), tr("LANTERN"), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, UiStyle.DIM)
 			box.draw_rect(Rect2(110, y, 120, 3), UiStyle.BAR_OFF)
-			var add := clampf(Upgrades.REPAIR_AMOUNT / maxf(Run.crystal_max, 1.0), 0.0, 1.0 - ratio)
+			var add := clampf(_repair_amount() / maxf(Run.crystal_max, 1.0), 0.0, 1.0 - ratio)
 			box.draw_rect(Rect2(110 + 120 * ratio, y, 120 * add, 3), UiStyle.BAR_OFF.lerp(UiStyle.WARM, 0.35 + 0.35 * sin(_time * 8.0)))
 			box.draw_rect(Rect2(110, y, 120 * ratio, 3), UiStyle.WARM)
 

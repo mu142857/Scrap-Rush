@@ -59,6 +59,16 @@ const SCENE_ZONES := {
 }
 
 var zone := ""
+## 背景音乐响着时环境声整体让位多少（dB，Music 每帧设）。音乐和这些低沉的嗡鸣在同一个频段，不让会糊
+static var duck_db := 0.0
+## 各区域的空间感：Ambience 总线上的混响（Settings 建总线时加在第 1 格）。克制：湿声都在 0.2 以下，
+## 锅炉房大而硬、交换局中等偏干、屏幕世界小而亮、商店小而暖、家里贴近，制作人员最空旷。[房间大小, 阻尼, 湿声]
+const ROOMS := {
+	"title": [0.6, 0.45, 0.12], "level1": [0.78, 0.3, 0.18], "boss1": [0.85, 0.3, 0.2],
+	"exchange": [0.45, 0.55, 0.11], "film": [0.6, 0.45, 0.13], "booth": [0.3, 0.6, 0.08], "hall": [0.7, 0.4, 0.16],
+	"boss2": [0.55, 0.5, 0.14], "level3": [0.28, 0.25, 0.08], "boss3": [0.35, 0.3, 0.1], "home": [0.32, 0.65, 0.07],
+	"shop": [0.3, 0.7, 0.06], "results": [0.6, 0.5, 0.12], "credits": [0.9, 0.4, 0.2], "": [0.4, 0.5, 0.0],
+}
 ## 不按场景、强行用这个区域（制作人员页叠在开始界面上时用）。空 = 照常按场景
 static var override := ""
 ## 循环名 → AudioStreamPlayer
@@ -82,12 +92,29 @@ func _process(_delta: float) -> void:
 	var z := _current_zone()
 	if z != zone:
 		zone = z
+		_apply_room(zone)
 		_bit_t.clear()
 		for b in ZONES[zone]["bits"]:
 			_bit_t.append(randf_range(b[5], b[6]) * 0.5)
 	_fade_loops(dt)
 	if not get_tree().paused:
 		_tick_bits(dt)
+
+
+## 换区域时调混响参数（Ambience 总线第 1 格的 AudioEffectReverb）
+func _apply_room(z: String) -> void:
+	var i := AudioServer.get_bus_index(BUS)
+	if i < 0 or AudioServer.get_bus_effect_count(i) < 2:
+		return
+	var rv := AudioServer.get_bus_effect(i, 1) as AudioEffectReverb
+	if rv == null:
+		return
+	var r: Array = ROOMS.get(z, ROOMS[""])
+	rv.room_size = r[0]
+	rv.damping = r[1]
+	rv.wet = r[2]
+	rv.dry = 1.0
+	rv.spread = 0.8
 
 
 func _current_zone() -> String:
@@ -132,7 +159,7 @@ func _lead_x() -> float:
 func _fade_loops(dt: float) -> void:
 	var want := {}
 	for l in ZONES[zone]["loops"]:
-		want[l[0]] = float(l[1]) + GLOBAL_DB
+		want[l[0]] = float(l[1]) + GLOBAL_DB + duck_db
 	var names := _db.keys()
 	for n in want:
 		if not n in names:
@@ -178,7 +205,7 @@ func _tick_bits(dt: float) -> void:
 		var p := AudioStreamPlayer.new()
 		p.stream = Game.load_sound(b[0])
 		p.bus = BUS
-		p.volume_db = randf_range(b[1], b[2]) + Game.SFX_TRIM.get(b[0], 0.0) + GLOBAL_DB + BITS_DB + (ROOM_BOOST if zone == "exchange" and _in_room() else 0.0)
+		p.volume_db = randf_range(b[1], b[2]) + Game.SFX_TRIM.get(b[0], 0.0) + GLOBAL_DB + BITS_DB + duck_db + (ROOM_BOOST if zone == "exchange" and _in_room() else 0.0)
 		p.pitch_scale = randf_range(b[3], b[4])
 		add_child(p)
 		p.play()

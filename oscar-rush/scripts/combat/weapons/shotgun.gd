@@ -10,17 +10,19 @@ extends WeaponHandler
 const PELLET := preload("res://scripts/combat/weapons/shotgun_pellet.gd")
 const CASING := preload("res://scripts/combat/casing.gd")
 ## 两发之间（秒）；"快充"每级 -0.05，最快 0.4
-const INTERVAL := 0.55
-const INTERVAL_UPGRADE := 0.05
+## 第三版（作者「伤害翻倍，攻速减半……为了平衡攻速要比减半多一些」）：每颗 11 → 22，间隔 0.55 → 1.05（1.9 倍）。
+## 1.73 倍（0.95）时 Boss 37 / 47 / 53 秒，低于范围（打 Boss 不会溢出，翻倍伤害全吃进去），拉到 1.05
+const INTERVAL := 1.05
+const INTERVAL_UPGRADE := 0.08
 const PELLETS := 7
 ## 扇面半角（度）
 const SPREAD := 7.0
-const PELLET_DAMAGE := 11.0
+const PELLET_DAMAGE := 22.0
 ## 弹丸速度（每颗在这两个数之间随机；图鉴 codex_weapons.gd 读这两个常量）
 const SPEED_MIN := 400.0
 const SPEED_MAX := 460.0
 ## 地上的后坐力（像素/秒，往后）
-const GROUND_KICK := 120.0
+const GROUND_KICK := 150.0
 ## 空中的后坐力：往反方向弹的速度；每次离地最多弹几次
 const AIR_KICK := 200.0
 const AIR_KICKS := 2
@@ -48,7 +50,7 @@ func attack(delta: float) -> void:
 	else:
 		p.clear_target()
 	if held and _cd <= 0.0:
-		_cd = maxf(INTERVAL - INTERVAL_UPGRADE * p.quick_level(), 0.4)
+		_cd = maxf(INTERVAL - INTERVAL_UPGRADE * p.quick_level(), 0.8)
 		_fire(1.0, Color.WHITE, false)
 
 
@@ -79,14 +81,15 @@ func _fire(mult: float, col: Color, copy: bool) -> void:
 	_shot_n += 1
 	_muzzle = 1.0
 	_muzzle_dir = dir
-	_pump_t = 0.22
+	# 泵动「咔——嚓」放在两枪中间，正好填满间隔
+	_pump_t = 0.42
 	Game.sfx("shotgun_blast", -5.0, 1.0, 0.06)
 	Game.sfx("shotgun_thump", -3.0, 1.0, 0.05)
-	Game.add_shake(3.6)
+	Game.add_shake(4.5)
 	p.pop(0.45, 0.9)
 	# 开火那一下定格一帧（多颗打中时的顿帧会接在后面）
 	if Engine.time_scale > 0.0:
-		Game.hitstop(0.025)
+		Game.hitstop(0.035)
 	# 后坐力：地上往后推一小步；空中往反方向弹（每次离地最多 2 次）
 	if air and _air_left > 0:
 		_air_left -= 1

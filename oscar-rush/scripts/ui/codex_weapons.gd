@@ -59,9 +59,9 @@ const DEMO := {
 	"hammer": {"loop": 3.4, "press": 0.3, "press2": 2.1, "hero": 50.0, "bugs": [-30.0, 30.0, 62.0], "respawn": 1.5},
 	# 扔两张（最多 2 张在外面），第一张接住后马上扔第三张（接住后 0.2 秒内扔的快 20%）
 	# 按住连喷三发：第一只贴脸（会被轰飞），远的只吃到扇面中间几颗
-	# 按住连喷三发（第二版后坐 120，人站右一点，退三步还在舞台里）：贴脸那只被轰飞；
-	# 远的那只（贴脸距离 48 以外）每发吃满一扇、往后推一点，第二发打死
-	"shotgun": {"loop": 2.6, "press": 0.3, "release": 1.7, "hero": 50.0, "bugs": [10.0, 52.0]},
+	# 第三版（贴脸打小怪 ×2.5、溢出伤害接着飞）：三只挤在枪口前，一枪全轰死、尸体轰飞；
+	# 放回来以后再喷一枪（后坐 150，人站右一点，退两步还在舞台里）
+	"shotgun": {"loop": 2.5, "press": 0.3, "release": 1.6, "hero": 50.0, "bugs": [14.0, 27.0, 40.0], "respawn": 1.2},
 	# 充满 0.9 秒、松手一道光束横穿三只
 	"laser": {"loop": 2.3, "press": 0.2, "release": 1.7, "hero": 14.0, "bugs": [42.0, 66.0, 90.0]},
 	# 按住放电：每道从钳口劈最近那只，再一只跳一只
@@ -88,6 +88,8 @@ var _glow: Label
 var _stat_labels: Array[Label] = []
 var _facts: Label
 var _tip: Label
+## 舞台左上角一行小字：这把由哪只精英掉落（weapon_pickup.gd 的 DROPS）
+var _drop: Label
 
 # ---- 示意动画的模拟状态（每一轮开头重置）
 var _time := 0.0
@@ -138,7 +140,8 @@ func _ready() -> void:
 	_stage.draw.connect(_draw_stage)
 	add_child(_stage)
 	_caption = _label(14, 33, 452, DIM, HORIZONTAL_ALIGNMENT_LEFT)
-	_caption.text = tr("Pick one before level 1. Swap at the shop for 3 parts.")
+	# 10-18 起商店不卖武器了：开局选一把，打倒某些精英会掉落武器（按"下"换上）
+	_caption.text = tr("Pick one before level 1. Some elites drop weapons you can switch to.")
 	var x := DETAIL.position.x + 8
 	var w := DETAIL.size.x - 16
 	_name = _label(x, DETAIL.position.y + 6, w, WARM, HORIZONTAL_ALIGNMENT_CENTER)
@@ -150,6 +153,7 @@ func _ready() -> void:
 	_facts = _label(x, DETAIL.position.y + 76, w, TEXT, HORIZONTAL_ALIGNMENT_LEFT)
 	_facts.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_facts.label_settings.line_spacing = Lang.tight_line()
+	_drop = _label(STAGE.position.x + 6, STAGE.position.y + 4, STAGE.size.x - 12, DIM, HORIZONTAL_ALIGNMENT_LEFT)
 	_tip = _label(x, 0, w, WARM, HORIZONTAL_ALIGNMENT_LEFT)
 	_tip.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_tip.label_settings.line_spacing = Lang.tight_line()
@@ -191,6 +195,7 @@ func _read_constants() -> void:
 		"sg_interval": sg["INTERVAL"], "sg_pellets": sg["PELLETS"], "sg_spread": sg["SPREAD"], "sg_damage": sg["PELLET_DAMAGE"],
 		"sg_kick": sg["GROUND_KICK"], "sg_speed_min": sg["SPEED_MIN"], "sg_speed_max": sg["SPEED_MAX"], "sg_life": sp["LIFE"], "sg_fade": sp["FADE"], "sg_point_blank": sp["POINT_BLANK"],
 		"sg_full": sp["FULL_RANGE"], "sg_far": sp["FAR_RANGE"], "sg_far_mult": sp["FAR_MULT"],
+		"sg_pb_small": sp["POINT_BLANK_SMALL"],
 		"lz_charge": lz["CHARGE_TIME"], "lz_cooldown": lz["COOLDOWN"], "lz_damage": lz["TICK_DAMAGE"], "lz_range": lz["RANGE"],
 		"lz_tick": lb["TICK"], "lz_life": lb["MAX_LIFE"], "lz_end": lb["END_TIME"], "lz_half": lb["HALF_WIDTH"],
 		"tg_interval": ta["INTERVAL"], "tg_range": ta["RANGE"], "tg_jump": ta["JUMP"], "tg_jumps": ta["JUMPS"],
@@ -215,9 +220,9 @@ func _facts_for(id: String) -> PackedStringArray:
 		"shotgun":
 			return [tr("%d pellets, %d dmg each") % [k["sg_pellets"], k["sg_damage"]],
 				tr("One blast every %s s") % _num(k["sg_interval"]),
-				tr("Range: about %s") % roundi(k["sg_far"]),
 				tr("Full within %d, %d%% at %d") % [k["sg_full"], roundi(k["sg_far_mult"] * 100.0), k["sg_far"]],
-				tr("Point blank: launches small fry")]
+				tr("Point blank: ×%s on small fry") % _num(k["sg_pb_small"]),
+				tr("Leftover damage flies on")]
 		"laser":
 			return [tr("%d dmg every %s s, pierces all") % [k["lz_damage"], str(snappedf(k["lz_tick"], 0.001))],
 				tr("Charge time: %s s") % _num(k["lz_charge"]),
@@ -286,15 +291,38 @@ func _select(i: int) -> void:
 	var e: Array = WEAPONS[_sel]
 	_name.text = tr(e[1])
 	_glow.text = tr(e[6])
-	_glow.label_settings.font_color = WARM if String(e[6]).begins_with("Glows") else DIM
+	# 会发光的武器（扑灯蛾会扑）这行用暖色：发不发光读登记表
+	_glow.label_settings.font_color = WARM if WeaponRegistry.get_def(e[0]).get("glows", false) else DIM
 	for j in _tile_names.size():
 		_tile_names[j].label_settings.font_color = WARM if j == _sel else DIM
 	_facts.text = "\n".join(_facts_for(e[0]))
 	_tip.text = tr(e[7]) if e[7] != "" else _registry_tip(e[0])
+	_drop.text = _drop_line(e[0])
 	_tip.size = Vector2(DETAIL.size.x - 16, 0)
 	_tip.size.y = _tip.get_minimum_size().y
 	_tip.position.y = DETAIL.end.y - 6 - _tip.size.y
 	_reset()
+
+
+## 哪些精英掉这把：第一、二关按图鉴里的精英名字，第三关按 level3_mobs.gd 的 elite_name
+func _drop_line(id: String) -> String:
+	var l3: Dictionary = load("res://scripts/levels/level3_mobs.gd").get_script_constant_map()["MOBS"]
+	var names: PackedStringArray = []
+	for key: String in WeaponPickup.DROPS:
+		if WeaponPickup.DROPS[key] != id:
+			continue
+		# 先找第一、二关的精英（留声机、放映机这些名字第三关也有同名的小怪，不能先查第三关）
+		var nm := ""
+		for e: Dictionary in Bestiary.entries():
+			if e["id"] == key and e["kind"] == "elite" and e.get("chapter", "") != "3":
+				nm = e["name"]
+		if nm == "" and l3.has(key):
+			nm = l3[key].get("elite_name", "")
+		if nm != "":
+			names.append(tr(nm))
+	if names.is_empty():
+		return ""
+	return tr("Dropped by: %s") % ("、" if Lang.is_zh() else ", ").join(names)
 
 
 ## 新几把的打法一句：登记表的 card（选武器界面那三行，换行去掉）+ trait
@@ -647,7 +675,7 @@ func _step_shotgun(d: Dictionary) -> void:
 		var n: int = _k["sg_pellets"]
 		for i in n:
 			var a: float = lerpf(-_k["sg_spread"], _k["sg_spread"], float(i) / (n - 1)) + _rng.randf_range(-2.0, 2.0)
-			_scrap.append({"p": from, "start": from, "v": Vector2.RIGHT.rotated(deg_to_rad(a)) * _rng.randf_range(_k["sg_speed_min"], _k["sg_speed_max"]),
+			_scrap.append({"p": from, "start": from, "damage": _k["sg_damage"], "passed": [], "v": Vector2.RIGHT.rotated(deg_to_rad(a)) * _rng.randf_range(_k["sg_speed_min"], _k["sg_speed_max"]),
 				"life": 0.0, "trail": [], "volley": volley})
 		h["sg_muzzle"] = 1.0
 		h["squash"] = maxf(h["squash"], 0.45)
@@ -656,7 +684,7 @@ func _step_shotgun(d: Dictionary) -> void:
 		# 一团灰烟、一把橙色火星往前喷；开火那一下定格一帧
 		_spark_burst(from + Vector2(4, 0), Color(0.62, 0.6, 0.62), 8, 70.0, Vector2.RIGHT)
 		_spark_burst(from + Vector2(6, 0), Color(1.0, 0.75, 0.3), 6, 160.0, Vector2.RIGHT)
-		_freeze = maxf(_freeze, 0.025)
+		_freeze = maxf(_freeze, 0.035)
 		_casings.append({"p": Vector2(h["x"] - 2, FLOOR_Y - 10), "v": Vector2(-_rng.randf_range(40.0, 70.0), -_rng.randf_range(90.0, 130.0)),
 			"t": 0.0, "bounces": 0, "spin": 0, "big": true, "brass": Color8(190, 52, 40), "dark": Color8(214, 160, 70)})
 
@@ -678,33 +706,39 @@ func _step_scrap() -> void:
 		s["p"] += s["v"] * STEP
 		for i in _bugs.size():
 			var b: Dictionary = _bugs[i]
-			if b["dead"] or not _bug_rect(b).grow(2.5).has_point(s["p"]):
+			# 已经死了的（前面几颗刚打死）、这颗打穿过的：直接穿过去
+			if b["dead"] or s["passed"].has(i) or not _bug_rect(b).grow(2.5).has_point(s["p"]):
 				continue
 			var vol: Dictionary = s["volley"]
 			var n: int = vol.get(i, 0) + 1
 			vol[i] = n
 			vol["total"] += 1
 			var close: bool = s["p"].distance_to(Vector2(h["x"], FLOOR_Y)) < _k["sg_point_blank"]
-			# 伤害按飞过的距离衰减：FULL_RANGE 内满伤，到 FAR_RANGE 剩 FAR_MULT
+			# 伤害按飞过的距离衰减：FULL_RANGE 内满伤，到 FAR_RANGE 剩 FAR_MULT；贴脸打小怪再 ×POINT_BLANK_SMALL
 			var flown: float = s["p"].distance_to(s["start"])
 			var fall := 1.0 if flown <= _k["sg_full"] else lerpf(1.0, _k["sg_far_mult"], clampf((flown - _k["sg_full"]) / (_k["sg_far"] - _k["sg_full"]), 0.0, 1.0))
-			_hurt(b, _k["sg_damage"] * fall, 1.0, close or n >= 3, s["p"], s["v"].normalized(), 0.35 + 0.1 * minf(n, 4))
+			var dealt: float = s["damage"] * fall * (_k["sg_pb_small"] if close else 1.0)
+			var hp_before: float = b["hp"]
+			_hurt(b, dealt, 1.0, close or n >= 3, s["p"], s["v"].normalized(), 0.35 + 0.1 * minf(n, 4))
 			_spark_burst(s["p"], Color(1.0, 0.7, 0.3), 3, 90.0, -s["v"].normalized())
-			if not b["dead"]:
-				if close:
-					# 贴脸：整个轰飞（往后上方）
-					b["vy"] = -110.0
-					b["lx"] = 320.0
-					b["knock"] = 0.0
-				else:
-					# 远一点：每颗往后推一点
-					b["knock"] = maxf(b["knock"], 0.06)
-					b["vx"] = maxf(b["vx"], 0.0) + 45.0
+			if close and dealt >= hp_before:
+				# 贴脸打死：尸体整个轰飞（往后上方），白剪影跟着飞一会儿
+				b["vy"] = -130.0
+				b["lx"] = 380.0
+				b["sil"] = 0.3
+			elif not b["dead"]:
+				# 没打死：每颗往后推一点（不轰飞，不然后面几颗打空）
+				b["knock"] = maxf(b["knock"], 0.06)
+				b["vx"] = maxf(b["vx"], 0.0) + 40.0
 			if vol["total"] >= 2:
-				_freeze = maxf(_freeze, minf(0.012 * vol["total"], 0.07))
+				_freeze = maxf(_freeze, minf(0.018 * vol["total"], 0.1))
+			# 溢出：这一颗打死了它还有剩，就带着剩下的伤害接着往前飞
+			if dealt > hp_before + 0.5:
+				s["passed"].append(i)
+				s["damage"] = (dealt - hp_before) / maxf(fall, 0.01) / (_k["sg_pb_small"] if close else 1.0)
+				continue
 			_scrap.erase(s)
 			break
-
 
 ## 显像管激光第二版（laser.gd）：按住充能 CHARGE_TIME 秒，充满自动开火（不用松手）；光束开始收束就进冷却 COOLDOWN
 func _step_laser(d: Dictionary) -> void:
@@ -1312,6 +1346,7 @@ func _draw_bug(c: CanvasItem, b: Dictionary) -> void:
 	if b["dead"]:
 		# 死的那一下留一个纯白剪影，亮 3 帧
 		if b.get("sil", 0.0) > 0.0:
+			# 死的那一下 3 帧；被霰弹枪贴脸轰飞的跟着飞一会儿
 			var f2 := int(_t / 0.15) % 4
 			c.draw_texture_rect_region(_bug, Rect2(Vector2(roundf(b["x"]) - 18, roundf(FLOOR_Y - 16 + b["y"])), Vector2(36, 16)), Rect2(f2 * 36, 0, 36, 16), Color(6, 6, 6))
 		return

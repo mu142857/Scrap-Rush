@@ -110,7 +110,8 @@ func _update_hint() -> void:
 	if _coop:
 		_hint.text = tr("Each player: LEFT/RIGHT choose, ATTACK lock in      %s  back") % Controls.label("back")
 		return
-	_hint.text = tr("%s  choose      %s  start      %s  back      You can swap tools in the shop") % [
+	# 商店不卖武器了（10-18 作者），换武器靠打倒精英掉落（布谷鸟钟会话做的 weapon_pickup）
+	_hint.text = tr("%s  choose      %s  start      %s  back      Elites may drop other tools") % [
 		Controls.label("change"), Controls.label("confirm"), Controls.label("back")]
 
 

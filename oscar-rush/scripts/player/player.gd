@@ -24,10 +24,20 @@ const JUMP_HOLD_TIME := 0.16
 const JUMP_MIN_HOLD := 0.05
 const GRAVITY := 1300.0
 const FALL_GRAVITY_MULT := 1.35
-const MAX_FALL_SPEED := 400.0
+# 10-18 美术哥 Oscar 试玩：「向下是慢慢加速的，现在跳起来躲弹幕很困难」——上升段不动（跳多高不变），只改下落：
+# 顶点悬停更久；下落重力先小后大（FALL_RAMP_TIME 秒内从 FALL_GRAVITY_START 涨到 FALL_GRAVITY_MULT）；最大下落速度 400 → 300。
+# 空中按住"下"（不按攻击时）快速下落，想快点落地照样能快。
+const MAX_FALL_SPEED := 300.0
+const FALL_GRAVITY_START := 0.55
+const FALL_RAMP_TIME := 0.35
+## 空中按住"下"：重力倍率、最大下落速度。按着攻击时不算（霰弹枪朝脚下喷、激光往下压用的也是"下"）
+const FAST_FALL_MULT := 2.2
+const FAST_FALL_SPEED := 460.0
 const APEX_SPEED := 30.0
-const APEX_GRAVITY_MULT := 0.5
-const APEX_TIME := 0.06
+## 顶点悬停：速度很小的那一段重力打折（按住跳 ×0.35，不按 ×0.6），最长 APEX_TIME 秒
+const APEX_GRAVITY_MULT := 0.35
+const APEX_GRAVITY_MULT_RELEASED := 0.6
+const APEX_TIME := 0.12
 const COYOTE_TIME := 0.10
 ## 站在单向平台上按"下"（S）就从平台上穿下去；这么久之内不和那块平台碰撞
 const DROP_TIME := 0.25
@@ -125,6 +135,8 @@ var _buffer := 0.0
 var _jump_hold := 0.0
 var _jump_min := 0.0
 var _apex := 0.0
+## 这次下落已经落了多久（下落重力先小后大用）
+var _fall_t := 0.0
 var _jetting := false
 var _jet_armed := false
 var _ground_time := 0.0
@@ -488,12 +500,21 @@ func _jump_and_gravity(delta: float, on_floor: bool) -> void:
 		_jump_hold = 0.0
 		_jetting = false
 		var g := GRAVITY
+		var max_fall := MAX_FALL_SPEED
 		if velocity.y > 0.0:
-			g *= FALL_GRAVITY_MULT
-		if jump_held and absf(velocity.y) < APEX_SPEED and _apex > 0.0:
-			g *= APEX_GRAVITY_MULT
+			_fall_t += delta
+			g *= lerpf(FALL_GRAVITY_START, FALL_GRAVITY_MULT, clampf(_fall_t / FALL_RAMP_TIME, 0.0, 1.0))
+		else:
+			_fall_t = 0.0
+		if absf(velocity.y) < APEX_SPEED and _apex > 0.0:
+			g *= APEX_GRAVITY_MULT if jump_held else APEX_GRAVITY_MULT_RELEASED
 			_apex -= delta
-		velocity.y = minf(velocity.y + g * delta, MAX_FALL_SPEED)
+		# 空中按住"下"、没按攻击：快速下落
+		if not on_floor and _stun <= 0.0 and Input.is_action_pressed(_act("down")) \
+				and not Input.is_action_pressed(_act("attack")):
+			g = GRAVITY * FAST_FALL_MULT
+			max_fall = FAST_FALL_SPEED
+		velocity.y = minf(velocity.y + g * delta, max_fall)
 	_smoke.emitting = _jetting
 	var flicker := 0.85 + 0.15 * sin(_anim_time * 37.0)
 	_jet_light.energy = move_toward(_jet_light.energy, 1.6 * flicker if _jetting else 0.0, delta * 8.0)

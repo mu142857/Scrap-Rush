@@ -20,7 +20,7 @@ const LEVELS := [
 	[KEY_7, "Shop", "res://scenes/shop.tscn", "res://scenes/title.tscn"],
 	[KEY_0, "Title", "res://scenes/title.tscn", ""],
 ]
-const HELP := "F1 invincible   1 Level 1   2 Level 2   3 Level 3   4 Boss 1   5 Boss 2   6 Boss 3   7 Shop   0 Title\nP +5 parts   H fill lantern   G unbreakable lantern\nK kill all   U max gear   [ ] emotion -/+   T slow-mo\nB unlock bestiary   N N clear bestiary"
+const HELP := "F1 invincible   1 Level 1   2 Level 2   3 Level 3   4 Boss 1   5 Boss 2   6 Boss 3   7 Shop   0 Title\nP +5 parts   H fill lantern   G unbreakable lantern\nK kill all   U max gear   [ ] emotion -/+   T slow-mo\nB unlock bestiary   N N clear bestiary   F5 all achievements   F6 F6 clear achievements"
 
 var on := false
 var god := false
@@ -30,6 +30,8 @@ var _note := ""
 var _note_t := 0.0
 ## 清空图鉴要 2 秒内连按两下 N，这是第一下之后还剩多久
 var _clear_t := 0.0
+## 清空成就同理：2 秒内连按两下 F6
+var _ach_clear_t := 0.0
 var _panel: ColorRect
 var _label: Label
 var _badge: Label
@@ -112,6 +114,19 @@ func _input(event: InputEvent) -> void:
 				_clear_t = 2.0
 				_note = "Press N again to clear the bestiary"
 			_note_t = 2.0
+		KEY_F5:
+			Achievements.unlock_all()
+			_note = "Achievements: all unlocked (saved)"
+			_note_t = 2.0
+		KEY_F6:
+			if _ach_clear_t > 0.0:
+				_ach_clear_t = 0.0
+				Achievements.clear()
+				_note = "Achievements: cleared"
+			else:
+				_ach_clear_t = 2.0
+				_note = "Press F6 again to clear achievements"
+			_note_t = 2.0
 		_:
 			used = false
 	if used:
@@ -153,6 +168,7 @@ func _fill_lantern() -> void:
 func _process(delta: float) -> void:
 	_note_t -= delta
 	_clear_t -= delta
+	_ach_clear_t -= delta
 	if god and Run.crystal_hp < Run.crystal_max:
 		_fill_lantern()
 	if not on:

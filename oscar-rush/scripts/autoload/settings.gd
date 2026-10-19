@@ -119,6 +119,13 @@ func _make_buses() -> void:
 			lp.cutoff_hz = 700.0
 			AudioServer.add_bus_effect(i, lp)
 			AudioServer.set_bus_effect_enabled(i, 0, false)
+	# 环境声的空间感：第 1 格一个混响，各区域的大小、湿声由 Ambience._apply_room 调（10-18 背景音乐接入时加的）
+	var amb := AudioServer.get_bus_index("Ambience")
+	if AudioServer.get_bus_effect_count(amb) == 1:
+		var rv := AudioEffectReverb.new()
+		rv.wet = 0.0
+		rv.dry = 1.0
+		AudioServer.add_bus_effect(amb, rv)
 
 
 ## 暂停菜单开 / 关时调

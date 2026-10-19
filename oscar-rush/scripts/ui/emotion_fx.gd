@@ -40,7 +40,8 @@ const HEAL_COLOR := Color8(255, 226, 150)
 ## 身上的变异：马灯血条右边一个小框，里面是商店同款图标。变异起作用时框跳一下、边框亮成它的颜色；
 ## 每关开头图标旁边亮出名字，几秒后淡掉
 const MUT_BOX := Rect2(80, 5, 18, 18)
-const MUT_NAMES := {"rage": "RAGE", "slave": "SLAVE FLASH", "echo": "TAPE ECHO", "dynamo": "DYNAMO"}
+const MUT_NAMES := {"rage": "RAGE", "slave": "SLAVE FLASH", "echo": "TAPE ECHO", "dynamo": "DYNAMO",
+		"fuse": "BLOWN FUSE", "valve": "WARM VALVE", "burnin": "CRT BURN-IN", "rewind": "REWIND TAPE"}
 const MUT_NAME_TIME := 4.0
 
 ## 带回差的档位（EnemyBase 现在自己按每 25 分一档算；这里给画面和声音用）
@@ -187,6 +188,8 @@ func _ready() -> void:
 	var root := get_tree().current_scene
 	if root and root.scene_file_path in RESET_SCENES:
 		Run.emotion = 0.0
+	# 进一关（含 Boss 房、重来）：倒带磁带重新可用，真空管、保险丝的计数清零
+	Mutations.reset_level()
 	_last_emotion = Run.emotion
 	_shown = Run.emotion
 	tier = _tier_for(Run.emotion, 0)
@@ -259,6 +262,14 @@ func _process(delta: float) -> void:
 		_own += Run.emotion - before
 		if Run.emotion >= 100.0:
 			Run.damage_crystal(OVERLOAD_DRAIN * delta)
+		# 倒带磁带：记最近 5 秒的位置和马灯血量
+		Mutations.tick(get_tree(), delta)
+	# 刚倒带：整屏雪花一下 + 横幅
+	if Mutations.rewind_fx > 0.0:
+		Mutations.rewind_fx = 0.0
+		_burst = 1.0
+		Game.flash(Color(0.8, 0.7, 1.0), 0.2, 0.3)
+		_show_banner(tr("REWIND! (once per level)"), Mutations.REWIND_COLOR)
 
 	# ---- 别处加减的情绪：攒 0.25 秒跳一次字 ----
 	var ext := Run.emotion - _last_emotion - _own
@@ -486,6 +497,14 @@ static func _mut_color() -> Color:
 			return Mutations.ECHO_COLOR
 		"dynamo":
 			return Mutations.DYNAMO_COLOR
+		"fuse":
+			return Mutations.FUSE_COLOR
+		"valve":
+			return Mutations.VALVE_COLOR
+		"burnin":
+			return Mutations.BURNIN_COLOR
+		"rewind":
+			return Mutations.REWIND_COLOR
 	return WARM
 
 
@@ -499,7 +518,9 @@ func _draw_bar_fx() -> void:
 		var box := Rect2(MUT_BOX.position + Vector2(0, lift), MUT_BOX.size)
 		UiStyle.panel(_bar_fx, box, on, _time, _mut_color())
 		if idx >= 0:
-			UiStyle.icon(_bar_fx, ShopStand.ICONS, idx, box.position + Vector2.ONE)
+			# 倒带磁带这一关用过了：图标变灰
+			var used := Upgrades.mutation == "rewind" and Mutations.rewind_used
+			UiStyle.icon(_bar_fx, ShopStand.ICONS, idx, box.position + Vector2.ONE, 1, Color(0.35, 0.35, 0.4) if used else Color.WHITE)
 	# 发电机：马灯血条下面 10 小格，杀一只亮一格，满 10 只回血
 	if Upgrades.mutation == "dynamo" and _in_level():
 		UiStyle.bars(_bar_fx, Vector2(HUD_BAR.position.x, HUD_BAR.end.y + 3), Mutations.dynamo_kills, Mutations.DYNAMO_KILLS,

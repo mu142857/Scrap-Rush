@@ -38,6 +38,8 @@ var _led: Node2D
 
 
 func _ready() -> void:
+	# 难度：简单 ×0.8、困难 ×1.3（Run.enemy_hp_mult）
+	hp = MAX_HP * Run.enemy_hp_mult()
 	add_to_group("enemy")
 	collision_layer = 4
 	collision_mask = 1
@@ -131,7 +133,7 @@ func _die() -> void:
 
 func _respawn() -> void:
 	dead = false
-	hp = MAX_HP
+	hp = MAX_HP * Run.enemy_hp_mult()
 	global_position = _home
 	velocity = Vector2.ZERO
 	visible = true

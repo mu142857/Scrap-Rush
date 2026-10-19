@@ -443,6 +443,7 @@ func _die() -> void:
 	Game.sparks(get_parent(), aim_point(), death_spark_colors_big[0], 12, 160.0, hd)
 	Game.sparks(get_parent(), aim_point(), death_spark_colors_big[1], 15, 140.0, hd)
 	HitFx.silhouette(get_parent(), self)          # 白剪影亮 3 帧（顿帧时定格），和小怪击杀一样
+	WeaponPickup.drop_from(self)                  # 有些精英固定掉一把武器（weapon_pickup.gd 的 DROPS）
 	Game.flash(Color(1, 0.9, 0.8), 0.25, 0.4)
 	Game.add_shake(6.0)
 	Game.hitstop(0.12, 0.3)

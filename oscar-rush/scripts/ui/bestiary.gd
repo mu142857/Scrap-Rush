@@ -26,7 +26,8 @@ static var _last_save := -100000
 ## 一只怪在画面里第一次出现时记一笔：给它挂一个小节点，每帧看它在不在画面里，看到了就记下、自己删掉。
 ## rect 是怪的大致范围（相对怪的原点）。不用 VisibleOnScreenNotifier2D：那个靠渲染，无头测试里不触发
 static func watch(node: Node2D, id: String, rect := Rect2(-24, -40, 48, 48)) -> void:
-	if id == "" or is_seen(id):
+	# Boss 每场都挂（成就"零杂讯"要知道每场开打时马灯有多少血）；别的看过就不挂了
+	if id == "" or (is_seen(id) and not id.begins_with("boss_")):
 		return
 	var w := _Watch.new()
 	w.id = id
@@ -44,6 +45,7 @@ class _Watch extends Node:
 			return
 		if (p.get_global_transform_with_canvas() * rect).intersects(p.get_viewport_rect()):
 			Bestiary.mark(id)
+			Bestiary._achieve("on_seen", id)
 			queue_free()
 
 
@@ -59,6 +61,7 @@ static func mark(id: String) -> void:
 		return
 	_seen[id] = _next_order()
 	_save()
+	_achieve("on_catalogue")
 
 
 ## 打死一只记一次（EnemyBase / crawler / 三个 Boss 死的时候各一行）。顺便也算"遇见过"。
@@ -68,13 +71,62 @@ static func count_kill(id: String) -> void:
 		return
 	_load()
 	_kills[id] = int(_kills.get(id, 0)) + 1
-	if not _seen.has(id):
+	var new_seen := not _seen.has(id)
+	if new_seen:
 		_seen[id] = _next_order()
 		_dirty = true
 	_dirty = true
 	var now := Time.get_ticks_msec()
 	if now - _last_save >= 2000:
 		_save()
+	_achieve("on_kill", id)
+	if new_seen:
+		_achieve("on_catalogue")
+
+
+## 成就（achievements.gd）：用 load() 调，不写类名——Bestiary 被 EnemyBase 调用，要保持"叶子"，
+## 它一解析失败所有怪都编译不过（见 2026-10-18 的教训）
+static func _achieve(method: String, arg = null) -> void:
+	var a: Script = load("res://scripts/ui/achievements.gd")
+	if a == null:
+		return
+	if arg == null:
+		a.call(method)
+	else:
+		a.call(method, arg)
+
+
+## 成就用：一共打死多少只、点亮了几条、一共有几条（没登场的电报员不算）、按编号找一条
+static func total_kills() -> int:
+	_load()
+	var n := 0
+	for k in _kills:
+		n += int(_kills[k])
+	return n
+
+
+static func seen_count() -> int:
+	_load()
+	var n := 0
+	for e in catalog():
+		if not e.get("unreleased", false) and _seen.has(e["id"]):
+			n += 1
+	return n
+
+
+static func total_count() -> int:
+	var n := 0
+	for e in catalog():
+		if not e.get("unreleased", false):
+			n += 1
+	return n
+
+
+static func entry(id: String) -> Dictionary:
+	for e in entries():
+		if e["id"] == id:
+			return e
+	return {}
 
 
 static func kills(id: String) -> int:
@@ -117,6 +169,9 @@ static func _save() -> void:
 	_dirty = false
 	_last_save = Time.get_ticks_msec()
 	if _path == "":
+		return
+	# 10-18（游戏设计会话）：没设 SCRAP_BESTIARY_PATH 又不是正常开的游戏（直接开关卡、窗口跑的测试）就不写作者的图鉴
+	if OS.get_environment("SCRAP_BESTIARY_PATH") == "" and not Run.real_launch():
 		return
 	var cfg := ConfigFile.new()
 	for k in _seen:
@@ -300,9 +355,10 @@ static func entries() -> Array:
 		"Its needle scratches along the floor. Jump over it."))
 	E.append(_elite("2", "projector", "CINEMA PROJECTOR", "NOW SHOWING", 20, [0, 1],
 		"A hot spotlight sweeps the floor, then reels walk out of its picture."))
-	E.append(_elite("2", "chief_operator", "CHIEF OPERATOR", "HOLD THE LINE", 8, [0, 1, 2, 3],
+	# 10-18 放映机会话给人形精英加了走路帧（第 8、9 帧），现在 10 帧：0~1 呼吸、2~5 出招、6~7 倒下、8~9 走路。图鉴播走路
+	E.append(_elite("2", "chief_operator", "CHIEF OPERATOR", "HOLD THE LINE", 10, [8, 1, 9, 1],
 		"Hooks you with a cord and reels you in. Dodge off the dotted line."))
-	E.append(_elite("2", "film_editor", "FILM EDITOR", "FINAL CUT", 8, [0, 1],
+	E.append(_elite("2", "film_editor", "FILM EDITOR", "FINAL CUT", 10, [8, 1, 9, 1],
 		"Charges with giant scissors and cuts to the spot behind you. Jump over the charge."))
 	E.append(_elite("2", "watchman", "WATCHMAN", "CURFEW", 10, [0, 1, 2, 3],
 		"A living giant that pounds the ground. The floor cracks where its fists land."))
@@ -482,6 +538,13 @@ static func stats(e: Dictionary) -> Dictionary:
 		st["hp"] = int(obj.get("max_hp"))
 		st["atk"] = int(obj.get("contact_damage"))
 		st["spd"] = _speed_of(obj.get_script())
+		# 贴图和帧数也照怪自己的（10-18：剪辑师、总接线长加了走路帧，这里写死的 8 帧没跟着改，图鉴里的图切歪了）
+		var hf = obj.get("hframes")
+		if hf is int and hf > 0:
+			st["hframes"] = hf
+		var tex_path = obj.get("texture_path")
+		if tex_path is String and tex_path != "":
+			st["tex"] = tex_path
 		# 第三关精英按打法走（l3_elite.gd 的 TYPE[打法]["walk"]，_setup 时放在 _tp 里）
 		var tp = obj.get("_tp")
 		if tp is Dictionary and tp.has("walk"):

@@ -312,6 +312,8 @@ func _ready() -> void:
 			tour.set("shot", parts[0])
 			tour.set("out_dir", parts[1])
 			add_child(tour)
+	# 第二关的开场动画在气动管里播，这里热不到：进场时把材质都画一遍，网页版先编好着色器（scripts/fx/material_warmer.gd）
+	MaterialWarmer.warm.call_deferred(self)
 
 
 ## 一层背景：TILES 条竖条按 TILE_W 排开，放在一个节点下面整体跟镜头走

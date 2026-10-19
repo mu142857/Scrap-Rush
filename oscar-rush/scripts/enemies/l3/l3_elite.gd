@@ -78,6 +78,13 @@ const CHARGE_SPEED := 140.0
 const CHARGE_TIME := 0.9
 const WARN_TIME := 0.85
 const JUMP_VY := -320.0
+## 跳砸（10-18 美术哥 Oscar 试玩："把一些跳跃攻击滞空时长加长点儿"）：跳得更高、在空中更久，人能从它肚子底下钻过去。
+## 原来起跳 320、重力 900，最高 57 像素、空中 0.71 秒；现在大块头最高 110、别的 85，空中重力 620：
+## 大块头空中约 1.2 秒、别的约 1.05 秒。头顶有天花板就按能跳的高度算（不撞头），落点预警照这个算。
+const SLAM_RISE := 85.0
+const SLAM_RISE_GIANT := 110.0
+const SLAM_GRAVITY := 620.0
+const SLAM_MAX_VX := 170.0
 const SHOCK_SPEED := 115.0
 const BULLET_SPEED := 88.0
 const MAX_SUMMONS := 2
@@ -159,6 +166,8 @@ var _tele_start_x := 0.0
 var _tele_pts: Array[Vector2] = []
 var _tele_y := 0.0
 var _drop_y0: Array[float] = []   # 头顶扔一排：每颗从多高开始掉（预警时算好，和标记一致）
+var _jump_v := Vector2.ZERO        # 跳砸的起跳速度（预警时按落点算好）
+var _base_gravity := 900.0
 var _fringe: Array[Sprite2D] = []
 var _rage := false
 var _rage_fx: Node2D
@@ -575,8 +584,9 @@ func _start_move(p: Player) -> void:
 			_timer = CHARGE_TIME * (1.4 if cfg_flag("slide") else 1.0) * (0.5 if _move == "bash" else 1.0)
 			Game.sfx("crack", -10.0, 1.2, 0.05)
 		"slam":
-			var dx := _aim.x - global_position.x
-			velocity = Vector2(clampf(dx / 0.9, -150.0, 150.0), JUMP_VY * (1.1 if arch == "giant" else 1.0))
+			velocity = _jump_v
+			_base_gravity = gravity
+			gravity = SLAM_GRAVITY
 			_state = AIR
 			_timer = 0.6
 		"stomp":
@@ -700,6 +710,7 @@ func _enrage() -> void:
 
 
 func _land() -> void:
+	gravity = _base_gravity
 	Game.add_shake(8.0 if arch == "giant" else 5.0)
 	Game.sfx("land", -4.0 if arch == "giant" else -6.0, 0.55 if arch == "giant" else 0.7)
 	Game.dust(get_parent(), global_position, 12 if arch == "giant" else 8)
@@ -822,9 +833,19 @@ func _plan_tele(p: Player) -> void:
 					break
 				x = nx
 		"slam":
-			var vy := JUMP_VY * (1.1 if arch == "giant" else 1.0)
-			var vx := clampf((_aim.x - global_position.x) / 0.9, -150.0, 150.0)
-			var land := _ground_below(Vector2(global_position.x + vx * 2.0 * -vy / gravity, global_position.y))
+			# 能跳多高：想跳 SLAM_RISE（大块头更高），头顶有天花板就矮一点，别撞头（撞头会提前落地，落点就不准了）
+			var rise := SLAM_RISE_GIANT if arch == "giant" else SLAM_RISE
+			var head := global_position + Vector2(0, -body_rect.size.y)
+			var up := PhysicsRayQueryParameters2D.create(head, head + Vector2(0, -rise - 8.0), 1)
+			up.exclude = [get_rid()]
+			var roof := space.intersect_ray(up)
+			if not roof.is_empty():
+				rise = clampf(head.y - (roof["position"] as Vector2).y - 6.0, 20.0, rise)
+			var vy := -sqrt(2.0 * SLAM_GRAVITY * rise)
+			var air := 2.0 * -vy / SLAM_GRAVITY
+			var vx := clampf((_aim.x - global_position.x) / air, -SLAM_MAX_VX, SLAM_MAX_VX)
+			_jump_v = Vector2(vx, vy)
+			var land := _ground_below(Vector2(global_position.x + vx * air, global_position.y))
 			_tele_pts.append(land)
 			if arch == "giant":
 				for k in [-1, 1]:

@@ -736,3 +736,83 @@ Keep holding to sweep. Burns bullets.,按住不放一直扫，烧掉子弹。
 Fires itself when charged,充满自动开火
 "Beam lasts %s s, then cools %s s",光束最多 %s 秒，之后冷却 %s 秒
 "Full within %d, %d%% at %d",%d 以内满伤，到最远剩 %d%%（%d）
+Point blank: ×%s on small fry,贴脸打小怪：伤害 ×%s
+Leftover damage flies on,打死还有剩的伤害，接着往前飞
+CONTINUE,继续
+Pick up from the start of level %d.,从第 %d 关开头接着打。
+"Play alone or together, then pick a difficulty.",一个人玩或者一起玩，然后选难度。
+CHOOSE A DIFFICULTY,选择难度
+EASY,简单
+NORMAL,普通
+HARD,困难
+Enemies hit softer and the lantern lasts longer.,怪打得轻，马灯耐打。
+The game as it was made to be played.,照原本的设计来玩。
+"Tougher machines, less room for mistakes.",机器更硬，容错更少。
+%s: SWAP,%s：换上
+NOW: %s,现在：%s
+You already have this one,你手上就是这把
+BLOWN FUSE,保险丝熔断
+WARM VALVE,真空管预热
+CRT BURN-IN,显像管残影
+REWIND TAPE,倒带磁带
+every 5th attack: x3 and a small blast,每第 5 招：伤害 ×3，再炸一小圈
+keep hitting one target: up to +50%,一直打同一个目标：伤害最多 +50%
+kills leave a ghost that blows up,打死的怪留下残影，1 秒后炸开
+"lantern breaks: rewind 5s, once a level",马灯碎了倒回 5 秒前，每关一次
+★ great with your %s,★ 和你的%s很配
+REWIND! (once per level),倒带！（每关一次）
+lantern +%d   (%d/%d),马灯 +%d   （%d/%d）
+Pick up at the start of: %s,从这关开头接着打：%s
+%d PLAYERS,%d 人
+Connect gamepad %d to continue.,存档里有手柄 %d，请先插上再继续。
+Starting a new game overwrites your level %d save. Are you sure?,新开一局会覆盖第 %d 关的存档，确定吗？
+CANCEL,取消
+CONFIRM,确定
+Every %dth attack does x%s damage and turns orange.,每第 %d 招伤害 ×%s，子弹变成橙色。
+"Its first hit sets off a small blast: %d dmg within %d.",它第一下打中的地方再炸一小圈：%d 伤害，半径 %d。
+"Keep hitting the same target: +%d%% each hit, up to +%d%%.",一直打同一个目标：每下 +%d%%，最多 +%d%%。
+Switch targets and it cools back down.,换目标就重新冷下来。
+Enemies you kill leave a burned-in ghost that blows up %s s later.,打死的怪留下一个残影，%s 秒后炸开。
+"Blast: %d%% of the killing blow (at least %d) within %d. Ghost kills leave no ghosts.",炸开的伤害是最后那一下的 %d%%（至少 %d），半径 %d。残影炸死的怪不再留残影。
+"When the lantern breaks, you and the lantern rewind %s s instead.",马灯碎的时候不重来：你和马灯倒回 %s 秒前。
+Once per level. The lantern comes back with at least %d%%.,每关一次。马灯回来时至少有 %d%%。
+Pick one before level 1.,开局选一把。
+"Orb damage: Flash %d, Rivet %d (every %dth rivet), Hammer %d.",小光球伤害：闪光灯 %d、铆钉枪 %d（每 %d 颗补一发）、蒸汽锤 %d。
+%s  choose      %s  start      %s  back      Elites may drop other tools,%s  选择      %s  出发      %s  返回      打倒精英可能掉落别的家伙
+Pick one before level 1. Some elites drop weapons you can switch to.,开局选一把；打倒某些精英会掉落武器，可以换上。
+Dropped by: %s,掉落：%s
+Headphones recommended,建议佩戴耳机
+ACHIEVEMENTS,成就
+ACHIEVEMENT UNLOCKED,解锁成就
+%d / %d unlocked,已解锁 %d / %d
+UNLOCKED,已解锁
+LOCKED,未解锁
+WARM-UP,预热
+Destroy your first elite.,打倒第一只精英怪。
+FIRST SHIFT,第一个班次
+Bring down the Stoker in the boiler room.,在锅炉房打倒司炉工。
+Finish the game.,通关一次。
+LOW VOLTAGE,低压运行
+Finish the game on Easy.,在简单难度通关。
+RATED POWER,额定功率
+Finish the game on Normal.,在普通难度通关。
+OVERCLOCKED,超频
+Finish the game on Hard.,在困难难度通关。
+NO STATIC,零杂讯
+"On Hard, beat a boss without the lantern taking a hit.",困难难度下，马灯一下都没挨就打倒一个 Boss。
+FULL SPECTRUM,全频段
+Finish the game with each of the 7 weapons.,七把武器各用一次通关。
+TAPE LIBRARY,磁带收藏
+Buy 4 different mutations (across runs).,累计买过 4 种不同的变异（可以分几局）。
+HOT SWAP,热插拔
+Pick up a weapon an elite dropped.,换上一把精英掉落的武器。
+PARTY LINE,合用线路
+Finish the game with two players.,双人通关。
+POWER SAVER,省电模式
+Finish a run without the lantern ever healing.,通关的那一局，马灯一次都没回过血。
+Scrap 500 enemies in total.,累计打倒 500 只怪。
+COMPLETE CATALOGUE,全套目录
+Light up every page of the bestiary.,点亮怪物图鉴的每一页。
+HIDDEN CHANNEL,隐藏频道
+Finish the game with the lantern at 95% or more.,通关时马灯还有 95% 以上。
+SCRAPYARD,废品站

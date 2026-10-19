@@ -639,6 +639,14 @@ func _art(e: Dictionary) -> Dictionary:
 	var id: String = e["id"]
 	if _cache.has(id):
 		return _cache[id]
+	# 第一、二关的小怪、精英：帧数和贴图以怪自己的脚本为准（Bestiary.stats 里读的），免得有人改了贴图、这里没跟上。
+	# 第三关不用：第三关精英进场（_ready）才换成 l3_elite_art.gd 的大号图，_setup 读到的还是原图；图鉴里已经按大号图登记了
+	if e["kind"] != "boss" and not e.has("layers") and not e.has("key"):
+		var st := Bestiary.stats(e)
+		if st.has("hframes"):
+			e["hframes"] = st["hframes"]
+		if st.has("tex") and ResourceLoader.exists(st["tex"]):
+			e["tex"] = st["tex"]
 	var paths: Array = e.get("layers", [e.get("tex", "")])
 	var texs: Array[Texture2D] = []
 	for p: String in paths:

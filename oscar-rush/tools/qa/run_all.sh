@@ -9,7 +9,7 @@ OUT=${1:?"用法：tools/qa/run_all.sh <放日志的目录> [quick]"}
 QUICK=$2
 mkdir -p "$OUT"
 # 规则（夜间打磨/规则.md）：测试不碰作者真正的设置和图鉴存档，都写到日志目录里
-export SCRAP_SETTINGS_PATH="$OUT/settings.cfg" SCRAP_BESTIARY_PATH="$OUT/bestiary.cfg"
+export SCRAP_SETTINGS_PATH="$OUT/settings.cfg" SCRAP_BESTIARY_PATH="$OUT/bestiary.cfg" SCRAP_RUN_PATH="$OUT/run.cfg"
 GODOT=/Applications/Godot.app/Contents/MacOS/Godot
 cd "$(dirname "$0")/../.." || exit 1
 

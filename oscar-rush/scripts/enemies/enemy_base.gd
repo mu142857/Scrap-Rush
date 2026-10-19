@@ -74,6 +74,8 @@ func _ready() -> void:
 	_setup()
 	if flying:
 		motion_mode = CharacterBody2D.MOTION_MODE_FLOATING
+	# 难度：简单 ×0.8、困难 ×1.3（Run.enemy_hp_mult；精英也走这里）
+	max_hp *= Run.enemy_hp_mult()
 	hp = max_hp
 	_home = global_position
 
@@ -151,6 +153,8 @@ func hurt(damage: float, from_dir: Vector2, full: bool) -> void:
 	if dead:
 		return
 	hp -= damage
+	# 显像管残影（变异）：死的时候按最后挨的这一下算炸开的伤害
+	set_meta("last_hit_dmg", damage)
 	_hit_dir = from_dir.normalized()
 	_flash = 1.0
 	_knock = 0.12 if full else 0.06

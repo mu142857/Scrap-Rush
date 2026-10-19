@@ -96,6 +96,10 @@ func _ready() -> void:
 
 	boss = _make_boss()
 	add_child(boss)
+	# 难度：Boss 血量也乘（各 Boss 在自己的 _ready 里按人数算好 max_hp，这里再乘难度倍率）
+	if boss.get("max_hp") != null:
+		boss.set("max_hp", float(boss.get("max_hp")) * Run.enemy_hp_mult())
+		boss.set("hp", float(boss.get("max_hp")))
 	_build_extras()
 	boss.connect("phase_changed", _on_phase)
 	boss.connect("defeated", _on_defeated)

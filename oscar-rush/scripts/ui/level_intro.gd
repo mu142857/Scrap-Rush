@@ -97,6 +97,8 @@ func _ready() -> void:
 	var level := get_parent()
 	if level:
 		_played[level.scene_file_path if level.scene_file_path != "" else str(level.get_path())] = true
+		# 趁开场盖着，把关卡里的材质都画一遍，让网页版先编好着色器（不然进遭遇战第一次画到时顿 50ms+）
+		MaterialWarmer.warm(level)
 	_was_paused = get_tree().paused
 	get_tree().paused = true
 	_shake_root = Control.new()

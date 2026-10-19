@@ -54,14 +54,9 @@ static func unlocked(level: int) -> bool:
 static func _may_save() -> bool:
 	if OS.get_environment("SCRAP_PROGRESS_PATH") != "" or OS.get_environment("SCRAP_SETTINGS_PATH") != "":
 		return true
-	if DisplayServer.get_name() == "headless" or Engine.get_write_movie_path() != "":
-		return false
-	if OS.has_feature("template"):
-		return true
-	for a in OS.get_cmdline_args():
-		if a == "--editor-pid" or a.begins_with("--remote-debug"):
-			return true
-	return false
+	# 10-18（游戏设计会话）：统一用 Run.real_launch()——在原来的规则上再加"从主场景（开始菜单）开起来的"，
+	# 编辑器里直接运行关卡场景（F6）也不写
+	return Run.real_launch()
 
 
 static func reach(level: int) -> void:
