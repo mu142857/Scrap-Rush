@@ -41,6 +41,9 @@ func _process(delta: float) -> void:
 				Game.sfx("casing", -24.0 if not big else -18.0, 1.0 if not big else 0.75, 0.12)
 			if _bounces >= 2:
 				velocity = Vector2.ZERO
+				# 10-19：躺到地上以后退到角色后面（和血迹斑点同一层，见 splatter.gd）
+				z_as_relative = false
+				z_index = Splatter.FLOOR_Z
 	if _t > LIFE:
 		queue_free()
 		return

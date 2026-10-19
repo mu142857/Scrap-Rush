@@ -6,7 +6,7 @@ extends Node2D
 ## - 主角走近：底部弹一张对比卡（新武器的名字和特性，下面一行"现在"手上那把），按"下"换。
 ##   交互用"下"不用 V：V 是放下 / 捡起马灯，用它会把马灯一起放下。
 ## - 换了：手上那把留在原地变成新的拾取物，可以换回去。不换就一直在地上，场子开门以后也能回来拿。
-## - 双人：谁按算谁的。所有人手上都已经是这把时不掉。
+## - 双人：谁按算谁的。所有人手上都已经是这把时不掉武器，改掉 1～2 个零件。
 ## - 换枪用主角现成的 set_weapon（新武器的出招脚本会跟着重建，双人只换按键的那个人）。它写进 Run.players /
 ##   Upgrades.weapon，下一关开头自动存档时带上（存档存的是"那关开头"，关卡中途不改存档文件，见 夜间打磨/难度和存档接口.md）。
 ## - "下"键别的用处：单向平台上按"下"往下跳、霰弹枪空中按住"下"朝脚下喷、激光开火时按"下"往下压。所以只在
@@ -50,12 +50,17 @@ static func drop_from(e: Node2D) -> void:
 	var def: Dictionary = WeaponRegistry.get_def(id)
 	if def.is_empty() or not def.get("ready", false):
 		return
-	# 所有人手上都已经是这把：不掉
+	# 所有人手上都已经是这把：改掉 1～2 个零件当补偿（10-19 作者定的；遭遇战现成的零件，会自己飞到人身上）
 	var everyone := true
 	for n in e.get_tree().get_nodes_in_group("player"):
 		if not n.has_method("weapon") or str(n.call("weapon")) != id:
 			everyone = false
 	if everyone and not e.get_tree().get_nodes_in_group("player").is_empty():
+		var at: Vector2 = e.call("aim_point") if e.has_method("aim_point") else e.global_position
+		for k in randi_range(1, 2):
+			var part := Encounter.Part.new()
+			part.position = at + Vector2((k * 2 - 1) * 6.0, 0)
+			e.get_parent().add_child.call_deferred(part)
 		return
 	var w := WeaponPickup.new()
 	w.weapon = id

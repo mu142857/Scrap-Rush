@@ -769,11 +769,11 @@ Starting a new game overwrites your level %d save. Are you sure?,新开一局会
 CANCEL,取消
 CONFIRM,确定
 Every %dth attack does x%s damage and turns orange.,每第 %d 招伤害 ×%s，子弹变成橙色。
-"Its first hit sets off a small blast: %d dmg within %d.",它第一下打中的地方再炸一小圈：%d 伤害，半径 %d。
+Its first hit sets off a small blast: %d dmg within %d.,它第一下打中的地方再炸一小圈：%d 伤害，半径 %d。
 "Keep hitting the same target: +%d%% each hit, up to +%d%%.",一直打同一个目标：每下 +%d%%，最多 +%d%%。
 Switch targets and it cools back down.,换目标就重新冷下来。
 Enemies you kill leave a burned-in ghost that blows up %s s later.,打死的怪留下一个残影，%s 秒后炸开。
-"Blast: %d%% of the killing blow (at least %d) within %d. Ghost kills leave no ghosts.",炸开的伤害是最后那一下的 %d%%（至少 %d），半径 %d。残影炸死的怪不再留残影。
+Blast: %d%% of the killing blow (at least %d) within %d. Ghost kills leave no ghosts.,炸开的伤害是最后那一下的 %d%%（至少 %d），半径 %d。残影炸死的怪不再留残影。
 "When the lantern breaks, you and the lantern rewind %s s instead.",马灯碎的时候不重来：你和马灯倒回 %s 秒前。
 Once per level. The lantern comes back with at least %d%%.,每关一次。马灯回来时至少有 %d%%。
 Pick one before level 1.,开局选一把。
@@ -816,3 +816,51 @@ Light up every page of the bestiary.,点亮怪物图鉴的每一页。
 HIDDEN CHANNEL,隐藏频道
 Finish the game with the lantern at 95% or more.,通关时马灯还有 95% 以上。
 SCRAPYARD,废品站
+"In the air, hold %s: rocket boots",在空中按住 %s：火箭靴
+Nice. The door is open,好。门开了
+"This lantern is your life: hits crack it, not you",这盏马灯就是你的命：挨打掉的是它，不是你
+Too far with the lantern. Press %s to put it down,提着灯飞不过去。按 %s 放下马灯，空手飞得远
+Now fly over to the switch,现在飞过去，拍开关
+"A bridge! Go back, press %s to pick up the lantern",桥出来了！回去按 %s 捡起马灯
+"Go back, press %s to pick up the lantern",回去按 %s 捡起马灯
+Carry it over the bridge and out,提着灯过桥，出门
+Doors shut: clear the fight to open them,门关上了：打完这一场才开
+"Cleared: lantern mended. If it breaks, you restart here",清场：马灯亮回来一点。要是碎了，就从这里重来
+Last one: an elite. Elites drop weapons,最后一个：精英。精英会掉武器
+"Stand on the weapon, press %s to swap",站到武器上，按 %s 换上它
+"That's all. Out the door, and the tape plays",就这些。出了门，录像就开始放
+Lantern broken! Normally you'd restart. Mended for now,马灯碎了！正式关卡里要重来，这里先帮你修好
+TUTORIAL CLEAR,教学完成
+TUTORIAL,教学
+"A short practice run: five old TVs, one skill each.",一段短短的练习：五台老电视，一台教一样。
+SKIP TUTORIAL,跳过教学
+%s  skip tutorial,%s  跳过教学
+KEYBOARD,键盘
+GAMEPAD,手柄
+Move left,往左
+Move right,往右
+Jump,跳 / 飞
+Attack / charge,攻击 / 蓄力
+Drop / pick up lantern,放下 / 捡起马灯
+Down / drop through,下 / 穿过平台
+Pause,暂停
+RESET TO DEFAULTS,恢复默认
+Co-op keyboard halves keep their own keys:  A D W C V S  /  J L I M N K,双人分键盘的两套键不变：A D W C V S  /  J L I M N K
+Press a key...,按下新的键……
+Press a button...,按下新的按钮……
+Press the new key    Esc / Start  cancel,按下新的键    Esc / Start  取消
+%s select    %s column    %s change    %s back,%s 选择    %s 换列    %s 修改    %s 返回
+All keys are back to default.,所有按键已恢复默认。
+This one can't be changed.,这一项不能改。
+Gamepad movement always uses the stick and D-pad.,手柄的移动固定用摇杆和十字键。
+Cancelled.,取消了。
+"That one is kept for pause, fullscreen and menus.",这个键留给暂停、全屏和菜单，不能用。
+"Swapped with ""%s"".",和「%s」交换了。
+"""%s"" set.",「%s」改好了。
+Stick / D-pad,摇杆 / 十字键
+Change keys and gamepad buttons.,改键盘按键和手柄按钮。
+D-pad Up,十字键上
+D-pad Down,十字键下
+D-pad Left,十字键左
+D-pad Right,十字键右
+Touchpad,触摸板

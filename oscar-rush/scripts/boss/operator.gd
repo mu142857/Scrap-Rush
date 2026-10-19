@@ -4,16 +4,15 @@ extends StaticBody2D
 ## 它接通了这颗星球上所有人的声音，一句都没还回去；它想要录像带里那家人的声音。
 ## 打败它，冒出一句句别人没打完的最后一通电话。这一关的主题是"声音"。
 ##
-## 招式（抽签不放回，和锅炉一样）：
-##   铃声：两只铃铛轮流响，放出一圈圈带缺口的声波（穿过平台，挡不住，要钻缺口）
-##   接线：先画红色虚线预警，然后插线从插孔板甩到墙上，整根带电（站在线上就挨电）
-##   拨号：转盘转几格，就放出几颗慢慢追人的"声音"小球，打一下就碎（自动瞄准会帮你锁它们）
-##   占线（二阶段起）：玩家那边三块铜地板轮流通电，先发蓝光预警，要跳上平台或换一块站
-##   砸线（招牌招）：滑车飞快追到你头顶，地上闪红影，整台机器顺着缆绳砸下来；
-##     砸在第一块挡住它的面上（长凳、桌子或地面）。砸地面会顺着地板炸出两道声波，要跳；躲长凳底下砸不到
-## 会动：开打时上半截（插孔板）离开桌子，吊在天花板的天车轨道上，慢慢滑到你头顶追着你，
-##   边追边出招；二阶段起砸两下、三阶段砸三下。桌子留在原地当平台。
-## 三阶段：通体发亮、转盘疯转，出招更快，招式两两叠着出。
+## 招式（抽签不放回，和锅炉一样；10-19 按作者"没压迫感、弹幕太多、帅的招少"重做，零碎弹幕全删了，招不再叠着出）：
+##   吊车压顶（招牌）：滑车飞快追到你头顶，地上闪红影 0.6 秒，整台顺着缆绳砸下来，砸在第一块挡住它的面上
+##     （长凳、桌子或地面）；砸完往两边推一道贴地的铃声地波，要跳。一/二/三阶段砸 1/2/3 下（三阶段地波两道）
+##   接线墙：一排插线从天车上一根根垂下来点亮（0.85 秒），然后整排一起通电，只留一两道空档，站进去；
+##     二阶段起通电时整排往一边抽过去（跟着空档走），三阶段打两轮
+##   听筒流星锤：听筒连着线甩出来，荡半圈，最低点贴着地面扫过去（预警 0.75 秒画出弧线）；跑出半径或者跳过去；三阶段来回两趟
+##   总机过载（三阶段）：铜地板一块接一块通电，同时电火花一根根先标落点、再从天车劈下来
+## 会动：开打时上半截（插孔板）离开桌子，吊在天花板的天车轨道上，追着你滑（一阶段就追得很紧，越往后越快、吊得越低）。
+## 转阶段：屋里灯全灭、所有电话一起响、震屏，灯红着亮回来（boss2_room.gd）；它清场、停 1.6 秒。三阶段通体发亮、转盘疯转。
 ## 原点在桌腿脚底中间（停在桌上时），朝左。图层坐标见 tools/draw_boss2.py。
 
 signal hp_changed(hp: float, max_hp: float)
@@ -38,7 +37,10 @@ const HOOKS := [Vector2(30, 7) - CANVAS_ORIGIN, Vector2(66, 7) - CANVAS_ORIGIN]
 const HEAD_BOTTOM := 63.0 - 111.0
 ## 吊着时原点的高度（插孔板底边离地约 70）。10-18 作者选的：130 → 140，吊低 10 像素，站长凳上的蒸汽锤更好够到
 const HOVER_Y := 140.0
-const TRACK_SPEED := [38.0, 50.0, 64.0]
+## 吊着追人的速度（10-19 重做：作者"没有压迫感"，38/50/64 → 55/72/92，追得紧）
+const TRACK_SPEED := [55.0, 72.0, 92.0]
+## 二阶段起吊得更低一点，压着人（蒸汽锤站长凳也更好够）
+const HOVER_DROP := [0.0, 6.0, 10.0]
 const SLAM_DAMAGE := 14.0
 ## 砸线落地后在地上停多久（见 _drop）
 const SLAM_REST := 1.2
@@ -272,7 +274,7 @@ func _physics_process(delta: float) -> void:
 	if active and not dead and _mode == "hover":
 		var tx := clampf(_target().x, arena.position.x + 56.0, arena.end.x - 56.0)
 		position.x = move_toward(position.x, tx, TRACK_SPEED[phase - 1] * _track_mult * delta)
-		position.y = move_toward(position.y, HOVER_Y, 60.0 * delta)
+		position.y = move_toward(position.y, HOVER_Y + HOVER_DROP[phase - 1], 60.0 * delta)
 	for i in 2:
 		_bell_shake[i] = maxf(_bell_shake[i] - delta * 2.5, 0.0)
 	_dial_spin = move_toward(_dial_spin, 0.0, delta * 6.0)
@@ -300,15 +302,21 @@ func _wait(t: float) -> void:
 	if is_inside_tree(): await get_tree().create_timer(t, false).timeout
 
 
-## 招和招之间空多久（10-18 作者嫌太简单：1.0/0.8/0.55 → 0.8/0.6/0.45）
+## 招和招之间空多久（10-19 重做：0.8/0.6/0.45 → 0.85/0.65/0.5，招少了、每招更重，空档留够看清下一招）
 func _gap() -> float:
-	return [0.8, 0.6, 0.45][phase - 1]
+	return [0.85, 0.65, 0.5][phase - 1]
 
 
+## 10-19 重做（作者："没有压迫感、比第一关简单、弹幕太多躲不过、帅的技能没几个"）：
+## 去掉零碎弹幕（铃声子弹环、拨号追踪小球、二三阶段两招叠着出），换成四招，每招看得懂、躲得开、有分量：
+##   drop  吊车压顶（招牌）：追到头顶 → 红影 0.6 秒 → 砸下来，砸地往两边推一道铃声地波（要跳）；一/二/三阶段砸 1/2/3 下
+##   lash  接线墙：一排插线从天车上一根根垂下来点亮（0.85 秒），然后整排一起通电，只留空档；二阶段起通电时整排往一边抽过去
+##   flail 听筒流星锤：听筒连着线甩出来，贴着地面荡过半圈（0.75 秒预警画出弧线），跳过去；三阶段来回两趟
+##   overload 总机过载（三阶段）：铜地板轮流通电 + 电火花一根根先标落点再劈下来
 func _pool() -> Array[String]:
-	var pool: Array[String] = ["ring", "patch", "dial", "drop"]
-	if phase >= 2:
-		pool.append("busy")
+	var pool: Array[String] = ["drop", "lash", "flail"]
+	if phase >= 3:
+		pool.append("overload")
 	return pool
 
 
@@ -318,9 +326,9 @@ func _next_pattern() -> String:
 		_bag_phase = phase
 		_bag.assign(_pool())
 		_bag.shuffle()
-		if phase >= 2 and _bag.has("busy"):
-			_bag.erase("busy")
-			_bag.append("busy")
+		if phase >= 3 and _bag.has("overload"):
+			_bag.erase("overload")
+			_bag.append("overload")
 	if _bag.is_empty():
 		_bag.assign(_pool())
 		_bag.shuffle()
@@ -339,19 +347,7 @@ func _fight_loop() -> void:
 			if is_inside_tree(): await get_tree().physics_frame
 		var pick := _next_pattern()
 		_pick_focus()
-		_combo += 1
-		if phase == 3 or (phase == 2 and _combo % 2 == 1):
-			# 三阶段：两招叠着出（第二招不等第一招放完）；二阶段隔一招叠一次（10-18 加）
-			var second := _next_pattern()
-			if second == "drop" or pick == "drop":
-				# 砸线不和别的招叠：另一招先放，砸线接着来
-				await _run(second if pick == "drop" else pick)
-				pick = "drop"
-			else:
-				_run(second)
-			await _run(pick)
-		else:
-			await _run(pick)
+		await _run(pick)
 		_pattern = ""
 		if dead:
 			return
@@ -361,16 +357,14 @@ func _fight_loop() -> void:
 func _run(pick: String) -> void:
 	_pattern = pick
 	match pick:
-		"ring":
-			await _ring()
-		"patch":
-			await _patch()
-		"dial":
-			await _dial()
-		"busy":
-			await _busy()
 		"drop":
 			await _drop()
+		"lash":
+			await _lash()
+		"flail":
+			await _flail()
+		"overload":
+			await _overload()
 
 
 func _warn_at(pos: Vector2, t := 0.6) -> void:
@@ -383,97 +377,125 @@ func _ring_bell(i: int) -> void:
 	_bell_shake[i] = 1.0
 
 
-## 铃声：铃铛轮流响，每响一下放一圈声波，留 3 个缺口位置
-func _ring() -> void:
-	var rings: int = [3, 3, 4][phase - 1]   # 10-18：一阶段 2 → 3 圈
-	var count := 24
-	# 第一圈的缺口先定好，预警时在缺口方向画一小段淡弧，第一圈不全靠反应
-	var first_gap := randi() % count
-	_gap_hint_a = TAU * first_gap / count
-	_gap_hint_t = 0.5
-	_warn_at(BELLS[0] + Vector2(0, -12), 0.5)
-	await _wait(0.5)
-	for r in rings:
+## 接线墙：一排插线从天车上一根根垂下来（红虚线，从近到远依次亮，一共 LASH_WARN 秒），然后整排一起通电 LASH_LIVE 秒。
+## 线和线之间隔 LASH_STEP，里面挑一两根不放，就是空档；主角站的那一格一定有线（站着不动躲不掉）。
+## 二阶段起通电时整排往一边抽过去 LASH_SWEEP 像素（空档跟着走，跟上就行）；三阶段打两轮，第二轮空档换位置
+const LASH_WARN := 0.85
+const LASH_LIVE := 0.6
+const LASH_STEP := 40.0
+const LASH_SWEEP := 26.0
+func _lash() -> void:
+	var rounds := 2 if phase >= 3 else 1
+	for r in rounds:
 		if dead:
 			return
-		var side := r % 2
-		_ring_bell(side)
-		Game.sfx("bell", -4.0, 1.0 + 0.05 * r)
-		Game.add_shake(1.5)
-		var center: Vector2 = global_position + BELLS[side] + _parts.position
-		var gap_at := first_gap if r == 0 else randi() % count
-		for i in count:
-			if absi(i - gap_at) <= 1 or absi(i - gap_at) >= count - 1:
+		var x0 := arena.position.x + 20.0
+		var xs: Array[float] = []
+		var x := x0
+		while x < arena.end.x - 14.0:
+			xs.append(x)
+			x += LASH_STEP
+		# 主角在哪一格：那一格的线一定在；空档挑离主角一两格远的地方，一或两根
+		var px := _target().x
+		var near_i := 0
+		for i in xs.size():
+			if absf(xs[i] - px) < absf(xs[near_i] - px):
+				near_i = i
+		var options: Array[int] = []
+		for i in xs.size():
+			if absi(i - near_i) >= 1 and absi(i - near_i) <= 3:
+				options.append(i)
+		options.shuffle()
+		var gaps: Array[int] = [options[0]]
+		if phase == 1 and options.size() > 1:
+			gaps.append(options[1])
+		var sweep := 0.0
+		if phase >= 2:
+			sweep = LASH_SWEEP * (1.0 if randf() < 0.5 else -1.0)
+		_warn_at(JACKS.position + Vector2(JACKS.size.x / 2.0, -6), LASH_WARN)
+		Game.sfx("dial", -6.0, 0.6)
+		_lights_on = 1.0
+		var order: Array[int] = []
+		for i in xs.size():
+			order.append(i)
+		order.sort_custom(func(a, b): return absf(xs[a] - position.x) < absf(xs[b] - position.x))
+		for k in order.size():
+			var i: int = order[k]
+			if gaps.has(i):
 				continue
-			var a := TAU * i / count + (PI / count) * r
-			var b := BossBullet.spawn(bullet_parent, BossBullet.Kind.WAVE, center, Vector2.from_angle(a) * 62.0)
-			b.arena = arena
-		await _wait(0.55)
-
-
-## 接线：几根插线从插孔板甩到左墙，先画虚线预警，然后整根带电
-func _patch() -> void:
-	var n: int = [3, 3, 4][phase - 1]   # 10-18：一阶段 2 → 3 根
-	var lines: Array[CordLine] = []
-	var tp := _target()
-	for i in n:
-		var left := global_position.x > arena.get_center().x
-		var from := global_position + _parts.position + JACKS.position \
-			+ Vector2(randf_range(0, 10) if left else randf_range(JACKS.size.x - 10, JACKS.size.x), randf_range(4, JACKS.size.y - 4))
-		var to_y: float
-		if i == 0:
-			to_y = tp.y - 8.0                     # 第一根瞄着人的高度
-		else:
-			to_y = randf_range(arena.position.y + 30.0, floor_y - 6.0)
-		var to := Vector2(arena.position.x + 8.0 if left else arena.end.x - 8.0, to_y)
-		var line := CordLine.new()
-		line.from = from
-		line.to = to
-		line.warn_time = 0.85
-		line.live_time = 0.7
-		line.delay = i * 0.18
-		bullet_parent.add_child(line)
-		lines.append(line)
-	Game.sfx("dial", -6.0, 0.6)
-	await _wait(0.85 + n * 0.18 + 0.7)
-
-
-## 拨号：转盘一格一格回转，每一格放一颗慢慢追人的"声音"
-func _dial() -> void:
-	var n: int = [4, 4, 5][phase - 1]   # 10-18：一阶段 3 → 4 颗
-	_warn_at(DIAL + Vector2(0, -18), 0.5)
-	await _wait(0.5)
-	for i in n:
+			var c := LashCord.new()
+			c.x = xs[i]
+			c.top = rail_y + 4.0
+			c.bottom = floor_y
+			c.lo = arena.position.x + 10.0
+			c.hi = arena.end.x - 10.0
+			c.delay = LASH_WARN * float(k) / order.size() * 0.7
+			c.warn_time = LASH_WARN
+			c.live_time = LASH_LIVE
+			c.sweep = sweep
+			bullet_parent.add_child(c)
+		_dial_spin = 16.0
+		await _wait(LASH_WARN + 0.05)
 		if dead:
 			return
-		_dial_spin = 9.0
-		Game.sfx("dial", -2.0, 1.0 + 0.1 * i)
-		var v := Voice.new()
-		v.position = global_position + HORN + _parts.position
-		v.arena = arena
-		bullet_parent.add_child(v)
-		await _wait(0.32)
-	await _wait(0.6)
+		Game.sfx("buzz", -2.0, 0.7)
+		Game.sfx("busy", -10.0, 1.1)
+		Game.add_shake(4.0)
+		_ring_bell(0)
+		_ring_bell(1)
+		await _wait(LASH_LIVE + (0.35 if r < rounds - 1 else 0.2))
 
 
-## 占线：玩家那边的铜地板轮流通电。二阶段一块，三阶段两块；先蓝光预警再通电
-func _busy() -> void:
-	if plates.is_empty():
-		return
-	Game.sfx("busy", -6.0)
+## 听筒流星锤：听筒连着线从插孔板上甩出来，绕着吊点荡半圈（一头到另一头），最低点贴着地面扫过去。
+## 预警 FLAIL_WARN：听筒垂下来一晃一晃发红，地上和空中画出它要走的弧线（虚线）。三阶段荡完马上荡回来
+const FLAIL_WARN := 0.75
+const FLAIL_SWING := 0.95
+func _flail() -> void:
+	_mode = "hold"
+	var f := Flail.new()
+	f.boss = self
+	f.pivot_off = HORN + Vector2(0, 6)
+	f.radius = (floor_y - 7.0) - (position.y + f.pivot_off.y)
+	var tx := _target().x
+	f.from_left = tx > position.x
+	f.warn_time = FLAIL_WARN
+	f.swing_time = FLAIL_SWING
+	f.swings = 2 if phase >= 3 else 1
+	f.lo = arena.position.x + 8.0
+	f.hi = arena.end.x - 8.0
+	bullet_parent.add_child(f)
+	_warn_at(HORN + Vector2(0, -10), FLAIL_WARN)
+	Game.sfx("dial", -4.0, 0.8)
+	Game.sfx("charge", -10.0, 0.6)
+	await _wait(FLAIL_WARN + FLAIL_SWING * f.swings + 0.35)
+	_mode = "hover"
+
+
+## 总机过载（三阶段）：插孔板上的灯全亮、转盘疯转；铜地板一块接一块通电，同时电火花一根根先在地上标落点、再从天车劈下来
+const SPARK_COUNT := 5
+func _overload() -> void:
+	_warn_at(DIAL + Vector2(0, -18), 0.8)
+	Game.sfx("busy", -4.0, 1.3)
+	Game.sfx("buzz", -6.0, 1.4)
+	_dial_spin = 24.0
+	_lights_on = 1.0
+	Game.add_shake(3.0)
 	var order := plates.duplicate()
 	order.shuffle()
-	# 先电主角脚下那块（站在地上不动的人躲不掉）
-	var px := _target().x
-	for pl in plates:
-		if px >= float(pl.get("x0")) and px <= float(pl.get("x1")):
-			order.erase(pl)
-			order.push_front(pl)
-			break
-	var n := 1 if phase == 2 else 2
-	for i in n:
-		order[i].call("charge", 1.0 + i * 0.25)
-	await _wait(2.4 + n * 0.25)
+	for i in order.size():
+		if is_instance_valid(order[i]):
+			order[i].call("charge", 0.3 + i * 0.9)
+	for k in SPARK_COUNT:
+		if dead:
+			return
+		await _wait(0.45)
+		var px := _target().x + randf_range(-30.0, 30.0)
+		var s := SparkPillar.new()
+		s.x = clampf(px, arena.position.x + 14.0, arena.end.x - 14.0)
+		s.top = rail_y + 4.0
+		s.bottom = floor_y
+		bullet_parent.add_child(s)
+	await _wait(1.2)
 
 
 ## 砸线：滑车加速追到头顶 → 停住，地上闪红影 0.6 秒、缆绳抖 → 砸下来 → 停一下 → 收回去
@@ -512,7 +534,7 @@ func _drop() -> void:
 			return
 		Game.sfx("scrape", -8.0, 0.8)
 		var up := create_tween()
-		up.tween_property(self, "position:y", HOVER_Y, 0.55).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		up.tween_property(self, "position:y", HOVER_Y + HOVER_DROP[phase - 1], 0.55).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 		await up.finished
 	_mode = "hover"
 
@@ -540,12 +562,17 @@ func _slam_impact(y: float) -> void:
 	# 夜间打磨：子弹能从长凳底下往上打了，长凳底下不能再是"站着就能赢"的安全区
 	Game.dust(get_parent(), Vector2(position.x, floor_y), 8)
 	# 砸在地上时声波从插孔板两边出发；砸在凳子上时从正下方出发（躲在凳子底下正中也逃不掉）
+	# 10-19 重做：不再撒一串子弹，改成一道贴地的铃声地波往两边推（高 10，跳过去），三阶段跟着第二道
 	var start := 30.0 if absf(y - floor_y) < 1.0 else 2.0
-	for dir in [-1.0, 1.0]:
+	for dir in [-1, 1]:
 		for k in (2 if phase == 3 else 1):
-			var b := BossBullet.spawn(bullet_parent, BossBullet.Kind.WAVE,
-				Vector2(position.x + dir * start, floor_y - 5.0 - k * 7.0), Vector2(dir * 95.0, 0))
-			b.arena = arena
+			var w := FloorRing.new()
+			w.position = Vector2(position.x + dir * start, floor_y)
+			w.dir = dir
+			w.delay = k * 0.35
+			w.lo = arena.position.x + 8.0
+			w.hi = arena.end.x - 8.0
+			bullet_parent.add_child(w)
 
 
 ## 这一招盯的那个玩家的位置。单人就是他；双人以上每招轮着换人（_pick_focus），
@@ -585,7 +612,8 @@ func _phase_roar() -> void:
 	# 换阶段：清掉它场上的子弹，下一招推迟 0.8 秒。
 	# 10-18 作者"子弹会中途消失"：不再直接删，迸一点火花再没（BossBullet.fizzle，声音小球是 _pop）
 	_clear_bullets()
-	_pause_t = 0.8
+	# 10-19 重做：转阶段有一段演出（灯全灭、所有电话一起响，见 boss2_room.gd），停得久一点
+	_pause_t = 1.6
 
 
 func _clear_bullets() -> void:
@@ -739,19 +767,24 @@ func _draw_warn() -> void:
 	_warn.draw_rect(Rect2(p + Vector2(0, -9), Vector2(1, 6)), Color(1, 0.75, 0.6))
 
 
-## 一根甩出去的插线：先 warn_time 画红色虚线，然后 live_time 整根带电（挨着线就挨电）
-class CordLine:
+## 接线墙的一根插线：从天车上垂到地面。先 delay 秒后开始从上往下画红虚线（预警），warn_time 一到整根通电 live_time 秒
+## （黄铜线 + 蓝白电弧在抖），挨着线（左右 HIT 以内）就挨电；sweep 不是 0 时通电期间整根往一边平移过去（抽过场地）
+class LashCord:
 	extends Node2D
 
-	const HIT_DIST := 3.5
-	const DAMAGE := 10.0
-	var from := Vector2.ZERO
-	var to := Vector2.ZERO
-	var warn_time := 0.8
-	var live_time := 0.7
+	const HIT := 5.0
+	const DAMAGE := 12.0
+	var x := 0.0
+	var top := 16.0
+	var bottom := 164.0
+	var lo := 0.0
+	var hi := 320.0
 	var delay := 0.0
+	var warn_time := 0.85
+	var live_time := 0.6
+	var sweep := 0.0
 	var _t := 0.0
-	var _buzzed := false
+	var _hit := {}
 
 	func _ready() -> void:
 		z_index = 9
@@ -760,140 +793,320 @@ class CordLine:
 		unshaded.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
 		material = unshaded
 
+	func _cur_x() -> float:
+		var lt := clampf((_t - warn_time) / maxf(live_time, 0.01), 0.0, 1.0)
+		return clampf(x + sweep * lt, lo, hi)
+
 	func _physics_process(delta: float) -> void:
 		_t += delta
-		var t := _t - delay
-		if t >= warn_time and not _buzzed:
-			_buzzed = true
-			Game.sfx("buzz", -6.0, randf_range(0.9, 1.1))
-			Game.add_shake(1.5)
-		if t >= warn_time and t < warn_time + live_time:
+		if _t >= warn_time and _t < warn_time + live_time:
+			var cx := _cur_x()
 			for n in get_tree().get_nodes_in_group("player"):
 				var p := n as Player
-				var mid := p.global_position + Vector2(0, -8)
-				if Geometry2D.get_closest_point_to_segment(mid, from, to).distance_to(mid) < HIT_DIST + 4.0:
-					p.hurt(Geometry2D.get_closest_point_to_segment(mid, from, to), DAMAGE * EnemyBase.damage_mult())
-		if t >= warn_time + live_time:
+				if p == null or _hit.has(p):
+					continue
+				if absf(p.global_position.x - cx) < HIT + 3.0 and p.global_position.y - 16.0 < bottom and p.global_position.y > top:
+					_hit[p] = true
+					p.hurt(Vector2(cx, p.global_position.y - 8.0), DAMAGE * EnemyBase.damage_mult())
+			for n in get_tree().get_nodes_in_group("crystal"):
+				var c := n as Crystal
+				if c and c.carrier == null and not _hit.has(c) and absf(c.global_position.x - cx) < HIT + 2.0:
+					_hit[c] = true
+					c.take_hit(Vector2(cx, c.global_position.y - 4.0), DAMAGE * EnemyBase.damage_mult())
+		if _t >= warn_time + live_time:
 			queue_free()
 			return
 		queue_redraw()
 
+	## 被清场（换阶段、Boss 死了）：淡掉
+	func fizzle(_push := Vector2.ZERO) -> void:
+		queue_free()
+
 	func _draw() -> void:
-		var t := _t - delay
-		if t < 0.0:
+		if _t < delay:
 			return
-		var len := from.distance_to(to)
-		var dir := (to - from) / maxf(len, 1.0)
-		if t < warn_time:
-			# 预警：红色虚线，越来越快地闪
-			var blink := int(t / (0.06 if t > warn_time * 0.5 else 0.1)) % 2 == 0
-			if not blink:
+		var cx := roundf(_cur_x())
+		if _t < warn_time:
+			# 预警：从上往下长出来的红虚线（越接近通电闪得越快），地上一个插头的红框
+			var k := clampf((_t - delay) / maxf(warn_time - delay, 0.01) * 1.6, 0.0, 1.0)
+			var y1 := top + (bottom - top) * k
+			var fast := _t > warn_time - 0.3
+			if fast and int(_t / 0.05) % 2 == 1:
 				return
-			for i in range(0, int(len), 6):
-				var p := (from + dir * i).round()
-				draw_rect(Rect2(p, Vector2(3, 1)), Color(1.0, 0.3, 0.2, 0.85))
+			for y in range(int(top), int(y1), 5):
+				draw_rect(Rect2(cx, y, 1, 3), Color(1.0, 0.3, 0.2, 0.85))
+			if k >= 1.0:
+				draw_rect(Rect2(cx - 2, bottom - 3, 5, 3), Color(1.0, 0.3, 0.2, 0.9))
 			return
-		# 带电：一根黄铜插线，外面一圈蓝白色的电弧在抖
-		for i in range(0, int(len), 2):
-			var p := (from + dir * i).round()
-			draw_rect(Rect2(p, Vector2(2, 1)), Color8(181, 142, 96))
-			if randf() < 0.35:
-				var off := Vector2(-dir.y, dir.x) * randf_range(-3, 3)
-				draw_rect(Rect2((p + off).round(), Vector2.ONE), Color(0.75, 0.9, 1.0))
+		# 通电：黄铜线 + 两边抖动的蓝白电弧；底下插头冒火星
+		for y in range(int(top), int(bottom), 2):
+			draw_rect(Rect2(cx, y, 1, 2), Color8(181, 142, 96))
+			if randf() < 0.3:
+				draw_rect(Rect2(cx + randi_range(-3, 3), y, 1, 1), Color(0.75, 0.9, 1.0))
+		draw_rect(Rect2(cx - 1, top, 3, 2), Color8(214, 186, 132))
+		draw_rect(Rect2(cx - 2, bottom - 4, 5, 4), Color8(214, 186, 132))
+		draw_rect(Rect2(cx - 3, top, 7, bottom - top), Color(0.6, 0.85, 1.0, 0.12))
 
 
-## 一颗"声音"：慢慢追人的发光小球，4 秒后散掉；打一下就碎（在 enemy 组里，自动瞄准会锁它）
-class Voice:
-	extends StaticBody2D
+## 听筒流星锤：吊点在总机的听筒口（跟着总机走），一根线拴着一只黑听筒。
+## 预警：听筒垂在吊点正下方一晃一晃、发红，沿着要荡的那半圈画红色虚线（地上最低那段画实一点）。
+## 然后从一头（水平）荡到另一头（水平），最低点贴着地面；三阶段荡到头马上荡回来。只有听筒伤人（伤 14，每趟每人一下）
+class Flail:
+	extends Node2D
 
-	const SPEED := 46.0
-	## 10-18：4.5 → 6 秒，最后 0.6 秒一闪一闪再碎（之前到点就在半空没了，看着像子弹消失）
-	const LIFE := 6.0
-	const FADE := 0.6
-	const DAMAGE := 8.0
-	var arena := Rect2(0, 0, 320, 180)
-	var velocity := Vector2.ZERO
+	const DAMAGE := 14.0
+	const HEAD := Vector2(9, 5)
+	var boss: Node2D
+	var pivot_off := Vector2.ZERO
+	var radius := 60.0
+	var from_left := true
+	var warn_time := 0.75
+	var swing_time := 0.95
+	var swings := 1
+	var lo := 0.0
+	var hi := 320.0
 	var _t := 0.0
-	var _done := false
+	var _hit := {}
+	var _swing_i := -1
+	var _whoosh := false
 
 	func _ready() -> void:
-		add_to_group("enemy")
-		add_to_group("boss_bullet")
-		collision_layer = 4
-		collision_mask = 0
 		z_index = 9
-		var cs := CollisionShape2D.new()
-		var c := CircleShape2D.new()
-		c.radius = 4.0
-		cs.shape = c
-		add_child(cs)
+		top_level = true
+		add_to_group("boss_bullet")
 		var unshaded := CanvasItemMaterial.new()
 		unshaded.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
 		material = unshaded
-		var l := PointLight2D.new()
-		l.texture = Game.light_texture()
-		l.color = Color(1.0, 0.85, 0.55)
-		l.energy = 0.7
-		l.texture_scale = 0.6
-		add_child(l)
-		velocity = Vector2(-40, randf_range(-30, 30))
-		Game.sfx("voice", -10.0, randf_range(0.9, 1.2))
 
-	func aim_point() -> Vector2:
-		return global_position
+	func _pivot() -> Vector2:
+		return (boss.global_position + pivot_off) if is_instance_valid(boss) else global_position
 
-	func is_targetable() -> bool:
-		return not _done
+	## 现在听筒在哪（角度：0 = 正下方，-PI/2 = 左边水平，PI/2 = 右边水平）
+	func _angle() -> float:
+		var st := _t - warn_time
+		if st < 0.0:
+			return sin(_t * 9.0) * 0.12
+		var i := int(st / swing_time)
+		var k := fmod(st, swing_time) / swing_time
+		k = 0.5 - 0.5 * cos(k * PI)        # 两头慢、中间快（像真的摆）
+		var a0 := -PI / 2.0 if from_left else PI / 2.0
+		if i % 2 == 1:
+			a0 = -a0
+		return lerpf(a0, -a0, k)
 
-	func hurt(_damage: float, _dir: Vector2, _full: bool) -> void:
-		_pop()
-
-	func _pop() -> void:
-		if _done:
-			return
-		_done = true
-		Game.sparks(get_parent(), global_position, Color(1.0, 0.85, 0.55), 8, 60.0)
-		Game.sfx("voice", -12.0, 1.8)
-		queue_free()
+	func _head() -> Vector2:
+		var a := _angle()
+		return _pivot() + Vector2(sin(a), cos(a)) * radius
 
 	func _physics_process(delta: float) -> void:
-		if _done:
-			return
 		_t += delta
-		var target := global_position + Vector2(-60, 0)
-		var best := INF
+		if not is_instance_valid(boss) or boss.get("dead") == true:
+			queue_free()
+			return
+		var st := _t - warn_time
+		if st >= swing_time * swings:
+			queue_free()
+			return
+		if st >= 0.0:
+			var i := int(st / swing_time)
+			if i != _swing_i:
+				_swing_i = i
+				_hit.clear()
+				Game.sfx("jet", -8.0, 1.2)
+				Game.sfx("scrape", -10.0, 1.4)
+			var h := _head()
+			if not _whoosh and absf(_angle()) < 0.3:
+				_whoosh = true
+				Game.add_shake(2.0)
+				Game.dust(get_parent(), Vector2(h.x, h.y + HEAD.y / 2.0 + 1.0), 4)
+			if absf(_angle()) > 0.6:
+				_whoosh = false
+			var r := Rect2(h - HEAD / 2.0, HEAD)
+			for n in get_tree().get_nodes_in_group("player"):
+				var p := n as Player
+				if p and not _hit.has(p) and r.intersects(Rect2(p.global_position + Vector2(-3, -16), Vector2(6, 16))):
+					_hit[p] = true
+					p.hurt(h, DAMAGE * EnemyBase.damage_mult())
+			for n in get_tree().get_nodes_in_group("crystal"):
+				var c := n as Crystal
+				if c and c.carrier == null and not _hit.has(c) and r.intersects(Rect2(c.global_position + Vector2(-2.5, -8), Vector2(5, 8))):
+					_hit[c] = true
+					c.take_hit(h, DAMAGE * EnemyBase.damage_mult())
+		queue_redraw()
+
+	func fizzle(_push := Vector2.ZERO) -> void:
+		queue_free()
+
+	func _draw() -> void:
+		var pv := _pivot()
+		var h := _head()
+		var st := _t - warn_time
+		if st < 0.0:
+			# 预警：要荡的半圈画成红虚线，越接近越快闪；地面那一段实一点
+			if int(_t / (0.05 if _t > warn_time - 0.3 else 0.1)) % 2 == 0:
+				for k in 25:
+					var a := -PI / 2.0 + PI * k / 24.0
+					var q := (pv + Vector2(sin(a), cos(a)) * radius).round()
+					if q.x < lo or q.x > hi:
+						continue
+					var low := absf(a) < 0.5
+					draw_rect(Rect2(q, Vector2(2 if low else 1, 1)), Color(1.0, 0.3, 0.2, 0.9 if low else 0.55))
+		# 线：从吊点到听筒，一格一个点
+		var n := int(pv.distance_to(h))
+		for i in range(0, n, 2):
+			var q := pv.lerp(h, float(i) / maxf(n, 1)).round()
+			draw_rect(Rect2(q, Vector2.ONE), Color8(70, 62, 52))
+		# 听筒：黑色哑铃形（两头大中间细），预警时发红
+		var hot := st < 0.0 and int(_t / 0.08) % 2 == 0
+		var body := Color(0.85, 0.25, 0.2) if hot else Color8(30, 26, 26)
+		var hc := h.round()
+		draw_rect(Rect2(hc + Vector2(-4, -2), Vector2(3, 4)), body)
+		draw_rect(Rect2(hc + Vector2(2, -2), Vector2(3, 4)), body)
+		draw_rect(Rect2(hc + Vector2(-1, -1), Vector2(3, 2)), body)
+		draw_rect(Rect2(hc + Vector2(-4, -2), Vector2(2, 1)), Color8(96, 90, 84))
+		draw_rect(Rect2(hc + Vector2(2, -2), Vector2(2, 1)), Color8(96, 90, 84))
+		# 荡的时候身后拖两道残影
+		if st >= 0.0:
+			for k in [1, 2]:
+				var back: float = _t - 0.03 * k
+				var save := _t
+				_t = back
+				var q := _head().round()
+				_t = save
+				draw_rect(Rect2(q + Vector2(-3, -1), Vector2(7, 2)), Color(0.9, 0.85, 0.75, 0.3 / k))
+
+
+## 铃声地波：砸地以后贴着地面往一边推的一道声波（三道竖着的弧 ")))"，高 HEIGHT），推满 DIST 或到场边就散。
+## 脚在波里（离地 HEIGHT 以内）的人和地上的马灯伤一下。要跳过去
+class FloorRing:
+	extends Node2D
+
+	const SPEED := 140.0
+	const HEIGHT := 10.0
+	const DIST := 170.0
+	const DAMAGE := 12.0
+	var dir := 1
+	var delay := 0.0
+	var lo := 0.0
+	var hi := 320.0
+	var _t := 0.0
+	var _gone := 0.0
+	var _hit := {}
+
+	func _ready() -> void:
+		z_index = 8
+		add_to_group("boss_bullet")
+		var unshaded := CanvasItemMaterial.new()
+		unshaded.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+		material = unshaded
+
+	func _physics_process(delta: float) -> void:
+		_t += delta
+		if _t < delay:
+			return
+		position.x += dir * SPEED * delta
+		_gone += SPEED * delta
+		if _gone >= DIST or position.x < lo or position.x > hi:
+			queue_free()
+			return
+		var r := Rect2(position + Vector2(-5, -HEIGHT), Vector2(10, HEIGHT))
 		for n in get_tree().get_nodes_in_group("player"):
-			var p := (n as Node2D).global_position + Vector2(0, -9)
-			var d := p.distance_to(global_position)
-			if d < best:
-				best = d
-				target = p
-			if d < 7.0:
-				(n as Player).hurt(global_position, DAMAGE * EnemyBase.damage_mult())
-				_pop()
-				return
-		var want := (target - global_position).normalized() * SPEED
-		velocity = velocity.move_toward(want, 60.0 * delta)
-		global_position += velocity * delta
-		if _t > LIFE or not arena.grow(20).has_point(global_position):
-			_pop()
+			var p := n as Player
+			if p and not _hit.has(p) and r.intersects(Rect2(p.global_position + Vector2(-3, -16), Vector2(6, 16))):
+				_hit[p] = true
+				p.hurt(position + Vector2(-dir * 6, 0), DAMAGE * EnemyBase.damage_mult())
+		for n in get_tree().get_nodes_in_group("crystal"):
+			var c := n as Crystal
+			if c and c.carrier == null and not _hit.has(c) and r.intersects(Rect2(c.global_position + Vector2(-2.5, -8), Vector2(5, 8))):
+				_hit[c] = true
+				c.take_hit(position + Vector2(-dir * 6, 0), DAMAGE * EnemyBase.damage_mult())
+		queue_redraw()
+
+	func fizzle(_push := Vector2.ZERO) -> void:
+		queue_free()
+
+	func _draw() -> void:
+		if _t < delay:
+			return
+		var a := clampf(1.0 - _gone / DIST, 0.3, 1.0)
+		# 三道竖着的弧，前面那道最亮
+		for k in 3:
+			var xo := -dir * k * 3
+			var col := Color(1.0, 0.85, 0.5, a * (1.0 - k * 0.3))
+			for y in int(HEIGHT):
+				var bend := roundf(2.0 * sin(PI * (y + 0.5) / HEIGHT)) * dir
+				draw_rect(Rect2(xo + bend, -y - 1, 1, 1), col)
+		draw_rect(Rect2(-dir * 8 - 1, -1, 3, 1), Color(0.8, 0.75, 0.65, 0.5 * a))
+
+
+## 电火花（过载）：地上先标一个落点（蓝白框 + 往下的箭头 WARN 秒），然后从天车到地面劈下一道电光（宽 WIDTH）BLAST 秒。
+## 落点那一列（从天花板到地面，长凳上也算）挨电
+class SparkPillar:
+	extends Node2D
+
+	const WARN := 0.75
+	const BLAST := 0.25
+	const WIDTH := 12.0
+	const DAMAGE := 12.0
+	var x := 0.0
+	var top := 16.0
+	var bottom := 164.0
+	var _t := 0.0
+	var _boomed := false
+	var _hit := {}
+
+	func _ready() -> void:
+		z_index = 9
+		add_to_group("boss_bullet")
+		var unshaded := CanvasItemMaterial.new()
+		unshaded.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+		material = unshaded
+
+	func _physics_process(delta: float) -> void:
+		_t += delta
+		if not _boomed and _t >= WARN:
+			_boomed = true
+			Game.sfx("buzz", -4.0, randf_range(1.1, 1.4))
+			Game.sfx("crack", -8.0, 1.6)
+			Game.add_shake(2.5)
+			Game.sparks(get_parent(), Vector2(x, bottom - 2), Color(0.75, 0.9, 1.0), 8, 90.0, Vector2.UP)
+		if _boomed and _t < WARN + BLAST:
+			for n in get_tree().get_nodes_in_group("player"):
+				var p := n as Player
+				if p and not _hit.has(p) and absf(p.global_position.x - x) < WIDTH / 2.0 + 3.0:
+					_hit[p] = true
+					p.hurt(Vector2(x, p.global_position.y - 8.0), DAMAGE * EnemyBase.damage_mult())
+		if _t >= WARN + BLAST:
+			queue_free()
 			return
 		queue_redraw()
 
+	func fizzle(_push := Vector2.ZERO) -> void:
+		queue_free()
+
 	func _draw() -> void:
-		# 一颗发光小球，外面一圈一圈的声纹；快散的时候一闪一闪
-		if _t > LIFE - FADE and int(_t / 0.07) % 2 == 0:
+		var cx := roundf(x)
+		if not _boomed:
+			if int(_t / (0.05 if _t > WARN - 0.3 else 0.1)) % 2 == 1:
+				return
+			var c := Color(0.6, 0.85, 1.0, 0.9)
+			var h := WIDTH / 2.0
+			draw_rect(Rect2(cx - h, bottom - 1, WIDTH + 1, 1), c)
+			draw_rect(Rect2(cx - h, bottom - 4, 1, 3), c)
+			draw_rect(Rect2(cx + h, bottom - 4, 1, 3), c)
+			for i in 3:
+				draw_rect(Rect2(cx - i, bottom - 10 + i, i * 2 + 1, 1), c)
+			for y in range(int(top), int(bottom) - 12, 8):
+				draw_rect(Rect2(cx, y, 1, 2), Color(0.6, 0.85, 1.0, 0.35))
 			return
-		var pulse := 0.5 + 0.5 * sin(_t * 12.0)
-		draw_rect(Rect2(-2, -3, 5, 7), Color(0.1, 0.06, 0.04, 0.85))
-		draw_rect(Rect2(-3, -2, 7, 5), Color(0.1, 0.06, 0.04, 0.85))
-		draw_rect(Rect2(-1, -2, 3, 5), Color(1.0, 0.8, 0.45))
-		draw_rect(Rect2(-2, -1, 5, 3), Color(1.0, 0.8, 0.45))
-		draw_rect(Rect2(0, 0, 1, 1), Color.WHITE)
-		var r := 5.0 + pulse * 2.0
-		for k in 8:
-			var p := (Vector2.from_angle(TAU * k / 8.0 + _t) * r).round()
-			draw_rect(Rect2(p, Vector2.ONE), Color(1.0, 0.85, 0.55, 0.5 * (1.0 - pulse)))
+		# 劈下来：中间白、两边蓝的一道锯齿电光，越来越淡
+		var a := 1.0 - (_t - WARN) / BLAST
+		var px := cx
+		for y in range(int(top), int(bottom)):
+			px += randi_range(-1, 1)
+			px = clampf(px, cx - 3, cx + 3)
+			draw_rect(Rect2(px - 1, y, 3, 1), Color(0.6, 0.85, 1.0, 0.7 * a))
+			draw_rect(Rect2(px, y, 1, 1), Color(1, 1, 1, a))
 
 
 ## 会通电的铜地板（占线）：charge(delay) 以后先蓝光预警 0.9 秒，再通电 1.2 秒，站在上面就挨电

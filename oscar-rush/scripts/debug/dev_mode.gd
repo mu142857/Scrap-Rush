@@ -18,9 +18,10 @@ const LEVELS := [
 	[KEY_5, "Boss 2", "res://scenes/boss2.tscn", ""],
 	[KEY_6, "Boss 3", "res://scenes/boss3.tscn", ""],
 	[KEY_7, "Shop", "res://scenes/shop.tscn", "res://scenes/title.tscn"],
+	[KEY_8, "Tutorial", "res://scenes/tutorial.tscn", ""],    # 教学关（游戏剧情主题讨论会话，10-19）
 	[KEY_0, "Title", "res://scenes/title.tscn", ""],
 ]
-const HELP := "F1 invincible   1 Level 1   2 Level 2   3 Level 3   4 Boss 1   5 Boss 2   6 Boss 3   7 Shop   0 Title\nP +5 parts   H fill lantern   G unbreakable lantern\nK kill all   U max gear   [ ] emotion -/+   T slow-mo\nB unlock bestiary   N N clear bestiary   F5 all achievements   F6 F6 clear achievements"
+const HELP := "F1 invincible   1 Level 1   2 Level 2   3 Level 3   4 Boss 1   5 Boss 2   6 Boss 3   7 Shop   8 Tutorial   0 Title\nP +5 parts   H fill lantern   G unbreakable lantern\nK kill all   U max gear   [ ] emotion -/+   T slow-mo\nB unlock bestiary   N N clear bestiary   F5 all achievements   F6 F6 clear achievements"
 
 var on := false
 var god := false
@@ -75,7 +76,7 @@ func _input(event: InputEvent) -> void:
 		return
 	var used := true
 	match k.physical_keycode:
-		KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_0:
+		KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_0:
 			go(k.physical_keycode)
 		KEY_P:
 			Run.add_part(5)

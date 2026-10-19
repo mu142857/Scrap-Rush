@@ -9,7 +9,7 @@ OUT=${1:?"用法：tools/qa/run_all.sh <放日志的目录> [quick]"}
 QUICK=$2
 mkdir -p "$OUT"
 # 规则（夜间打磨/规则.md）：测试不碰作者真正的设置和图鉴存档，都写到日志目录里
-export SCRAP_SETTINGS_PATH="$OUT/settings.cfg" SCRAP_BESTIARY_PATH="$OUT/bestiary.cfg" SCRAP_RUN_PATH="$OUT/run.cfg"
+export SCRAP_SETTINGS_PATH="$OUT/settings.cfg" SCRAP_BESTIARY_PATH="$OUT/bestiary.cfg" SCRAP_RUN_PATH="$OUT/run.cfg" SCRAP_PROGRESS_PATH="$OUT/progress.cfg" SCRAP_ACHIEVE_PATH="$OUT/achieve.cfg"
 GODOT=/Applications/Godot.app/Contents/MacOS/Godot
 cd "$(dirname "$0")/../.." || exit 1
 
@@ -50,6 +50,11 @@ run gate_outside 120 "^C after" --headless --fixed-fps 120 --path . -s tools/qa/
 grep -E "^[AB] after" "$OUT/gate_outside.out" | sed 's/^/    /'
 for side in right left; do
   LEVEL=res://scenes/level2.tscn SIDE=$side run gate_escape_l2_$side 500 "^ESCAPE DONE" --headless --fixed-fps 120 --path . -s tools/qa/gate_escape.gd
+done
+# 主角能不能跳 / 飞出关着的闸门；快速下落、单向平台往下跳会不会穿地（10-19 下落手感改了以后加的）
+for L in "test_level|0,0,1006,426" "level2|0,0,3700,600" "level3|0,0,4994,1200"; do
+  LEVEL=res://scenes/${L%%|*}.tscn run gate_jump_${L%%|*} 900 "^GATEJUMP DONE" --headless --fixed-fps 120 --path . -s tools/qa/gate_jump.gd
+  LEVEL=res://scenes/${L%%|*}.tscn BOUNDS=${L##*|} TRIALS=$(n 60 200) SEED=1 run fall_${L%%|*} 600 "^FALL DONE" --headless --fixed-fps 120 --path . -s tools/qa/fall_check.gd
 done
 run encounter_death 240 "^3 " --headless --fixed-fps 120 --path . -s tools/qa/encounter_death.gd
 grep -E "^[123] " "$OUT/encounter_death.out" | sed 's/^/    /'

@@ -51,8 +51,25 @@ func _ready() -> void:
 	_apply_audio()
 	_apply_pixel_perfect()
 	# 没存过设置就照 project.godot 的默认（全屏）；网页版不在启动时切全屏
-	if had_file and not OS.has_feature("web"):
+	if not OS.has_feature("web") and DisplayServer.get_name() != "headless":
+		_startup_window.call_deferred(had_file)
+
+
+## 启动时的窗口：存过"不全屏"就切回窗口，再让窗口别比屏幕大（10-18 作者实机截图：右上角情绪表只露出"CA"、底部名字条被切）。
+## 等两帧再切：Mac 上窗口还没建好时切窗口模式会被忽略，存了"不全屏"照样全屏开起来（实测）
+func _startup_window(had_file: bool) -> void:
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if had_file:
 		_apply_fullscreen()
+	# Mac 上 project.godot 的"全屏"要等一会儿才真的生效，上面那一下看到的还是窗口、就没切。
+	# 存的是"不全屏"的话，前四秒里每隔一会儿看一眼，真变成全屏了就切回来（实测 Mac 上会来回翻一两次）
+	if had_file and not fullscreen:
+		for i in 16:
+			await get_tree().create_timer(0.25, true, false, true).timeout
+			if DisplayServer.window_get_mode() >= DisplayServer.WINDOW_MODE_FULLSCREEN:
+				DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+	_fit_soon()
 
 
 func shake_scale() -> float:
@@ -77,6 +94,8 @@ func set_value(key: String, value: Variant) -> void:
 ## F11 / Alt+Enter 切过全屏以后同步一下，存起来
 func sync_fullscreen() -> void:
 	fullscreen = DisplayServer.window_get_mode() >= DisplayServer.WINDOW_MODE_FULLSCREEN
+	if not fullscreen:
+		_fit_soon()
 	save()
 	changed.emit()
 
@@ -85,6 +104,9 @@ func save() -> void:
 	var c := ConfigFile.new()
 	for key in ["master", "music", "sfx", "ambience", "fullscreen", "pixel_perfect", "shake_index", "language"]:
 		c.set_value("settings", key, get(key))
+	# 改过的键位（Controls.kb_custom / pad_custom，只存和默认不一样的）
+	c.set_value("keys", "keyboard", Controls.kb_custom.duplicate())
+	c.set_value("keys", "gamepad", Controls.pad_custom.duplicate())
 	c.save(_path)
 
 
@@ -100,6 +122,9 @@ func _load() -> bool:
 	pixel_perfect = c.get_value("settings", "pixel_perfect", pixel_perfect)
 	shake_index = clampi(c.get_value("settings", "shake_index", shake_index), 0, SHAKE_LEVELS.size() - 1)
 	language = str(c.get_value("settings", "language", language))
+	var kb = c.get_value("keys", "keyboard", {})
+	var pad = c.get_value("keys", "gamepad", {})
+	Controls.import_bindings(kb if kb is Dictionary else {}, pad if pad is Dictionary else {})
 	return true
 
 
@@ -167,6 +192,48 @@ func _apply_fullscreen() -> void:
 	if full == fullscreen:
 		return
 	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if fullscreen else DisplayServer.WINDOW_MODE_WINDOWED)
+	if not fullscreen:
+		_fit_soon()
+
+
+## 退出全屏以后窗口模式要等系统动画走完才稳定：隔几帧再摆一次
+func _fit_soon() -> void:
+	for i in 3:
+		await get_tree().process_frame
+	fit_window()
+	await get_tree().create_timer(0.6, true, false, true).timeout
+	fit_window()
+
+
+## 窗口模式：窗口（连标题栏）放得进这块屏幕能用的区域（去掉菜单栏、刘海、程序坞）。
+## 放不下时缩到能放下的最大的 480×270 整数倍（像素是方的；连 1 倍都放不下就按 16:9 尽量大），
+## 然后整个挪进屏幕里、居中。全屏不管：画面按 16:9 缩放、四周加黑边（stretch aspect = keep），HUD 不会被裁。
+## 起因：project.godot 的窗口默认 1440×810，有的 Mac 显示设置（比如"更大的文字"）下屏幕没这么大，
+## 窗口右边、下边跑出屏幕，右上角的情绪表和底部的名字条就被切掉了
+func fit_window() -> void:
+	if DisplayServer.window_get_mode() != DisplayServer.WINDOW_MODE_WINDOWED:
+		return
+	var screen := DisplayServer.window_get_current_screen()
+	var area := DisplayServer.screen_get_usable_rect(screen)
+	if area.size.x <= 0 or area.size.y <= 0:
+		return
+	var size := DisplayServer.window_get_size()
+	var deco := DisplayServer.window_get_size_with_decorations() - size
+	var room := area.size - deco - Vector2i(16, 16)
+	if size.x > room.x or size.y > room.y:
+		var k := mini(room.x / 480, room.y / 270)
+		if k >= 1:
+			size = Vector2i(480 * k, 270 * k)
+		else:
+			var w := mini(room.x, room.y * 16 / 9)
+			size = Vector2i(w, w * 9 / 16)
+		DisplayServer.window_set_size(size)
+	var full := size + deco
+	var pos := DisplayServer.window_get_position_with_decorations()
+	var inside := Rect2i(area).encloses(Rect2i(pos, full))
+	if not inside:
+		pos = area.position + (area.size - full) / 2
+		DisplayServer.window_set_position(pos + (DisplayServer.window_get_position() - DisplayServer.window_get_position_with_decorations()))
 
 
 ## 像素完美：只按整数倍放大，四周留黑边，像素大小一致

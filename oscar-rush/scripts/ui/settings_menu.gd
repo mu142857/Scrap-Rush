@@ -40,27 +40,16 @@ const ROW_HINTS := {
 }
 ## 没有 Settings 字段的行（CONTROLS 这种）按种类找说明
 const KIND_HINTS := {
-	"page": "Every key and button.",
+	"page": "Change keys and gamepad buttons.",
 }
 
-const CONTROLS_TEXT := """SOLO (keyboard)
-Move  A / D  or  Left / Right       Jump  W / Up / Space
-Attack  C  (hold or tap, by tool)   Lantern  V  (pick up / put down)
-Drop through a platform  S / Down
-
-GAMEPAD
-Move  stick / D-pad    Jump  A    Attack  X / RT    Lantern  Y / B
-
-CO-OP on one keyboard
-Left half   A D move   W jump   C attack   V lantern   S down
-Right half  J L move   I jump   M attack   N lantern   K down"""
+## CONTROLS 一行打开改键页（KeyBindMenu，10-18 起；原来这里是一页只读的按键说明）
 
 var _selected := 0
 var _labels: Array[Label] = []
 var _values: Array[Label] = []
 var _bars: Control
 var _hint: Label
-var _page: Control
 var _on_page := false
 var _ready_for_input := false
 ## 手柄按住连发：手柄的摇杆、十字键没有键盘那样的自动重复，调音量要一下一下拨。
@@ -102,7 +91,6 @@ func _ready() -> void:
 	add_child(_bars)
 	_hint = _label("", 0, 236.0, 480, 11, DIM, 2, HORIZONTAL_ALIGNMENT_CENTER)
 	_hint.size.y = 30.0
-	_build_page()
 	Settings.changed.connect(_refresh)
 	# 用成员方法，不用 lambda：这个界面关掉释放后连接会自动断开
 	Controls.device_changed.connect(_on_device_changed)
@@ -126,24 +114,6 @@ func _label(text: String, x: float, y: float, w: float, font_size: int, color: C
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	(parent if parent else self).add_child(l)
 	return l
-
-
-func _build_page() -> void:
-	_page = Control.new()
-	_page.size = Vector2(480, 270)
-	_page.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_page.visible = false
-	add_child(_page)
-	var back := ColorRect.new()
-	back.color = Color(0.02, 0.02, 0.035, 0.97)
-	back.size = Vector2(480, 270)
-	back.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_page.add_child(back)
-	_label("CONTROLS", 0, 22.0, 480, 22, WARM, 3, HORIZONTAL_ALIGNMENT_CENTER, _page)
-	var body := _label(CONTROLS_TEXT, 52.0, 56.0, 380, 11, Color(0.82, 0.82, 0.86), 2, HORIZONTAL_ALIGNMENT_LEFT, _page)
-	body.size.y = 180.0
-	_label("In game:  Esc / Start  pause      F11  fullscreen", 0, 226.0, 480, 11, WARM, 2, HORIZONTAL_ALIGNMENT_CENTER, _page)
-	_label("Esc / B / confirm: back", 0, 248.0, 480, 11, DIM, 2, HORIZONTAL_ALIGNMENT_CENTER, _page)
 
 
 func _on_device_changed(_pad: bool) -> void:
@@ -243,14 +213,8 @@ func _pad_held() -> Vector2i:
 func _input(event: InputEvent) -> void:
 	if not _ready_for_input or not is_visible_in_tree():
 		return
+	# 改键页开着：输入全归它（它是子节点，先收到）
 	if _on_page:
-		if event.is_action_pressed("ui_cancel") or event.is_action_pressed("ui_accept") \
-				or (event is InputEventMouseButton and event.pressed) \
-				or (event is InputEventKey and event.pressed and event.physical_keycode == KEY_ESCAPE):
-			_on_page = false
-			_page.visible = false
-			Game.sfx("ui_back", -8.0)
-		accept_event()
 		return
 	var handled := true
 	if event.is_action_pressed("ui_up", true):
@@ -346,8 +310,14 @@ func _activate() -> void:
 			_change(1)
 		"page":
 			_on_page = true
-			_page.visible = true
 			Game.sfx("ui_confirm", -8.0)
+			var m := KeyBindMenu.new()
+			add_child(m)
+			await m.closed
+			# 关改键页那一下的返回键别漏到设置里
+			await get_tree().process_frame
+			_on_page = false
+			_refresh()
 		"back":
 			_close()
 

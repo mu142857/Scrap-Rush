@@ -15,7 +15,7 @@ extends EliteBase
 ## 贴图 watchman.png（草图/精英怪/l2_watchman.py 导出，89×70，10 帧）：
 ## 0 站·吸，1 站·呼，2、3 走，4 双拳举过头顶，5 砸地（跳砸落地也用），6 蹲，7 空中，8 扫臂前摇，9 扫臂。
 
-enum { WALK, SLAM_WARN, SLAM, LEAP_WARN, LEAP_AIR, LAND, SWEEP_WARN, SWEEP, RECOVER }
+enum { WALK, SLAM_WARN, SLAM, LEAP_WARN, LEAP_AIR, LAND, SWEEP_WARN, SWEEP, RECOVER, COIL_WARN, COIL }
 
 const WALK_SPEED := 18.0
 const STOP_DIST := 40.0
@@ -40,8 +40,16 @@ const WAVE_DIST := 180.0
 # —— 跳砸 ——
 const LEAP_WARN_TIME := 0.6
 const LEAP_REACH := 140.0
-const LEAP_GRAVITY := 500.0
-const LEAP_MAX_RISE := 36.0
+const LEAP_GRAVITY := 260.0   # 10-18 美术哥试玩"滞空加长、能从底下钻过去"：500 → 260，飘一点
+## 跳到最高点悬停多久（E2 天花板低、只够升 24 时，靠这一下和慢重力留出从它底下跑过去的时间）
+const APEX_HANG := 0.25
+## 连跳：落地后接第二跳的机会（第二跳的预警和第一跳一样长，落点照样先标）
+const DOUBLE_CHANCE := 0.4
+## 贴身时往后跳开多远
+const HOP_BACK := 90.0
+## 主角背后至少要有这么远能跑，才朝他跳砸（落点框半宽 34 + 身子 + 余量）
+const LEAP_ESCAPE := 50.0
+const LEAP_MAX_RISE := 60.0   # 10-18 美术哥试玩"跳跃攻击滞空加长、能从底下钻过去"：36 → 60（有天花板时照旧按天花板算）
 const LEAP_MAX_VX := 260.0
 const LAND_HOLD := 0.6
 const LAND_RECT := Rect2(-34, -20, 68, 20)
@@ -55,6 +63,12 @@ const SWEEP_TIME := 0.2
 const SWEEP_RECT := Rect2(-46, -36, 40, 26)
 const SWEEP_DAMAGE := 14.0
 const SWEEP_COOLDOWN := 2.2
+# —— 线圈滚（10-18 加的第三招，美术哥"只有两招重复"）：把背上的电话线圈扔出去，贴地滚过来，要跳 ——
+const COIL_WARN_TIME := 0.55
+const COIL_HOLD := 0.35
+const COIL_DAMAGE := 10.0
+## 主角离它在这个范围里才扔线圈（太近直接砸、太远跳过去）
+const COIL_RANGE := Vector2(50.0, 200.0)
 ## 10-18 躲避检查（总机台/留声机会话加，布谷鸟钟会话同意）：贴墙时躲不开的两种情况
 ## - 扫臂：主角背后要有这么远（从守夜巨人算）的地面、中间没墙才扫，不然退不开；没退路就照常出砸地/跳砸
 ## - 跳砸：主角离它比这个近就不跳（落点就在主角脚下，往外跑得穿过它的身子），改成双拳砸地（跳着躲，贴墙也躲得开）
@@ -69,6 +83,12 @@ var _timer := 0.0
 var _cool := 1.2
 var _sweep_cd := 0.0
 var _next_leap := false
+## 最近出过的两招（"slam" / "leap" / "coil"），同一招不连着出三次
+var _last_moves: Array[String] = []
+## 这一跳是不是连跳的第二跳（第二跳落地不再接）
+var _chained := false
+## 跳到最高点悬停：-1 还没到最高点，>0 正在悬停，-2 悬停过了
+var _hang := -1.0
 var _step_frame := 2
 var _step_t := 0.0
 var _puff_t := 1.0
@@ -158,18 +178,26 @@ func _tick(delta: float) -> void:
 					warn(SWEEP_WARN_TIME)
 					Game.sfx("charge", -12.0, 0.6)
 				elif _cool <= 0.0:
-					# 远了跳过去，近了砸地；同一距离段里两招轮着来
-					var leap := _next_leap if absf(d.x) <= 110.0 else true
-					if absf(d.x) < LEAP_MIN:
-						leap = false
-					if leap:
-						_start_leap(pick_focus(p))   # 双人时轮着砸一个人
-					else:
-						_start(SLAM_WARN, SLAM_WARN_TIME)
-						warn(SLAM_WARN_TIME)
-						Game.sfx("charge", -8.0, 0.5)
-						Game.sfx("jet", -18.0, 0.45)
-					_next_leap = not leap
+					# 按距离从能用的招里挑（10-18 美术哥"只有两招重复"：原来两招死板交替）
+					var move := _pick_move(absf(d.x))
+					_last_moves.append(move)
+					if _last_moves.size() > 2:
+						_last_moves.pop_front()
+					_chained = false
+					match move:
+						"leap":
+							_start_leap(pick_focus(p))   # 双人时轮着砸一个人
+						"hop":
+							_start_leap(p, -dir * HOP_BACK)
+						"coil":
+							_start(COIL_WARN, COIL_WARN_TIME)
+							warn(COIL_WARN_TIME)
+							Game.sfx("charge", -10.0, 0.7)
+						_:
+							_start(SLAM_WARN, SLAM_WARN_TIME)
+							warn(SLAM_WARN_TIME)
+							Game.sfx("charge", -8.0, 0.5)
+							Game.sfx("jet", -18.0, 0.45)
 		SLAM_WARN:
 			_brake(delta)
 			set_frame(4)
@@ -189,11 +217,35 @@ func _tick(delta: float) -> void:
 			_air_t += delta
 			velocity.x = _vx
 			set_frame(7)
+			# 到最高点悬停一下（重力照常加，这里每帧把竖直速度清零）
+			if _hang == -1.0 and velocity.y >= 0.0:
+				_hang = APEX_HANG
+			if _hang > 0.0:
+				_hang -= delta
+				velocity.y = 0.0
+				if _hang <= 0.0:
+					_hang = -2.0
 			if _air_t > 0.08 and is_on_floor():
 				_land()
 		LAND:
 			_brake(delta)
 			set_frame(5)
+			if _timer <= 0.0:
+				# 连跳：有时落地马上再跳一次（第二跳不再接）
+				if not _chained and p and absf(p.global_position.x - global_position.x) >= LEAP_MIN and _player_room(LEAP_ESCAPE) \
+						and randf() < DOUBLE_CHANCE:
+					_chained = true
+					_start_leap(pick_focus(p))
+				else:
+					_finish(0.0)
+		COIL_WARN:
+			_brake(delta)
+			set_frame(8)
+			if _timer <= 0.0:
+				_throw_coil()
+		COIL:
+			_brake(delta)
+			set_frame(9)
 			if _timer <= 0.0:
 				_finish(0.0)
 		SWEEP_WARN:
@@ -313,13 +365,71 @@ func _room_behind(p: Player) -> bool:
 	return not space.intersect_ray(down).is_empty()
 
 
-func _start_leap(p: Player) -> void:
+## 按距离挑招：能用的里面随机，同一招不连着出三次，刚出过的那招降一点概率
+func _pick_move(ad: float) -> String:
+	var moves: Array[String] = []
+	if ad >= LEAP_MIN and _player_room(LEAP_ESCAPE):
+		moves.append("leap")
+	elif _room_back():
+		# 贴身时也不只是砸地：有时往后跳开（同样高跳、悬停、先标落点），拉开距离下一招才轮得到线圈和跳砸
+		moves.append("hop")
+	if ad <= 130.0:
+		moves.append("slam")
+	if ad >= COIL_RANGE.x and ad <= COIL_RANGE.y:
+		moves.append("coil")
+	if moves.is_empty():
+		return "leap"
+	if moves.size() > 1 and _last_moves.size() >= 2 and _last_moves[0] == _last_moves[1]:
+		moves.erase(_last_moves[1])
+	var pick: String = moves[randi() % moves.size()]
+	if moves.size() > 1 and not _last_moves.is_empty() and pick == _last_moves[-1] and randf() < 0.6:
+		moves.erase(pick)
+		pick = moves[randi() % moves.size()]
+	return pick
+
+
+## 主角背后（离开守夜巨人那边）还有没有 n 像素能跑：没有就别朝他跳砸——落点在他脚下，人贴着墙跑不开，
+## 落下来还把人堵在墙角吃身体碰撞（10-18 躲避测试发现）
+func _player_room(n: float) -> bool:
+	var p := nearest_player(SEE_DIST)
+	if p == null:
+		return true
+	var away := 1.0 if p.global_position.x >= global_position.x else -1.0
+	var y := p.global_position.y
+	var space := get_world_2d().direct_space_state
+	var tx := p.global_position.x + away * n
+	var wall := PhysicsRayQueryParameters2D.create(Vector2(p.global_position.x, y - 8.0), Vector2(tx, y - 8.0), 1)
+	wall.exclude = [get_rid()]
+	if not space.intersect_ray(wall).is_empty():
+		return false
+	var down := PhysicsRayQueryParameters2D.create(Vector2(tx, y - 12.0), Vector2(tx, y + 12.0), 1)
+	down.exclude = [get_rid()]
+	return not space.intersect_ray(down).is_empty()
+
+
+## 往后跳开那边（背对主角）HOP_BACK 远处有没有地、中间有没有墙
+func _room_back() -> bool:
+	var tx := global_position.x - dir * HOP_BACK
+	var space := get_world_2d().direct_space_state
+	var wall := PhysicsRayQueryParameters2D.create(global_position + Vector2(0, -20), Vector2(tx - dir * 26.0, global_position.y - 20), 1)
+	wall.exclude = [get_rid()]
+	if not space.intersect_ray(wall).is_empty():
+		return false
+	var down := PhysicsRayQueryParameters2D.create(Vector2(tx, global_position.y - 30), Vector2(tx, global_position.y + 30), 1)
+	down.exclude = [get_rid()]
+	return not space.intersect_ray(down).is_empty()
+
+
+## 跳砸。back_dx 不是 0 时是往后跳开：跳到离自己 back_dx 的地方，人还是脸朝主角
+func _start_leap(p: Player, back_dx := 0.0) -> void:
 	_start(LEAP_WARN, LEAP_WARN_TIME)
 	warn(LEAP_WARN_TIME)
 	Game.sfx("charge", -8.0, 0.55)
 	var dx := clampf(p.global_position.x - global_position.x, -LEAP_REACH, LEAP_REACH)
 	if absf(dx) > 2.0:
 		dir = 1 if dx > 0.0 else -1
+	if back_dx != 0.0:
+		dx = back_dx
 	# 跳多高看天花板：头顶往上找，留 4 像素
 	var space := get_world_2d().direct_space_state
 	var head := global_position + Vector2(0, body_rect.position.y)
@@ -328,7 +438,7 @@ func _start_leap(p: Player) -> void:
 	var hit := space.intersect_ray(q)
 	var rise := LEAP_MAX_RISE if hit.is_empty() else clampf(head.y - (hit["position"] as Vector2).y - 4.0, 6.0, LEAP_MAX_RISE)
 	var vy := -sqrt(2.0 * LEAP_GRAVITY * rise)
-	var t := 2.0 * -vy / LEAP_GRAVITY
+	var t := 2.0 * -vy / LEAP_GRAVITY + APEX_HANG
 	_vx = clampf(dx / t, -LEAP_MAX_VX, LEAP_MAX_VX)
 	velocity.y = 0.0
 	set_meta("leap_vy", vy)
@@ -345,6 +455,7 @@ func _start_leap(p: Player) -> void:
 func _launch() -> void:
 	_state = LEAP_AIR
 	_air_t = 0.0
+	_hang = -1.0
 	gravity = LEAP_GRAVITY
 	velocity = Vector2(_vx, get_meta("leap_vy", -150.0))
 	Game.dust(get_parent(), global_position, 6)
@@ -388,8 +499,22 @@ func _hit_rect(r: Rect2, dmg: float) -> void:
 ## 蓄力时浑身发抖：贴图左右抖一格
 func _update_visual() -> void:
 	super._update_visual()
-	if _state in [SLAM_WARN, LEAP_WARN, SWEEP_WARN] and not in_intro():
+	if _state in [SLAM_WARN, LEAP_WARN, SWEEP_WARN, COIL_WARN] and not in_intro():
 		_sprite.position.x += 1.0 if int(_time * 30.0) % 2 == 0 else -1.0
+
+
+# ---------------------------------------------------------------- 线圈滚
+## 手往后一抡，把背上的电话线圈朝主角那边扔出去，落地以后贴着地面滚过来（Coil）
+func _throw_coil() -> void:
+	_start(COIL, COIL_HOLD)
+	var c := Coil.new()
+	c.dir = dir
+	c.damage = COIL_DAMAGE * damage_mult()
+	get_parent().add_child(c)
+	c.global_position = (global_position + Vector2(dir * 26.0, 0)).round()
+	Game.sfx("jump", -8.0, 0.6)
+	Game.sfx("scrape", -10.0, 0.7)
+	Game.dust(get_parent(), c.global_position, 4, dir)
 
 
 func _on_die() -> void:
@@ -569,6 +694,88 @@ class LeapMarker:
 		for i in 3:
 			draw_rect(Rect2(-i, -10 + i + bob, i * 2 + 1, 1), col)
 		draw_rect(Rect2(0, -14 + bob, 1, 4), col)
+
+
+## 滚过来的电话线圈：直径 11 的一圈黑电线 + 黄铜扣，一边滚一边转；贴着地面走（上下 10 以内），
+## 撞墙、到台子边或滚满 MAX_DIST 就散开。碰到地上的人（脚在圈里，高 11）和马灯伤一下。不吃压暗。要跳过去
+class Coil:
+	extends Node2D
+
+	const SPEED := 110.0
+	const MAX_DIST := 220.0
+	const R := 5.0
+	const WIRE := Color8(40, 36, 34)
+	const WIRE_HI := Color8(96, 90, 84)
+	const BRASS := Color8(181, 142, 96)
+
+	var dir := 1
+	var damage := 10.0
+	var _gone := 0.0
+	var _t := 0.0
+	var _done := -1.0
+	var _hit := {}
+
+	func _ready() -> void:
+		top_level = true
+		z_index = 6
+		var unshaded := CanvasItemMaterial.new()
+		unshaded.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+		material = unshaded
+
+	func _physics_process(delta: float) -> void:
+		_t += delta
+		if _done >= 0.0:
+			_done += delta
+			if _done > 0.2:
+				queue_free()
+			queue_redraw()
+			return
+		var step := SPEED * delta
+		var space := get_world_2d().direct_space_state
+		var nx := global_position.x + dir * step
+		var wq := PhysicsRayQueryParameters2D.create(global_position + Vector2(0, -R), Vector2(nx + dir * R, global_position.y - R), 1)
+		var gq := PhysicsRayQueryParameters2D.create(Vector2(nx, global_position.y - 10), Vector2(nx, global_position.y + 10), 1)
+		var g := space.intersect_ray(gq)
+		if not space.intersect_ray(wq).is_empty() or g.is_empty() or _gone >= MAX_DIST:
+			_burst()
+			return
+		global_position = Vector2(nx, (g["position"] as Vector2).y)
+		_gone += step
+		var r := Rect2(global_position + Vector2(-R, -R * 2.0 - 1.0), Vector2(R * 2.0 + 1.0, R * 2.0 + 1.0))
+		for n in get_tree().get_nodes_in_group("player"):
+			var p := n as Player
+			if p and not _hit.has(p) and r.intersects(Rect2(p.global_position + Vector2(-3, -16), Vector2(6, 16))):
+				_hit[p] = true
+				p.hurt(global_position, damage)
+		for n in get_tree().get_nodes_in_group("crystal"):
+			var c := n as Crystal
+			if c and c.carrier == null and not _hit.has(c) and r.intersects(Rect2(c.global_position + Vector2(-2.5, -8), Vector2(5, 8))):
+				_hit[c] = true
+				c.take_hit(global_position, damage)
+		if int(_t / 0.12) != int((_t - delta) / 0.12):
+			Game.dust(get_parent(), global_position, 1, -dir)
+		queue_redraw()
+
+	func _burst() -> void:
+		_done = 0.0
+		Game.sparks(get_parent(), global_position + Vector2(0, -R), BRASS, 6, 70.0)
+		Game.sfx("clang", -14.0, 1.2)
+
+	func _draw() -> void:
+		draw_set_transform(global_position.round() - global_position)
+		var a := 1.0 if _done < 0.0 else clampf(1.0 - _done / 0.2, 0.0, 1.0)
+		var c := Vector2(0, -R - 1.0)
+		# 一圈黑电线（一格一个点），亮边在上面
+		for i in 20:
+			var ang := TAU * i / 20.0
+			var q := (c + Vector2.from_angle(ang) * R).round()
+			draw_rect(Rect2(q, Vector2.ONE), Color(WIRE if q.y > c.y else WIRE_HI, a))
+		# 转着的黄铜扣：两颗，跟着滚动转
+		var spin := _gone / R * float(dir)
+		for k in 2:
+			var q := (c + Vector2.from_angle(spin + PI * k) * (R - 1.0)).round()
+			draw_rect(Rect2(q, Vector2.ONE), Color(BRASS, a))
+		draw_rect(Rect2(c.round(), Vector2.ONE), Color(WIRE, a))
 
 
 ## 呼出来的一团白气：几颗淡白的点往前飘、慢慢散开变淡（活物）

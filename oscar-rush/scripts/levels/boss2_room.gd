@@ -8,6 +8,8 @@ extends BossArena
 const BOSS_X := 262.0
 const WALL_LAMP_L := 12.0
 const PLATES := [Vector2(8, 80), Vector2(80, 152), Vector2(152, 224)]
+## 转阶段演出时墙上两盏壁灯（灭掉再亮）
+var _wall_lights: Array[PointLight2D] = []
 const LAST_CALLS := [
 	"\"...hello? is anyone—\"",
 	"\"...tell them I tried to come home—\"",
@@ -64,6 +66,7 @@ func _build_extras() -> void:
 		l.position = Vector2(sx, 56)
 		l.range_item_cull_mask = 1 | 2
 		add_child(l)
+		_wall_lights.append(l)
 	for r in PLATES:
 		var p := Operator.ElectricPlate.new()
 		p.x0 = r.x
@@ -71,6 +74,35 @@ func _build_extras() -> void:
 		p.floor_y = floor_y
 		add_child(p)
 		(boss as Operator).plates.append(p)
+
+
+## 转阶段演出（10-19 重做，作者"没有压迫感"）：屋里的灯一下全灭 → 黑暗里所有电话一起响、震屏 →
+## 灯亮回来，一阶段比一阶段红（三阶段整间屋子是警报的红）。总机那边同时清场、停 1.6 秒（operator.gd 的 _phase_roar）
+func _on_phase(p: int) -> void:
+	if not is_inside_tree():
+		return
+	for l in _wall_lights:
+		l.energy = 0.0
+	var off := create_tween()
+	off.tween_property(_dark, "color", Color(0.05, 0.04, 0.05), 0.1)
+	Game.sfx("tvoff", -4.0, 0.6)
+	if is_inside_tree(): await get_tree().create_timer(0.3, false).timeout
+	for i in 7:
+		if not is_inside_tree():
+			return
+		Game.sfx("bell", -4.0 - i * 0.5, randf_range(0.8, 1.4))
+		if i % 2 == 0:
+			Game.sfx("dial", -12.0, randf_range(0.7, 1.2))
+		Game.add_shake(2.5)
+		if is_inside_tree(): await get_tree().create_timer(0.09, false).timeout
+	Game.add_shake(6.0)
+	Game.sfx("busy", -6.0, 0.9)
+	var to := darkness.lerp(darkness_hot, 0.55 if p == 2 else 1.0)
+	var on := create_tween()
+	on.tween_property(_dark, "color", to, 0.45)
+	for l in _wall_lights:
+		l.energy = 0.8
+		l.color = Color(1.0, 0.72, 0.35).lerp(Color(1.0, 0.25, 0.15), 0.5 if p == 2 else 0.9)
 
 
 ## 打完先一句句冒出别人没打完的最后一通电话，再接通用流程（定格那句、掉零件、开门）

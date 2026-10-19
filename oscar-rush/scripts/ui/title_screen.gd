@@ -47,12 +47,18 @@ const LIT := Color(1, 1, 1)
 const OPTION_TOP := 104.0
 const OPTION_STEP := 20.0
 
-var _options: Array[String] = ["START", "CREDITS", "QUIT"]
+var _options: Array[String] = ["START", "TUTORIAL", "CREDITS", "QUIT"]
 var _option_hints: Array[String] = [
 	"Play alone or together, then pick a difficulty.",
+	"A short practice run: five old TVs, one skill each.",
 	"Who made this, and the licenses.",
 	"",
 ]
+## 教学关（剧情会话做的 scenes/tutorial.tscn）。脚本用 load 找、静态成员用 get / set / call 调，不写类名：
+## 教学关脚本出问题时开始界面照样能编译。第一次新开一局（没看过教学）时，选完单人 / 合作先进教学，
+## 走完或跳过回到这里、直接打开选难度（return_to_levels）；菜单里的"教学"随时重玩，走完回开始菜单
+const TUTORIAL_SCENE := "res://scenes/tutorial.tscn"
+const TUTORIAL_SCRIPT := "res://scripts/tutorial/tutorial_level.gd"
 ## "继续"（作者 10-18 同意）：有存档时才出现，放在"开始"上面、默认选中，从打到过的最远那关开头接着打。
 ## 存档归游戏设计会话：按 SAVE_PATHS 用 load 找它的脚本（不写类名，没做好时这里照样能编译），
 ## 要的接口是 has_save() -> bool 和 continue_run()（自己恢复 Run、切到那关开头；返回场景路径的话由这里切）。
@@ -544,6 +550,9 @@ func _confirm() -> void:
 			_continue_run()
 		"START":
 			_start_new()
+		"TUTORIAL":
+			Run.players = [{"input": "solo", "skin": Run.SKINS[0]}]
+			_go_tutorial(false)
 		"CREDITS":
 			_open_credits()
 		"QUIT":
@@ -570,6 +579,9 @@ func _open_mode(sound := true) -> void:
 		ModeSelect.SOLO:
 			_coop = false
 			Run.players = [{"input": "solo", "skin": Run.SKINS[0]}]
+			if not _tutorial_done():
+				_go_tutorial(true)
+				return
 			_open_difficulty()
 		ModeSelect.COOP:
 			_coop = true
@@ -693,6 +705,30 @@ func _open_settings() -> void:
 	await get_tree().process_frame
 	_busy = false
 	_refresh()
+
+
+## 看过（或跳过）教学没有；教学关脚本不在就当看过，不拦人
+func _tutorial_done() -> bool:
+	if not ResourceLoader.exists(TUTORIAL_SCRIPT) or not ResourceLoader.exists(TUTORIAL_SCENE):
+		return true
+	var sc := load(TUTORIAL_SCRIPT) as GDScript
+	return sc == null or bool(sc.call("done"))
+
+
+## 进教学关。then_difficulty：新开一局路上进的，走完回来直接开选难度（单人回单人 / 合作，合作的人还在）；
+## 否则是菜单里的"教学"，走完回开始菜单。Run.players 先设好（合作就是加入的那几个人）
+func _go_tutorial(then_difficulty: bool) -> void:
+	_busy = true
+	_lobby = false
+	var sc := load(TUTORIAL_SCRIPT) as GDScript
+	sc.set("next_scene", "res://scenes/title.tscn")
+	return_to_levels = then_difficulty
+	Game.sfx("ui_confirm", -4.0)
+	Run.reset_run()
+	Game.reset_stats()
+	await _fade_to(1.0, 0.5)
+	get_tree().change_scene_to_file(TUTORIAL_SCENE)
+	Game.flash(Color.BLACK, 1.0, 0.6)
 
 
 func _set_difficulty(d: int) -> void:
@@ -962,4 +998,7 @@ func _start_coop() -> void:
 			Run.players.append({"input": _slots[i], "skin": Run.SKINS[i]})
 	Game.sfx("ui_confirm", -4.0)
 	_lobby_root.visible = false
+	if not _tutorial_done():
+		_go_tutorial(true)
+		return
 	_open_difficulty()

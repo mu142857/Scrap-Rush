@@ -36,6 +36,10 @@ const TIPS := [Vector2(24, 3) - CANVAS_ORIGIN, Vector2(66, 1) - CANVAS_ORIGIN]
 const LEGS_X := [-30.0, -14.0, 14.0, 30.0]
 const HIP_Y := -10.0
 const SLAM_DAMAGE := 18.0
+## 跳砸在空中多久、跳多高。10-18 美术哥 Oscar：「把一些跳跃攻击滞空时长加长点儿」——0.7 秒、70 像素的正弦弧
+## → 1.1 秒、92 像素的平顶弧（升到 87% 只要前 1/4 的时间），玩家能从它底下钻过去
+const HOP_TIME := 1.1
+const HOP_HEIGHT := 92.0
 const DASH_SPEED := [200.0, 240.0, 280.0]
 const MOVES := ["charge", "hop"]
 const LED_COLOR := Color(1.0, 0.28, 0.18)
@@ -528,7 +532,7 @@ func _hop() -> void:
 		var p := _lead()
 		var to_x := clampf(p.global_position.x if p else arena.get_center().x, _x_min(), _x_max())
 		_shadow_x = to_x
-		_shadow_t = 0.75
+		_shadow_t = HOP_TIME + 0.45
 		_mode = "crouch"
 		var tw := create_tween()
 		tw.tween_property(self, "_crouch", 6.0, 0.3)
@@ -540,14 +544,15 @@ func _hop() -> void:
 		_contact_damage = SLAM_DAMAGE
 		Game.sfx("jump", -2.0, 0.6)
 		var from_x := position.x
-		var dur := 0.7
+		var dur := HOP_TIME
 		var t := 0.0
 		while t < dur and not dead:
 			if is_inside_tree(): await get_tree().physics_frame
 			t = minf(t + get_physics_process_delta_time(), dur)
 			var k := t / dur
 			position.x = lerpf(from_x, to_x, k)
-			position.y = floor_y - sin(k * PI) * 70.0
+			# 平顶的弧线：很快升上去、在高处停大半段时间再砸下来，底下留出能钻过去的空
+			position.y = floor_y - (1.0 - pow(absf(2.0 * k - 1.0), 3.0)) * HOP_HEIGHT
 		if dead:
 			position.y = floor_y
 			return

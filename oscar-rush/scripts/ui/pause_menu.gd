@@ -10,6 +10,10 @@ extends CanvasLayer
 
 const TITLE_SCENE := "res://scenes/title.tscn"
 const WEAPON_SELECT_SCENE := "res://scenes/weapon_select.tscn"
+## 教学关里多一项"跳过教学"，而且打开时默认停在它上面（开场那行提示"按 Esc / Start 跳过教学"：按两下就跳过）。
+## 跳过调教学关脚本的 TutorialLevel.skip（用 load 找，不写类名）
+const TUTORIAL_SCENE := "res://scenes/tutorial.tscn"
+const TUTORIAL_SCRIPT := "res://scripts/tutorial/tutorial_level.gd"
 const WARM := Color8(255, 211, 138)
 const DIM := Color(0.55, 0.55, 0.6)
 const LIT := Color(1, 1, 1)
@@ -116,12 +120,15 @@ func open() -> void:
 		l.queue_free()
 	_labels.clear()
 	_options = ["RESUME"]
-	if get_tree().current_scene.has_method("_retry"):
+	var in_tutorial := get_tree().current_scene.scene_file_path == TUTORIAL_SCENE
+	if in_tutorial:
+		_options.append("SKIP TUTORIAL")
+	elif get_tree().current_scene.has_method("_retry"):
 		_options.append("RESTART")
 	_options += ["SETTINGS", "TITLE"]
 	for i in _options.size():
 		_labels.append(_label("", TOP + i * Lang.menu_step(STEP), 22, DIM, 3))
-	_selected = 0
+	_selected = 1 if in_tutorial else 0
 	_confirming = ""
 	_refresh()
 	_frame.queue_redraw()
@@ -153,6 +160,8 @@ func _text(option: String) -> String:
 			return "SETTINGS"
 		"TITLE":
 			return "QUIT TO TITLE"
+		"SKIP TUTORIAL":
+			return "SKIP TUTORIAL"
 	return option
 
 
@@ -220,11 +229,40 @@ func _input(event: InputEvent) -> void:
 func _process(delta: float) -> void:
 	_mouse_idle += delta
 	var cur := get_tree().current_scene
+	_tutorial_hint_tick(cur)
 	var in_level := cur != null and cur.scene_file_path != TITLE_SCENE and cur.scene_file_path != ""
 	var hide_cursor := in_level and not is_open and _mouse_idle > 1.5
 	var mode := Input.MOUSE_MODE_HIDDEN if hide_cursor else Input.MOUSE_MODE_VISIBLE
 	if Input.mouse_mode != mode:
 		Input.mouse_mode = mode
+
+
+## 进教学关时屏幕下方一行小字"Esc 跳过教学"（手柄是 Start），6 秒后淡掉。教学关自己把底部按键条藏了，这里不会叠字
+var _hint_for: Node = null
+
+
+func _tutorial_hint_tick(cur: Node) -> void:
+	if cur == null or cur == _hint_for or cur.scene_file_path != TUTORIAL_SCENE:
+		return
+	_hint_for = cur
+	var layer := CanvasLayer.new()
+	layer.layer = 30
+	cur.add_child(layer)
+	var l := Label.new()
+	l.label_settings = Hud.small_text(Color(0.75, 0.73, 0.7))
+	l.text = tr("%s  skip tutorial") % Controls.label("pause")
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.position = Vector2(0, 252)
+	l.size = Vector2(480, 12)
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	l.modulate.a = 0.0
+	layer.add_child(l)
+	var tw := l.create_tween()
+	tw.tween_interval(1.0)
+	tw.tween_property(l, "modulate:a", 1.0, 0.6)
+	tw.tween_interval(6.0)
+	tw.tween_property(l, "modulate:a", 0.0, 1.0)
+	tw.tween_callback(layer.queue_free)
 
 
 func _is_pause_button(event: InputEvent) -> bool:
@@ -274,6 +312,12 @@ func _confirm() -> void:
 		_refresh()
 		return
 	match option:
+		"SKIP TUTORIAL":
+			Game.sfx("ui_confirm", -6.0)
+			await _close()
+			var sc := load(TUTORIAL_SCRIPT) as GDScript
+			if sc:
+				sc.call("skip", get_tree())
 		"RESUME":
 			_resume()
 		"RESTART":

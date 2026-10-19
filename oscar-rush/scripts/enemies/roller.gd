@@ -26,7 +26,7 @@ const MORTAR_SHOTS := 2
 const MORTAR_GAP := 0.45
 const MORTAR_MIN_DIST := 90.0
 const STUN_TIME := 3.0
-const STUN_DAMAGE_MULT := 2.0
+const STUN_DAMAGE_MULT := 1.0   # 10-19 作者"火车撞晕双倍伤害去掉"：2.0 → 1.0（晕 3 秒的破绽保留）
 const CHARGE_COOLDOWN := 1.1  # 10-18 作者：招和招之间停太久
 const SEE_HEIGHT := 28.0
 const BLAST_WARN_TIME := 0.5
@@ -62,7 +62,7 @@ func _setup() -> void:
 	frame_size = Vector2i(54, 38)
 	body_rect = Rect2(-24, -30, 48, 30)
 	led_pixel = Vector2i(7, 15)
-	max_hp = 1220.0  # 10-18 作者：第一关太肉（没买科技，要比后两关脆），三把武器站桩 12～18 秒
+	max_hp = 1220.0  # 10-18 第一关站桩 12～18 秒；10-19 撞晕双倍伤害去掉以后，关门打和别的第一关精英一样（1550 → 1220）
 	contact_damage = 8.0
 
 

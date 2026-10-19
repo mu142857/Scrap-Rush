@@ -9,8 +9,12 @@ extends Node2D
 ## 10-18 碰撞会话：原来靠墙、台边溅的点会钻进墙里、停在台子外的半空。现在每次溅再往左右各打一条射线找墙，
 ## 点飞到墙就贴着墙往下掉；每滴落地那一下再打一条短射线确认脚下真有地，没有就接着往下掉到下面的地。
 ## 单向平台（第三关第 7 层）也算地。
+## 10-19 作者："平台上的血迹到怪物只上了，bug"。飞着的点画在本节点（z 5，在角色前面）；落地的斑画在子节点 _floor
+## （绝对 z FLOOR_Z = -1）：在所有地形 / 背景（各关 -20 ~ -4、Boss 房地形 -5）上面，在角色（主角、怪、精英、Boss 都是 z 0 起）和马灯（5）下面。
 
 const MAX_DOTS := 150
+## 落地斑点的绝对 z（见上）
+const FLOOR_Z := -1
 const GRAVITY := 520.0
 ## 地上的斑留几秒（最后 1.5 秒分两档变淡）
 const STAIN_LIFE := 5.0
@@ -37,6 +41,8 @@ var _size := PackedByteArray()
 var _lo := PackedFloat32Array()
 var _hi := PackedFloat32Array()
 var _redraw_t := 0.0
+## 画落地斑点的子节点（z FLOOR_Z，在角色后面）
+var _floor: Node2D
 
 
 static func cap() -> int:
@@ -109,6 +115,11 @@ static func _find_walls(from: Node, pos: Vector2) -> Vector2:
 func _ready() -> void:
 	top_level = true
 	z_index = 5
+	_floor = Node2D.new()
+	_floor.z_as_relative = false
+	_floor.z_index = FLOOR_Z
+	_floor.draw.connect(_draw_stains)
+	add_child(_floor)
 
 
 func _add(p: Vector2, v: Vector2, g: float, c: Color, sz: int, lo := -INF, hi := INF) -> void:
@@ -179,6 +190,7 @@ func _process(delta: float) -> void:
 	if flying or _redraw_t <= 0.0:
 		_redraw_t = 0.25
 		queue_redraw()
+		_floor.queue_redraw()
 
 
 ## 点要落到 ground 这一高度时：从上一帧的位置往 (x, ground) 下面一点打一条射线，碰到朝上的面就落在那儿。
@@ -210,20 +222,26 @@ func _ground_from(p: Vector2) -> float:
 	return (hit["position"] as Vector2).y - 1.0 if not hit.is_empty() else p.y + 9999.0
 
 
+## 飞着的点：一格，大滴两格（顺着速度拖一格）。画在角色前面
 func _draw() -> void:
 	for i in _pos.size():
-		var p := _pos[i].round()
-		var c := _col[i]
-		if not _landed[i]:
-			# 飞着：一格，大滴两格（顺着速度拖一格）
-			draw_rect(Rect2(p, Vector2.ONE), c)
-			if _size[i] == 2:
-				draw_rect(Rect2(p - _vel[i].normalized().round(), Vector2.ONE), c)
+		if _landed[i]:
 			continue
-		# 地上的斑：摊开成 2~3 格宽、1 格高；最后 1.5 秒分两档变淡
+		var p := _pos[i].round()
+		draw_rect(Rect2(p, Vector2.ONE), _col[i])
+		if _size[i] == 2:
+			draw_rect(Rect2(p - _vel[i].normalized().round(), Vector2.ONE), _col[i])
+
+
+## 地上的斑：摊开成 2~3 格宽、1 格高；最后 1.5 秒分两档变淡。画在 _floor 上（角色后面）
+func _draw_stains() -> void:
+	for i in _pos.size():
+		if not _landed[i]:
+			continue
+		var c := _col[i]
 		var left := STAIN_LIFE - _age[i]
 		if left < 0.75:
 			c.a *= 0.35
 		elif left < 1.5:
 			c.a *= 0.65
-		draw_rect(Rect2(p + Vector2(-1, 0), Vector2(2 + _size[i], 1)), c)
+		_floor.draw_rect(Rect2(_pos[i].round() + Vector2(-1, 0), Vector2(2 + _size[i], 1)), c)
