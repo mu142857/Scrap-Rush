@@ -306,7 +306,7 @@ func _process(delta: float) -> void:
 	var state_col := Color(0.75, 0.75, 0.78)
 	if Run.emotion >= 100.0:
 		# 常亮，颜色一明一暗（闪烁的字在低帧率下容易整句看不见）
-		state = "OVERLOAD! LANTERN BURNS"
+		state = "OVERLOAD! THE LANTERN IS BURNING!"
 		state_col = ZONE_COLORS[3].lightened(0.25 + 0.25 * (0.5 + 0.5 * sin(_time * 10.0)))
 		_alarm_t -= delta
 		if _alarm_t <= 0.0 and level:

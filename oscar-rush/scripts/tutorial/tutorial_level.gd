@@ -280,7 +280,7 @@ func _tick_lantern_step(p: Player) -> void:
 			if p.crystal == null:
 				_sub = 3
 				_spawn_moth()
-				_say(tr("A moth! It's after the lantern on the ground."), false, true)
+				_say(tr("A light left on the ground draws something hungry."), false, true)
 		3:
 			# 拍了开关也算过（先飞过去也不卡）
 			if not is_instance_valid(_moth) or _moth.get("dead") or (_switch and _switch.get("hit")):
@@ -300,7 +300,7 @@ func _tick_lantern_step(p: Player) -> void:
 	if _sub == 6 and p.crystal == null and _doors[2].get("open"):
 		_doors[2].call("set_open", false)
 		_sub = 5
-		_say(tr("Go back, press %s to pick up the lantern") % _key("crystal"))
+		_say(tr("Don't leave the lantern behind. Press %s.") % _key("crystal"))
 	if _sub == 6 and p.global_position.x > _rooms[2]["ox"] + D.SIZE.x - 4:
 		_next()
 
@@ -497,7 +497,7 @@ func _drop_weapon(i: int) -> void:
 func _on_crystal_broken() -> void:
 	# 教学关不死：马灯补满，提示一句
 	Run.heal_crystal(Run.crystal_max)
-	_say(tr("Broken lantern! Lucky this is practice... fixed it for you."), false, true)
+	_say(tr("Lantern's gone!!! Good thing this is only practice..."), false, true)
 
 
 func _finish() -> void:

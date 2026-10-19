@@ -332,7 +332,7 @@ static func entries() -> Array:
 		"Charges until it hits a wall, then stays stunned. Punish it while it's dizzy."))
 	# ---- 第二关：交换台、胶片天桥、放映厅
 	E.append(_mob("2", "wire_snake", "Wire Snake", 6, [0, 1],
-		"Her favourite snack? Computer mice."))
+		"Her favourite snack? Mice. The wired kind."))
 	E.append(_mob("2", "fuse_beetle", "Fuse Beetle", 4, [0, 1],
 		"The Fuse Beetle has always been self-conscious about his body. He dreams of being long. Green, preferably."))
 	E.append(_mob("2", "phone", "Crank Phone", 5, [1, 2],

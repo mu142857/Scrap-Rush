@@ -78,10 +78,9 @@ FLASH LAMP,闪光灯
 RIVET GUN,铆钉枪
 STEAM HAMMER,蒸汽锤
 "Hold to charge.
-Full shots pierce
-a whole row.","按住蓄力。
-蓄满的一发
-能打穿一整排。"
+Charged shots
+pierce through.","按住蓄力。
+蓄力子弹造成穿透"
 "Hold to fire
 nonstop. Small hits,
 short range.","按住一直连发。
@@ -122,7 +121,7 @@ machines hit harder,机器下手更重了
 machines go haywire,机器发疯了
 a little calmer,稍微平静了些
 %s: %s,%s：%s
-OVERLOAD! LANTERN BURNS,过载！马灯在烧
+OVERLOAD! THE LANTERN IS BURNING!,过载！马灯在燃烧！
 IN THE DARK x1.5,黑暗中 x1.5
 Keep right. There's more road ahead.,往右，路还没走完
 Left. The way is over there.,往左，路在那边
@@ -382,7 +381,7 @@ Get in the green!,快站到绿色那块！
 FREE REROLL,免费刷新
 FREE REROLL      %s: PULL,免费刷新      %s 拉
 %s Drop/pick lantern   %s,%s 放/拿马灯   %s
-Find the house from the tape. Up and to the right.,去录像里那栋房子：往上，往右。
+"A memory surfaces. Up, then right, it seems.",记忆涌现，似乎你应该往上，然后往右
 LEVELS,选择关卡
 BESTIARY,怪物图鉴
 Start from a level you have already reached.,从已经打到过的关卡开始。
@@ -453,7 +452,7 @@ Snaps its drawer and tosses coins. Drops an extra part.,猛拉钱箱咬人，还
 "Plays the floor keys like a wave. Jump the wave, step off the chords.",把地板当琴键弹，一波一波压过来。跳过波浪，躲开和弦。
 "Sucks in you, your shots and your lantern. Hit it 3 times to get the lantern back.",把你、光球和马灯都往嘴里吸。打它三下，马灯就掉回来。
 "Charges until it hits a wall, then stays stunned. Punish it while it's dizzy.",一路冲到撞墙才停，撞完晕两秒，趁这时候狠狠打。
-Her favourite snack? Computer mice.,她最喜欢吃的东西是鼠标
+Her favourite snack? Mice. The wired kind.,她最喜欢吃的东西是鼠标
 "The Fuse Beetle has always been self-conscious about his body. He dreams of being long. Green, preferably.",保险丝甲虫一直对自己的身材很自卑，他总是幻想自己能够变得长长的，最好是绿色的。
 He calls his mum at the same time every day. Get him before he rings for backup.,他每天都会准时打电话给自己的妈妈。趁他叫帮手之前先打掉
 Selling scrap made the Scavenger the richest person in this wasteland. Hit it twice and it drops your lantern.,拾荒者靠卖废品，成了这片荒地上最富有的人。打它两下，它就把马灯还你
@@ -676,11 +675,10 @@ Portraits,立绘
 Tools & Collaboration,工具与协作
 pixel character model,像素角色生成模型
 SCRAP SHOTGUN,废铁散弹枪
-"Tap: a fan of
-scrap. Huge up close.
-Kicks you back.","点一下喷一扇碎铁。
-贴脸最痛。
-后坐力会推你。"
+"Sprays scrap
+point-blank.
+Mind the kick...","近距离喷射碎铁
+小心后坐力……"
 Shoot down in the air to hop.,空中朝下开火，能往上弹。
 %s: blast (in the air: kick),%s 开火（空中会被后坐力推开）
 Tap %s: blast a fan of scrap.  In the air the kick moves you,按 %s 喷一扇碎铁。在空中，后坐力会把你推开
@@ -699,11 +697,10 @@ Homes in. Moths follow the light.,光追敌人，飞蛾追光
 Sweeps up and down like a heavy MG.,像重机枪一样上下扫射。
 Launches small fry. Blows bullets away.,能把小怪掀飞，吹散子弹。
 RECORD SLINGER,唱片回旋镖
-"Throw a record.
-Cuts going out.
-Cuts coming back.","甩出一张唱片。
-去时割一遍，
-回来再割一遍。"
+"Fling a record.
+It always
+comes back.","甩出一张
+可以往返的唱片"
 Catch it to throw again.,接住马上能再扔。
 %s: throw a record,%s 扔唱片
 Tap %s: throw a record.  It comes back - catch it,按 %s 扔出唱片。它会飞回来，接住它
@@ -830,14 +827,14 @@ Good... the door's open.,不错……门为你开了
 Too far with the lantern. Press %s to put it down,提着灯飞不过去。按 %s 放下马灯，空手飞得远
 Now fly over to the switch,现在飞过去，拍开关
 "A bridge! Go back, press %s to pick up the lantern",桥出来了！回去按 %s 捡起马灯
-"Go back, press %s to pick up the lantern",回去按 %s 捡起马灯
+Don't leave the lantern behind. Press %s.,不要忘记捡起马灯，按 %s
 Carry it over the bridge and out,提着灯过桥，出门
 Doors shut. Clear the fight to get through.,门关了。清完这一场，才有路走
 "The lantern is one step closer to home. If it breaks, you restart here.",马灯离家更进一步。碎了，就从这里重来
 Last one: an elite. Elites drop weapons,最后一个：精英。精英会掉武器
 "Stand on the weapon, press %s to swap",站到武器上，按 %s 换上它
 That's all. Out you go.,教到这里。出门吧
-Broken lantern! Lucky this is practice... fixed it for you.,马灯碎了！幸好在教学里……这次替你修好
+Lantern's gone!!! Good thing this is only practice...,你马没了！！！幸好在教学里……
 TUTORIAL CLEAR,教学完成
 TUTORIAL,教学
 Every TV has something to teach you.,每台电视，都有些东西要教你
@@ -889,7 +886,7 @@ SPARRING BOT,大陪练
 PRACTICE ROUND,陪练回合
 "Shielded! Full charge, let it have it!",有挡板！蓄满再打！
 "Shielded! Not enough, again!",有挡板！不够，再来！
-A moth! It's after the lantern on the ground.,飞蛾来了！地上的灯会招它
+A light left on the ground draws something hungry.,搁置在地面的灯火会招来不祥之兆
 A red ! means it's about to strike. Jump over or back off,头上冒红色的 ! 就是要出招了：跳过去或者退开
 "Per level, for the weapon in your hand:",每升一级，手上那把武器：
 %s: charges %s s faster,%s：蓄力快 %s 秒

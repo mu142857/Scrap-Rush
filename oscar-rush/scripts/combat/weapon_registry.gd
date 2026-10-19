@@ -23,7 +23,7 @@ extends RefCounted
 
 const LIST := [
 	{"id": "flash", "name": "FLASH LAMP", "icon": "charge",
-		"card": "Hold to charge.\nFull shots pierce\na whole row.", "trait": "Homes in. Moths follow the light.",
+		"card": "Hold to charge.\nCharged shots\npierce through.", "trait": "Homes in. Moths follow the light.",
 		"stats": [4, 2, 5], "glows": true, "handler": "",
 		"hint": "Hold %s: charge, release: shoot", "coach": "Hold %s to charge,  release to shoot.  Watch the ring fill",
 		"shop": "hold to charge, full shot pierces", "echo_every": 1, "slave_every": 1, "slave_damage": 40.0, "ready": true},
@@ -38,7 +38,7 @@ const LIST := [
 		"hint": "%s: steam blast", "coach": "Tap %s: steam blast all around you  (it needs to cool down)",
 		"shop": "steam blast all around you", "echo_every": 1, "slave_every": 1, "slave_damage": 45.0, "ready": true},
 	{"id": "shotgun", "qa_press": "hold", "qa_range": 40.0, "name": "SCRAP SHOTGUN", "icon": "shotgun",
-		"card": "Tap: a fan of\nscrap. Huge up close.\nKicks you back.", "trait": "Shoot down in the air to hop.",
+		"card": "Sprays scrap\npoint-blank.\nMind the kick...", "trait": "Shoot down in the air to hop.",
 		"stats": [4, 3, 2], "glows": false, "handler": "res://scripts/combat/weapons/shotgun.gd",
 		"hint": "%s: blast (in the air: kick)", "coach": "Tap %s: blast a fan of scrap.  In the air the kick moves you",
 		"shop": "a fan of scrap, kicks you back", "echo_every": 1, "slave_every": 1, "slave_damage": 40.0, "ready": true},
@@ -48,7 +48,7 @@ const LIST := [
 		"hint": "Hold %s: warm up, keep holding: sweep", "coach": "Hold %s: the tube lights up, then the beam sweeps through them all",
 		"shop": "a sweeping beam, pierces all", "echo_every": 1, "slave_every": 1, "slave_damage": 45.0, "ready": true},
 	{"id": "record", "qa_press": "tap", "qa_range": 60.0, "name": "RECORD SLINGER", "icon": "record",
-		"card": "Throw a record.\nCuts going out.\nCuts coming back.", "trait": "Catch it to throw again.",
+		"card": "Fling a record.\nIt always\ncomes back.", "trait": "Catch it to throw again.",
 		"stats": [3, 3, 4], "glows": false, "handler": "res://scripts/combat/weapons/record.gd",
 		"hint": "%s: throw a record", "coach": "Tap %s: throw a record.  It comes back - catch it",
 		"shop": "a record that flies back", "echo_every": 1, "slave_every": 1, "slave_damage": 40.0, "ready": true},

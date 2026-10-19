@@ -225,7 +225,7 @@ func _opening_banner() -> void:
 	_after(1.2, func() -> void:
 		_opening_pending = false
 		if is_instance_valid(hud) and not _leaving:
-			hud.show_banner(tr("Find the house from the tape. Up and to the right."), 3.0))
+			hud.show_banner(tr("A memory surfaces. Up, then right, it seems."), 3.0))
 
 
 func _tiled_layer(layer: String, z: int, tint: Color, unshaded: bool) -> Node2D:
