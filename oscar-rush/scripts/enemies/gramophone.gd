@@ -52,7 +52,7 @@ const ARM_TIP := Vector2i(10, 30)
 const MOUTH := Vector2i(6, 11)
 ## 第一次放声波时那行提示：Coach.seen 里的键、英文原文（中文在 localization/text.csv）
 const GAP_HINT_KEY := "gramophone_gap"
-const GAP_HINT := "Stand in the green"
+const GAP_HINT := "Get in the green!"
 ## 声波缺口离主角站的地方多远、地面上那一段的一半宽
 const ZONE_STEP := 50.0
 const ZONE_HALF := 20.0

@@ -12,10 +12,10 @@ func _configure() -> void:
 	fg_tex = preload("res://art/boss/room_fg.png")
 	platforms = [Vector3(20, 76, 128), Vector3(100, 156, 104), Vector3(30, 86, 78)]
 	lamps = [Vector2(80, 16), Vector2(240, 16)]
-	boss_tip = "Embers rain down: stand under a platform"
+	boss_tip = "Embers falling! Get under a platform!"
 	boss_name = "THE STOKER"
-	card_sub = "It burns what you remember."
-	defeat_line = "Somebody else's memories. Burned."
+	card_sub = "It hunts for what you can't forget, and burns it all!"
+	defeat_line = "A furnace full of someone else's memories. All ash now."
 	clear_banner = "BOILER BAY CLEARED"
 	next_shop = "res://scenes/level2.tscn"
 

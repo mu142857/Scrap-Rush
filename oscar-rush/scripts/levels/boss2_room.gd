@@ -12,8 +12,8 @@ const PLATES := [Vector2(8, 80), Vector2(80, 152), Vector2(152, 224)]
 var _wall_lights: Array[PointLight2D] = []
 const LAST_CALLS := [
 	"\"...hello? is anyone—\"",
-	"\"...tell them I tried to come home—\"",
-	"\"...can you hear me? the line is—\"",
+	"\"...tell them I wanted to come home—\"",
+	"\"...can you hear me? the line's going—\"",
 ]
 
 
@@ -27,13 +27,13 @@ func _configure() -> void:
 	lamps = []
 	darkness = Color(0.42, 0.37, 0.36)
 	darkness_hot = Color(0.42, 0.3, 0.22)
-	boss_tip = "Watch the red shadow: it drops on you. Benches give cover"
+	boss_tip = "Red shadow on the floor: it's coming down. Get under a bench!"
 	# 蒸汽锤的圈够不到吊着的总机（插孔板离地约 100 像素）：站上长凳或桌子就够得着（自动化测试：每秒 83~96）
 	if Upgrades.anyone_has("hammer"):
-		boss_tip = "Steam hammer: stand on a bench or the desk to reach it"
+		boss_tip = "Your hammer can't reach it. Get up on a bench or the desk!"
 	boss_name = "THE OPERATOR"
-	card_sub = "It keeps every voice it ever heard."
-	defeat_line = "Somebody else's last call."
+	card_sub = "Everyone who ever called, it kept their voice."
+	defeat_line = "Someone's last call home..."
 	clear_banner = "SWITCHBOARD CLEARED"
 	next_shop = "res://scenes/level3.tscn"
 

@@ -45,6 +45,10 @@ const WARM := Color8(255, 211, 138)
 const DIM := Color(0.55, 0.55, 0.6)
 const LIT := Color(1, 1, 1)
 const OPTION_TOP := 104.0
+## 有"继续"这一项时 _option_hints 里放这个记号，说明由 _continue_hint() 现算
+const CONTINUE_HINT := "@continue"
+## 选项多的时候整列往上挪，别压到四个船员头上（10-19 作者截图：CREDITS 压在船员头上）；最高不超过标题下沿
+const OPTION_TOP_MIN := 84.0
 ## 副标题（三关：蒸汽·信号·雪花）的位置；中文模式多一行"倒带冲刺"，副标题往下挪 SUB_ZH_SHIFT
 const SUB_Y := 72.0
 const SUB_ZH_SHIFT := 13.0
@@ -153,7 +157,9 @@ func _ready() -> void:
 			add_child(shots)
 	if _has_continue():
 		_options.insert(0, "CONTINUE")
-		_option_hints.insert(0, _continue_hint())
+		# 不在这里算好写死：语言晚一步生效或者在设置里切了语言，会留着上一种语言的字（10-19 作者："为什么这个是中文"）。
+		# 放一个记号，_refresh 每次现算
+		_option_hints.insert(0, CONTINUE_HINT)
 	# 网页版关不掉页面，不放 QUIT
 	if OS.has_feature("web"):
 		var qi := _options.find("QUIT")
@@ -261,12 +267,13 @@ func _build_ui() -> void:
 	# （像素字体的中文放到 33 号不好看）；中文模式在大字下面加一行小字"倒带冲刺"，副标题往下挪一行，见 _process
 	_title = _label("REWIND RUSH", 30.0, 33, WARM, 4)
 	_title.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
-	_sub = _label("STEAM · SIGNAL · STATIC", SUB_Y, 11, DIM, 2)
+	# 副标题去掉了（10-19 作者："这个'倒带·冲刺·雪花'没意义，删掉"）；_sub 留成空的，给中文那行"倒带冲刺"当挂点
+	_sub = _label("", SUB_Y, 11, DIM, 2)
 	# 挂在副标题下面：副标题藏起来、淡入淡出时它跟着走，不用另外进各个列表
 	_name_zh = _label("REWIND RUSH", 0.0, 11, WARM.darkened(0.15), 2, _sub)
 	_name_zh.position = Vector2(0, -SUB_ZH_SHIFT)
 	for i in _options.size():
-		_option_labels.append(_label(_options[i], OPTION_TOP + i * _step(), 22, DIM, 3))
+		_option_labels.append(_label(_options[i], _option_top() + i * _step(), 22, DIM, 3))
 	_hint = _label("", 246.0, 11, DIM, 2)
 	_icons = Control.new()
 	_icons.size = Vector2(480, 270)
@@ -383,7 +390,8 @@ func _headphones_note() -> void:
 	box.add_child(icon)
 	var l := Label.new()
 	l.label_settings = Hud.small_text(DIM)
-	l.text = tr("Headphones recommended")
+	# 不用 tr() 写死：Label 自己按当前语言翻，切了语言跟着变
+	l.text = "Headphones recommended"
 	l.position = Vector2(12, -1)
 	l.size = Vector2(190, 12)
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -413,7 +421,7 @@ func _refresh() -> void:
 		var l := _option_labels[i]
 		var on := i == _selected and _icon < 0
 		l.text = ("> " + tr(_options[i])) if on else "  " + tr(_options[i])
-		var y := OPTION_TOP + i * _step()
+		var y := _option_top() + i * _step()
 		l.label_settings.font_color = LIT if on else DIM
 		l.scale = Vector2.ONE
 		if on:
@@ -425,7 +433,8 @@ func _refresh() -> void:
 	var keys := (tr("%s select    %s confirm") % [Controls.label("select"), Controls.label("confirm")]) if Controls.using_pad \
 		else (tr("%s select    %s confirm    F11 fullscreen") % [Controls.label("select"), Controls.label("confirm")])
 	var h := _option_hints[_selected] if _icon < 0 else ICON_HINTS[_icon]
-	_hint.text = keys if h == "" else tr(h) + "\n" + keys
+	var ht := _continue_hint() if h == CONTINUE_HINT else tr(h)
+	_hint.text = keys if h == "" else ht + "\n" + keys
 	_hint.position.y = 246.0 if h == "" else 234.0
 	_hint.size.y = 30.0
 
@@ -548,7 +557,7 @@ func _unhandled_input(event: InputEvent) -> void:
 ## 鼠标指着第几项（480×270 的坐标），没指着返回 -1
 func _option_at() -> int:
 	var pos := get_viewport().get_mouse_position()
-	var i := floori((pos.y - OPTION_TOP + 2.0) / _step())
+	var i := floori((pos.y - _option_top() + 2.0) / _step())
 	return i if i >= 0 and i < _options.size() and absf(pos.x - 240.0) < 90.0 else -1
 
 
@@ -586,6 +595,18 @@ func _confirm() -> void:
 
 func _step() -> float:
 	return Lang.menu_step(OPTION_STEP)
+
+
+## 选项列的顶：三项照旧在 OPTION_TOP，多一项往上挪一格，最高到 OPTION_TOP_MIN（中文多一行"倒带冲刺"，再低 4）
+func _option_top() -> float:
+	var top := OPTION_TOP - maxi(0, _options.size() - 3) * _step()
+	return maxf(top, OPTION_TOP_MIN + (4.0 if Lang.is_zh() else 0.0))
+
+
+## 切了语言：说明、按键提示这些现拼的字重算一遍
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_TRANSLATION_CHANGED and is_node_ready() and _hint != null:
+		_refresh()
 
 
 ## 开始 → 单人还是合作。sound = false：从下一步按返回回来的，不再响一声确认

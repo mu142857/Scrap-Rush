@@ -14,7 +14,7 @@ extends Control
 ##   1 木木：导演 程序 光影 特效      2 奥斯卡：策划 动画 场景设计 画风设计
 ##   3 本2兔（英文 Bentootoo）：音乐、文案    4 梧桐：立绘（作者 10-19："所有人还是分开吧"、"先去掉 Rouri"、
 ##     "Bentootoo 加上文案标签，然后在梧桐前面"）
-##   5 工具与协作（小字分组）：美术 Aseprite、Dotpict、小奥斯卡（木木做的）；音乐 FL Studio、Ableton Live 12 Lite；
+##   5 工具与协作（小字分组）：美术 Aseprite、Dotpict、小奥斯卡（木木做的）；音乐 Ableton Live 12 Lite（作者 10-19：删掉 FL Studio）；
 ##     音效 Python + NumPy；引擎和协作 Godot、Claude
 ##   6：制作于 2026 年 10 月，底下小字：制作工具、字体和 Godot 的授权。按 L / 手柄 Y / 点小字看授权全文
 ## 确认键 / 鼠标左键：跳到下一页；Esc / B / 右键：直接回开始菜单。放完自己回去。
@@ -101,7 +101,7 @@ const SLIDES := [
 	{"title": "Tools & Collaboration", "color": "d8d4cc", "gap": 8.0, "hold": 7.5, "blocks": [
 		{"head": "Art", "lines": ["Aseprite (animation)  /  Dotpict (portraits)",
 			"Little Oscar (Oscar's style rules & tools, made by Mumu)"]},
-		{"head": "Music", "lines": ["FL Studio  /  Ableton Live 12 Lite"]},
+		{"head": "Music", "lines": ["Ableton Live 12 Lite"]},
 		{"head": "Sound Effects", "lines": ["Python + NumPy (synthesized in code, no recorded samples)"]},
 		{"head": "Engine & Collaboration", "lines": ["Godot Engine  /  Claude (Anthropic)"]},
 	],

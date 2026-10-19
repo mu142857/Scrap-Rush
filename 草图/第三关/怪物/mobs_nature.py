@@ -95,7 +95,7 @@ def aq_cannon(c, f):
 
 @mob("aquarium", "aq_angler", ELITE, 46, 36,
      "灯笼鱼：额前挑着一只老灯泡，张开满是牙的大嘴横冲过来；一张嘴扇形喷出气泡；灯一闪叫来小丑鱼",
-     moves=["charge", "spray", "summon"], elite_name="DEEP ANGLER", title="FOLLOW THE LIGHT", hp=950,
+     moves=["charge", "spray", "summon"], elite_name="DEEP ANGLER", title="COME TO THE LIGHT", hp=950,
      bullet="rivet")
 def aq_angler(c, f):
     body = (150, 124, 118)

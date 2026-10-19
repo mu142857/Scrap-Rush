@@ -25,10 +25,10 @@ const FACES := {
 const NAMES := {"red": "RED", "robot": "ROBOT", "dino": "DINO", "bird": "BIRD"}
 ## 台词：[谁说, 英文（也是 text.csv 的键）]
 const LINES := {
-	"boss1_end": ["dino", "Those burned photos were someone's home."],
-	"boss2_end": ["red", "Whatever we have to say, we say at home."],
-	"boss3_end": ["dino", "Shh. Wait. It's not off yet."],
-	"shop": ["dino", "Catch your breath. I'll patch the lantern."],
+	"boss1_end": ["dino", "Every photo it burned was somebody's home."],
+	"boss2_end": ["red", "Whatever it is, tell me at home."],
+	"boss3_end": ["dino", "Shh. Don't move. It's still on."],
+	"shop": ["dino", "Catch your breath. I'll patch up the lantern."],
 }
 ## 新手提示是谁的声音（Coach 画小脸用）
 const COACH_VOICE := "robot"

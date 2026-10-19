@@ -421,11 +421,11 @@ static func _elite(ch: String, file: String, name: String, title: String, hf: in
 
 ## 第三关小怪说明：按打法给一句（再加上"从哪个屏幕里爬出来的"，见 bestiary_menu.gd）
 const KIND_DESC := {
-	"fly": "Flutters toward light. Hit it before it dives.",
-	"hop": "Hops at you. Watch the red mark where it lands.",
-	"dash": "Flashes, then dashes. Hit it while it rests.",
-	"shoot": "Keeps its distance and fires. Close in fast.",
-	"elite": "Watch for the red \"!\" before each move.",
+	"fly": "Loves the light. Swat it before it dives.",
+	"hop": "Hops your way. The red mark is where it lands.",
+	"dash": "Flashes, then charges. Hit it while it catches its breath.",
+	"shoot": "Snipes from afar. Get in its face.",
+	"elite": "A red \"!\" pops up before every move. See it, dodge it.",
 }
 
 ## 第三关的场景（每个场景是一台电视里的一个频道）

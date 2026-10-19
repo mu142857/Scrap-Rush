@@ -45,9 +45,9 @@ void fragment() {
 """
 ## 三档旁白：血量高 / 中 / 低
 const LINES := [
-	["The house on the hill. The porch light is on.", "Somebody left it on for us.", "We know the way home now."],
-	["...a house... a light in the window...", "...the signal keeps slipping...", "Close. We're close."],
-	["Snow. Almost all snow.", "For one frame: a lit window.", "That's enough. We know the way now."],
+	["The house on the hill. The porch light is still on.", "Someone's been waiting for us all along.", "This time, we won't get lost."],
+	["...a house... a light in the window...", "...the signal keeps slipping...", "Close now. The signal's getting clearer."],
+	["Snow across the whole screen, hissing on and on.", "One frame slips through the snow: a window, still lit.", "Let's stop here. We always knew where home was."],
 ]
 
 ## 墙上两盏壁灯灯罩的位置（room3_bg 里灯罩中心，减掉边距 M）
@@ -77,10 +77,10 @@ func _configure() -> void:
 	# 夜间打磨：原来 0.24 太暗（第三关会话报告：中位亮度 16/255）
 	darkness = Color(0.34, 0.33, 0.38)
 	darkness_hot = Color(0.42, 0.3, 0.38)
-	boss_tip = "It charges along the floor: jump up onto the hanging TVs"
+	boss_tip = "Quick, jump onto the hanging TVs!"
 	boss_name = "THE SET"
-	card_sub = "The last TV that still plays tapes."
-	defeat_line = "It stopped changing channels."
+	card_sub = "That familiar hiss of static again. The last TV that can still play tapes."
+	defeat_line = "Even the last old TV stopped changing channels. Shame, I still wanted to rewatch a few tapes."
 	defeat_wait = 3.4
 
 

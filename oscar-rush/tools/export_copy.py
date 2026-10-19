@@ -56,6 +56,8 @@ WIDTH = {
     "tutorial/tutorial_level": 360, "ui/prologue": 360, "ui/interlude": 360, "ui/pause_menu": 470,
     "ui/title_screen": 470, "ui/settings_menu": 470, "levels/level2": 240, "levels/level3.gd": 240,
     "levels/test_level": 240, "ui/emotion_fx": 470, "ui/results_screen": 300,
+    # Boss 房：名字卡副标题、倒下那句、结局旁白都是屏幕正中一行（480 宽，不折行）；打法提示走新手提示框（440）
+    "levels/boss_room": 470, "levels/boss2_room": 470, "levels/boss3_room": 470,
 }
 ## 没有固定框的，允许比现在最长的那种语言再长这么多
 SLACK = 1.3

@@ -35,6 +35,8 @@ IGNORE = {
     "LEVEL %d",  # level_intro 先拼成 "LEVEL 1/2/3" 再 tr，那几条在表里
     "SCRAP-TEK 86   BIOS v1.986", "%dK",  # 第三关开机画面的品牌行和内存数，画面道具，不翻
     "LB", "RB", "LS", "RS", "Share", " / RT",  # 手柄按钮缩写，两种语言一样
+    "Backspace",  # 网页版的返回键名，两种语言一样
+    "@continue",  # 标题菜单"继续"那行说明的内部记号
     "WINDUP",  # 精英招式常量名（reveal_moves）
     "TAPE %d · %s", "STEAM", "SIGNAL", "STATIC",  # 关卡名字卡先拼成 "TAPE 1 · STEAM" 再 tr，那三条在表里
 }
