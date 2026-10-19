@@ -66,7 +66,8 @@ func _ready() -> void:
 
 # —— 能不能写作者真正的存档（10-18 监督会话：各会话编译检查时直接开 test_level，进关自动存档覆盖了作者的 run.cfg）——
 ## 只有"正常开的游戏"才写 user:// 下的存档（run.cfg、图鉴、打到第几关）：
-## 正式导出的游戏或编辑器里按运行，并且是从主场景（开始菜单）开起来的，并且不是 headless / 录像 / 带 -- 测试参数。
+## 正式导出的游戏或编辑器里按运行（F5，嵌入不嵌入都算；靠调试器认），并且是从主场景（开始菜单）开起来的，
+## 并且不是 headless / 录像 / 带 -- 测试参数（-- 后面随便带什么都算测试，比如 -- --scrap-test）。
 ## 直接打开关卡场景、-s 测试脚本、命令行跑的测试一律不写（设了 SCRAP_*_PATH 的测试照常写到它们自己的文件）。
 var _real_launch := false
 
@@ -77,12 +78,14 @@ func _check_launch() -> void:
 	if main.begins_with("uid://"):
 		main = ResourceUID.get_id_path(ResourceUID.text_to_id(main))
 	var from_main := cs != null and cs.scene_file_path == main
-	var proper := OS.has_feature("template")
-	for a in OS.get_cmdline_args():
-		if a == "--editor-pid" or a.begins_with("--remote-debug"):
-			proper = true
+	# 10-19 作者「我重新进入游戏，我的记录没了」：原来靠在 OS.get_cmdline_args() 里找 --editor-pid / --remote-debug 认"编辑器里按运行"，
+	# 但引擎会把这两个参数吃掉，游戏里根本看不到，于是编辑器 F5 一律判成测试，什么都没存。
+	# 现在：导出版（template），或者连着编辑器调试器（编辑器 F5 不管嵌不嵌入都会连；命令行跑的测试没有调试器）
+	var proper := OS.has_feature("template") or EngineDebugger.is_active()
 	_real_launch = from_main and proper and DisplayServer.get_name() != "headless" \
 			and Engine.get_write_movie_path() == "" and OS.get_cmdline_user_args().is_empty()
+	print("[run] save=%s (from_main=%s proper=%s display=%s movie=%s user_args=%s)" % [_real_launch, from_main, proper,
+			DisplayServer.get_name(), Engine.get_write_movie_path() != "", OS.get_cmdline_user_args()])
 
 
 ## 这次运行能不能写作者真正的存档文件（图鉴、打到第几关也用这个）

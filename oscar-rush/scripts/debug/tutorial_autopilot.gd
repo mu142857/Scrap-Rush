@@ -19,6 +19,10 @@ var _blocked := 0.0
 var _hold_t := 0.0
 var _was_air := false
 var _carry_tried := false
+var _last_sub := -1
+var _sub_t := 0.0
+var _hp0 := 0.0
+var _coach_move := ""
 
 
 func _ready() -> void:
@@ -53,6 +57,11 @@ func _physics_process(delta: float) -> void:
 		_last_step = step
 		_stuck = 0.0
 	_stuck += delta
+	if sub != _last_sub:
+		_last_sub = sub
+		_sub_t = 0.0
+		_hp0 = Run.crystal_hp
+	_sub_t += delta
 	if _stuck > 20.0:
 		print("tauto: STUCK at step %d sub %d, player %s" % [step, sub, _p.global_position.round()])
 		get_tree().quit()
@@ -65,7 +74,12 @@ func _physics_process(delta: float) -> void:
 		1:
 			for e in _lvl.get("_targets"):
 				if is_instance_valid(e) and not e.get("dead"):
-					e.call("hurt", 99999.0, Vector2.LEFT, true)
+					# 挡板款先打一下没蓄满的（应该"当"一声挡住、出提示），下一帧再打蓄满的
+					if e.get("kind") == "shield" and not e.get("blocked"):
+						e.call("hurt", 10.0, Vector2.LEFT, false)
+						print("tauto: shield target blocked=%s dead=%s" % [e.get("blocked"), e.get("dead")])
+					else:
+						e.call("hurt", 99999.0, Vector2.LEFT, true)
 			_walk_right(true)
 		2:
 			var r: Dictionary = rooms[2]
@@ -80,8 +94,17 @@ func _physics_process(delta: float) -> void:
 				elif _f % 20 == 0:
 					Input.action_press(_act("crystal"))
 			elif sub == 3:
-				_try_fly(r, false)
+				# 铁皮蛾：等它扑中地上的灯一下（马灯掉血），再打掉
+				var m: Node2D = _lvl.get("_moth")
+				var c: Node2D = _lvl.get("_crystal")
+				if is_instance_valid(m) and not m.get("dead") and (Run.crystal_hp < _hp0 or _sub_t > 10.0):
+					print("tauto: moth %s the lantern (%.0f px, %.1f s after it came, lantern hp %.0f/%.0f)" % [
+						"hit" if Run.crystal_hp < _hp0 else "did NOT hit", m.global_position.distance_to(c.global_position), _sub_t,
+						Run.crystal_hp, Run.crystal_max])
+					m.call("hurt", 99999.0, Vector2.LEFT, true)
 			elif sub == 4:
+				_try_fly(r, false)
+			elif sub == 5:
 				var c: Node2D = _lvl.get("_crystal")
 				_p.global_position = c.global_position + Vector2(-6, -2)
 				_p.velocity = Vector2.ZERO
@@ -90,8 +113,16 @@ func _physics_process(delta: float) -> void:
 			else:
 				_walk_right(true)
 		3, 4:
+			# 先让怪出几招（拳击手收一次拳、大陪练放两招），看行为跑得通，再打掉
+			var wait: bool = (step == 3 and not _lvl.get("_boxer_said")) or (step == 4 and _stuck < 9.0)
 			for e in get_tree().get_nodes_in_group("enemy"):
+				if e is TutorialCoach and str(e.get("_pattern")) != "" and str(e.get("_pattern")) != _coach_move:
+					print("tauto: coach move %s, hp %.0f/%.0f" % [e.get("_pattern"), e.get("hp"), e.get("max_hp")])
+				if e is TutorialCoach:
+					_coach_move = str(e.get("_pattern"))
 				if e.has_method("in_intro") and e.call("in_intro"):
+					continue
+				if wait and _stuck < 15.0:
 					continue
 				if not e.get("dead") and _f % 30 == 0:
 					e.call("hurt", 99999.0, Vector2.LEFT, true)
@@ -102,6 +133,8 @@ func _physics_process(delta: float) -> void:
 					Input.action_press(_act("right" if dx > 0 else "left"))
 				elif _f % 20 == 0 and _p.is_on_floor():
 					Input.action_press(_act("down"))
+			elif step == 4 and wait and _p.global_position.x > float(rooms[4]["ox"]) + 90.0:
+				pass                       # 等大陪练出招时站在屋子左边，别贴着右门（冲撞会被门挡住改成跳砸）
 			else:
 				_walk_right(true)
 		_:

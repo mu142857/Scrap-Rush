@@ -55,6 +55,7 @@ var _spool: Spool
 
 
 func _setup() -> void:
+	reveal_moves = ["STITCH_WARN", "SPOOL_WARN"]   # 露底（EliteBase）：这几招都亮过就加伤；贴身才出的近身招不算
 	elite_name = "SEWING MACHINE"
 	intro_title = "STITCHED UP"
 	intro_frame = 3

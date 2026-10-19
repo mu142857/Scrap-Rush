@@ -88,6 +88,7 @@ var _snapped := false
 
 
 func _setup() -> void:
+	reveal_moves = ["BEAM_WARN", "SCREEN_WARN"]   # 露底（EliteBase，布谷鸟钟会话加的一行）：这几招都亮过就加伤
 	elite_name = "CINEMA PROJECTOR"
 	intro_title = "NOW SHOWING"
 	intro_frame = 16

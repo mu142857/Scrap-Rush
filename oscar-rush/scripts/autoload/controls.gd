@@ -229,7 +229,7 @@ func key_label(code: int) -> String:
 
 
 func pad_label(button: int) -> String:
-	return tr(PAD_BUTTON_NAMES.get(button, "Button %d" % button))
+	return tr(PAD_BUTTON_NAMES[button]) if PAD_BUTTON_NAMES.has(button) else tr("Button %d") % button
 
 
 func all_schemes() -> Array[String]:

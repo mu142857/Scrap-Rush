@@ -47,6 +47,7 @@ var _bite_cd := 0.0
 
 
 func _setup() -> void:
+	reveal_moves = ["TOSS_WARN"]   # 露底（EliteBase）：这几招都亮过就加伤；贴身才出的近身招不算
 	elite_name = "CASH REGISTER"
 	intro_title = "NO REFUNDS"
 	intro_frame = 4

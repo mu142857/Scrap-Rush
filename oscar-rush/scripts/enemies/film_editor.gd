@@ -82,6 +82,7 @@ var _leaping := false
 
 
 func _setup() -> void:
+	reveal_moves = ["CHARGE_WARN", "CUT_WARN"]   # 露底（EliteBase，布谷鸟钟会话加的一行）：这几招都亮过就加伤
 	elite_name = "FILM EDITOR"
 	intro_title = "FINAL CUT"
 	intro_frame = 2

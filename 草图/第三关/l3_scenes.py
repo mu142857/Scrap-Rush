@@ -124,6 +124,21 @@ def house(hx, gy, w=64, wall_h=36, gable=26, wall=(222, 206, 180), roof=(160, 86
     front = [(hx, gy), (hx + w, gy), (hx + w, top), (hx + w // 2, top - gable), (hx, top)]
     floor_shadow(hx - 10, hx + w, gy, 4)
     extrude(front, wall, depth=0.12, cap=16, top=roof, side=shade(wall, -3))
+    # 侧面那半边屋顶（10-19 作者："房子左侧的屋顶看着有问题"）：extrude 是从墙角 (hx, top) 挤出去的，
+    # 可正面的檐板伸出墙外 4 格、往下 3 格，屋顶斜面没跟着伸，檐板头戳进侧墙里，屋顶像一块往下滑的板。
+    # 这里照 extrude 同样的挤出方向，从伸出去的檐口重画这半边屋顶，再给它的檐口和后沿各压一道边。
+    fcx = sum(p[0] for p in front) / len(front)
+    fcy = sum(p[1] for p in front) / len(front)
+    span = min(w, wall_h + gable)
+    rcap = int(min(16, max(1, span // 2 + 1)))
+    ox = int(np.clip(round((k.VP[0] - fcx) * 0.12), -rcap, rcap))
+    oy = int(np.clip(round((k.VP[1] - fcy) * 0.12), -rcap, rcap))
+    apex = (hx + w // 2, top - gable - 1)
+    eave = (hx - 4, top + 3) if ox < 0 else (hx + w + 4, top + 3)
+    roof_side = None
+    if ox != 0 and oy < 0:
+        roof_side = [eave, apex, (apex[0] + ox, apex[1] + oy), (eave[0] + ox, eave[1] + oy)]
+        S().poly(roof_side, roof)
     # 瓦：屋顶色的像素每隔 3 行暗一档，再在瓦檐上压一道亮边
     sub = S().a
     ys, xs = np.nonzero((sub[..., 0] == roof[0]) & (sub[..., 1] == roof[1]) & (sub[..., 2] == roof[2]))
@@ -135,6 +150,10 @@ def house(hx, gy, w=64, wall_h=36, gable=26, wall=(222, 206, 180), roof=(160, 86
     # 屋檐：沿两条山墙边各一道 2 格粗的檐板，伸出墙外
     for (ax, ay), (bx, by) in [((hx - 4, top + 3), (hx + w // 2, top - gable - 1)), ((hx + w // 2, top - gable - 1), (hx + w + 4, top + 3))]:
         S().line(ax, ay, bx, by, shade(roof, -2)); S().line(ax, ay - 1, bx, by - 1, roof); S().line(ax, ay + 1, bx, by + 1, shade(roof, -3))
+    if roof_side:
+        e0, a0, a1, e1 = roof_side
+        S().line(e0[0], e0[1], e1[0], e1[1], shade(roof, -3))                  # 侧面的檐口
+        S().line(a1[0], a1[1], e1[0], e1[1], shade(roof, -2))                  # 屋顶后沿
     # 山墙上的小圆窗
     disc(hx + w // 2, top - gable // 2 + 2, 3, (250, 214, 140)); S().put(hx + w // 2 - 1, top - gable // 2 + 1, (255, 240, 200))
     # 烟囱 + 烟

@@ -24,7 +24,8 @@ const MUTATIONS := [
 	["rewind", "REWIND TAPE", ["When the lantern breaks, you and the lantern rewind %s s instead.", "Once per level. The lantern comes back with at least %d%%."]],
 ]
 const GEAR := [
-	["charge", "QUICK CHARGE", ["Per level: the Flash Lamp charges %s s faster, the Rivet Gun fires %s s faster, the Steam Hammer cools down %s s faster.", "Charge never drops below %s s, cooldown never below %s s."]],
+	# 快充对 7 把武器各不一样（10-19 作者觉得只写老三把有迷惑性）：每把一行，数字在 _quick_lines 里从各武器脚本现读
+	["charge", "QUICK CHARGE", ["Per level, for the weapon in your hand:"]],
 	["fuel", "BIG TANK", ["Per level: +0.35 s of rocket boot fuel.", "Base fuel is 1.0 s, or 0.7 s while you carry the lantern."]],
 	["plating", "PLATING", ["Blocks one hit on the lantern every 20 / 15 / 10 s (Lv1 / Lv2 / Lv3)."]],
 	["damping", "DAMPER", ["Per level: emotion rises 20% slower over time.", "At Lv3 it climbs at 40% speed."]],
@@ -48,6 +49,9 @@ var _headers: Array[Label] = []
 var _name: Label
 var _cost: Label
 var _desc: Label
+## 说明太长（快充 8 行）时详情卡改紧凑排法：大图标缩成 2 倍，名字、价钱、说明往上挪
+var _compact := false
+const COMPACT_UP := 38.0
 
 
 func _ready() -> void:
@@ -75,17 +79,23 @@ func _ready() -> void:
 	_ready_for_input = true
 
 
-## 快充的数直接从 player.gd 读（武器手感一调，这里跟着变）：每级快多少，以及最快能到多少
-## （最快值是拿一个满级的主角问它自己的 charge_time() / hammer_cooldown()，不在场景里、不跑 _ready）
-func _quick_charge_numbers() -> Array:
-	var script: GDScript = load("res://scripts/player/player.gd")
-	var c: Dictionary = script.get_script_constant_map()
-	var p: Node = script.new()
-	p.set("charge_level", 99)
-	var out := [_num(c["CHARGE_UPGRADE"]), _num(c["RIVET_UPGRADE"]), _num(c["HAMMER_UPGRADE"]),
-		_num(p.call("charge_time")), _num(p.call("hammer_cooldown"))]
-	p.free()
-	return out
+## 快充每升一级，每把武器快多少：老三把读 player.gd，新四把读各自的出招脚本（不写类名，load 了读常量）
+func _quick_lines() -> PackedStringArray:
+	var pl: Dictionary = load("res://scripts/player/player.gd").get_script_constant_map()
+	var sg: Dictionary = load("res://scripts/combat/weapons/shotgun.gd").get_script_constant_map()
+	var lz: Dictionary = load("res://scripts/combat/weapons/laser.gd").get_script_constant_map()
+	var rc: Dictionary = load("res://scripts/combat/weapons/record.gd").get_script_constant_map()
+	var tg: Dictionary = load("res://scripts/combat/weapons/tongs.gd").get_script_constant_map()
+	var wname := func(id: String) -> String: return tr(WeaponRegistry.get_def(id).get("name", id))
+	return [
+		tr("%s: charges %s s faster") % [wname.call("flash"), _num(pl["CHARGE_UPGRADE"])],
+		tr("%s: %s s less between rivets") % [wname.call("rivet"), _num(pl["RIVET_UPGRADE"])],
+		tr("%s: cools down %s s faster") % [wname.call("hammer"), _num(pl["HAMMER_UPGRADE"])],
+		tr("%s: %s s less between blasts") % [wname.call("shotgun"), _num(sg["INTERVAL_UPGRADE"])],
+		tr("%s: charges %s s faster") % [wname.call("laser"), _num(lz["CHARGE_UPGRADE"])],
+		tr("%s: flies %d%% faster") % [wname.call("record"), roundi(rc["QUICK_SPEED"] * 100.0)],
+		tr("%s: %s s less between arcs") % [wname.call("tongs"), _num(tg["INTERVAL_UPGRADE"])],
+	]
 
 
 func _num(v: float) -> String:
@@ -133,9 +143,7 @@ func _select(i: int) -> void:
 	var lines: PackedStringArray = PackedStringArray(e[2].map(func(line): return tr(line)))
 	match e[0]:
 		"charge":
-			var q := _quick_charge_numbers()
-			lines[0] = lines[0] % [q[0], q[1], q[2]]
-			lines[1] = lines[1] % [q[3], q[4]]
+			lines.append_array(_quick_lines())
 		"slave":
 			lines[1] = lines[1] % [Mutations.SLAVE_DAMAGE, Mutations.SLAVE_RIVET_DAMAGE, Mutations.SLAVE_RIVET_EVERY, Mutations.SLAVE_HAMMER_DAMAGE]
 		"fuse":
@@ -150,6 +158,12 @@ func _select(i: int) -> void:
 			lines[0] = lines[0] % _num(Mutations.REWIND_SECONDS)
 			lines[1] = lines[1] % roundi(Mutations.REWIND_MIN_HP * 100.0)
 	_desc.text = "\n".join(lines)
+	_desc.size = Vector2(DETAIL.size.x - 16, 0)
+	_compact = 110.0 + _desc.get_minimum_size().y > DETAIL.size.y - 4.0
+	var up := COMPACT_UP if _compact else 0.0
+	_name.position.y = DETAIL.position.y + 78 - up
+	_cost.position.y = DETAIL.position.y + 91 - up
+	_desc.position.y = DETAIL.position.y + 110 - up
 
 
 ## 总图鉴调：用掉了返回 true
@@ -190,9 +204,15 @@ func _draw_base() -> void:
 		UiStyle.icon(c, ShopStand.ICONS, idx, (r.position + (r.size - Vector2(32, 32)) / 2).round(), 2)
 	UiStyle.panel(c, DETAIL, true, 0.0)
 	# 详情卡：大图标（4 倍），底下一圈暖光底
-	var big := Rect2(DETAIL.get_center().x - 36, DETAIL.position.y + 6, 72, 68)
-	c.draw_rect(big, LIT_FILL)
+	var up := COMPACT_UP if _compact else 0.0
 	var idx := maxi(ShopStand.ICON_NAMES.find(_entry(_sel)[0]), 0)
 	var bob := roundf(sin(_time * 2.5)) if fmod(_time, 2.0) < 1.0 else 0.0
-	UiStyle.icon(c, ShopStand.ICONS, idx, Vector2(big.position.x + 4, big.position.y + 2 + bob), 4)
-	c.draw_rect(Rect2(DETAIL.position.x + 18, DETAIL.position.y + 106, DETAIL.size.x - 36, 1), UiStyle.BAR_OFF)
+	if _compact:
+		var small := Rect2(DETAIL.get_center().x - 18, DETAIL.position.y + 4, 36, 34)
+		c.draw_rect(small, LIT_FILL)
+		UiStyle.icon(c, ShopStand.ICONS, idx, Vector2(small.position.x + 2, small.position.y + 1 + bob), 2)
+	else:
+		var big := Rect2(DETAIL.get_center().x - 36, DETAIL.position.y + 6, 72, 68)
+		c.draw_rect(big, LIT_FILL)
+		UiStyle.icon(c, ShopStand.ICONS, idx, Vector2(big.position.x + 4, big.position.y + 2 + bob), 4)
+	c.draw_rect(Rect2(DETAIL.position.x + 18, DETAIL.position.y + 106 - up, DETAIL.size.x - 36, 1), UiStyle.BAR_OFF)

@@ -17,6 +17,8 @@ const DAMAGE := 8.0
 const GRAVITY := 170.0
 const MAX_FALL := 130.0
 const ROLL_SPEED := 55.0
+## 落地以后最多滚多久就碎（10-19：原来滚到 6 秒，齿轮、橡子满地滚，机器人打落地钟、老树桩挨打一半是它）
+const ROLL_LIFE := 1.6
 const FALL_GRAVITY := 420.0
 
 ## 每种子弹：飞法、三档颜色（亮 → 暗）、形状（字符画，数字是颜色档，"." 空；两帧的会交替）、拖尾长度、速度倍数
@@ -77,11 +79,14 @@ var style := "water"
 var velocity := Vector2.ZERO
 var arena := Rect2(0, 0, 4000, 2000)
 var target: Node2D
+## 滚的子弹（橡子、齿轮、弹珠）这一发落地就碎、不滚（抛射用）
+var no_roll := false
 
 var _s: Dictionary
 var _life := 0.0
 var _done := false
 var _rolling := false
+var _roll_t := 0.0
 var _trail: Array[Vector2] = []
 var _seed := 0.0
 var _tint := Color.WHITE
@@ -183,6 +188,10 @@ func _physics_process(delta: float) -> void:
 
 ## 滚：贴着地面往前，前面是墙就碎，脚下没地就掉下去
 func _roll(delta: float) -> void:
+	_roll_t += delta
+	if _roll_t > ROLL_LIFE:
+		_pop()
+		return
 	var space := get_world_2d().direct_space_state
 	var down := PhysicsRayQueryParameters2D.create(position + Vector2(0, -4), position + Vector2(0, 8), 1)
 	var hit := space.intersect_ray(down)
@@ -208,7 +217,7 @@ func _on_body(body: Node) -> void:
 			return
 	elif body is Crystal:
 		(body as Crystal).take_hit(global_position, dmg)
-	elif _s["move"] == "roll" and not _rolling:
+	elif _s["move"] == "roll" and not _rolling and not no_roll:
 		# 落地开始滚
 		_rolling = true
 		velocity = Vector2(signf(velocity.x) * ROLL_SPEED if velocity.x != 0.0 else ROLL_SPEED, 0)

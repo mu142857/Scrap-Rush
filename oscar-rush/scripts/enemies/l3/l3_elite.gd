@@ -63,7 +63,7 @@ const MOVES := {
 ## 每种打法：走路速度、和主角保持的距离（近了退 / 远了追；near 为 0 就不退）、血量倍数
 const TYPE := {
 	"charger": {"walk": 34.0, "near": 0.0, "far": 50.0, "hp": 1.0},
-	"giant": {"walk": 16.0, "near": 0.0, "far": 34.0, "hp": 1.05},
+	"giant": {"walk": 16.0, "near": 0.0, "far": 34.0, "hp": 0.95},   # 10-19 作者"水塔巨难打"：1.05 → 0.95
 	"flyer": {"walk": 60.0, "near": 0.0, "far": 0.0, "hp": 1.1},
 	"summoner": {"walk": 26.0, "near": 80.0, "far": 130.0, "hp": 0.95},
 	"shield": {"walk": 22.0, "near": 0.0, "far": 46.0, "hp": 0.62},
@@ -90,7 +90,7 @@ const BULLET_SPEED := 88.0
 const MAX_SUMMONS := 2
 const COOLDOWN := Vector2(0.35, 0.7)  # 10-18 作者：招和招之间停太久
 ## 血量在 level3_mobs.gd（生成的，别手改）里，这里统一乘上去，再乘打法的倍数
-const HP_MULT := 2.5  # 10-18 作者：血不够，三把武器 20～35 秒（2.3 → 2.5：分打法以后站桩快了一点）
+const HP_MULT := 2.125  # 10-18 作者：血不够，三把武器 20～35 秒（2.3 → 2.5）；10-19 作者"只有血量降，降到 0.85 倍"：2.5 × 0.85 = 2.125
 ## 预判：落点按主角现在的水平速度再跑这么久来算，最多偏 LEAD_MAX
 const LEAD_TIME := 0.45
 const LEAD_MAX := 56.0
@@ -107,7 +107,9 @@ const SKID_TIME := 0.35
 ## 跺地冲击波：推多远、多快；跳砸落地震下来几块碎块、隔多远
 const STOMP_REACH := 170.0
 const WAVE_SPEED := 130.0
-const SLAM_WAVE_REACH := 90.0
+const SLAM_WAVE_REACH := 60.0   # 10-19 作者"水塔巨难打"：90 → 60（跳砸本身已经有落点和碎石）
+## 大块头两招之间多歇一会儿（冷却 ×1.4）：招大、场子小，喘口气才躲得开
+const GIANT_COOL := 1.4
 const DEBRIS_GAP := 34.0
 ## 飞的：悬多高、离人多远；俯冲多快；往下扔几个、隔多远
 const HOVER_H := 34.0
@@ -190,6 +192,7 @@ func _setup() -> void:
 	arch = a.get("type", "gunner")
 	shot = a.get("shot", "water")
 	_tp = TYPE[arch]
+	reveal_moves = MOVES[arch].duplicate()   # 露底（EliteBase）：这一种打法的三招都亮过就加伤
 	L3Mob.apply_cfg(self, cfg)
 	_load_art(name_key)
 	elite_name = cfg.get("elite_name", "ELITE")
@@ -204,6 +207,7 @@ func _setup() -> void:
 	big = arch == "giant"
 	if arch == "giant":
 		knockback = Vector2(20.0, 8.0)
+		contact_damage = 8.0      # 10-19：身子宽 66～118，落地后常挨着人，碰一下 12 太疼
 	# 飞的：出场照常落地（出场动画要落地），出场完了 0.3 秒再飞起来
 	flying = false
 
@@ -405,11 +409,19 @@ func _tick(delta: float) -> void:
 			if _timer <= 0.0:
 				_state = WALK
 				_cool = randf_range(COOLDOWN.x, COOLDOWN.y) * interval_mult() * (RAGE_COOL if _rage else 1.0)
+				if arch == "giant":
+					_cool *= GIANT_COOL
 				if _move == "blink":
 					_cool *= 0.5        # 闪到背后马上接下一招（下一招照样有完整预警）
 	move_and_slide()
 	_tele.queue_redraw()
 	_pattern = "" if _state == WALK or _state == RECOVER else _move
+	_contact_low(_state == CHARGE or _state == SKID)
+	# 跳砸在空中时身子不碰人（落地那一下由冲击波、碎石管）：从肚子底下钻过去是安全的，
+	# 大块头身宽 110 起跳、落下时也不会擦到人（10-19 机器人打老树桩、潜水员挨打一大半是这个）
+	var air_safe := _state == AIR
+	if _contact and _contact.monitoring == air_safe:
+		_contact.set_deferred("monitoring", not air_safe)
 	if _rage or arch == "shield":
 		_rage_fx.queue_redraw()
 
@@ -470,6 +482,22 @@ func _charge_ground() -> bool:
 	return not get_world_2d().direct_space_state.intersect_ray(q).is_empty()
 
 
+## 冲撞时只有下面 60% 的身子碰人：跳过去时擦着顶也不扣血（10-19 机器人打老浴缸、火车头挨打一大半是冲撞时碰身子）
+var _low := false
+func _contact_low(on: bool) -> void:
+	if on == _low or _contact == null or _contact.get_child_count() == 0:
+		return
+	_low = on
+	var cs := _contact.get_child(0) as CollisionShape2D
+	var rect := cs.shape as RectangleShape2D
+	if rect == null:
+		return
+	var cr := contact_rect if contact_rect.size != Vector2.ZERO else body_rect
+	var h := cr.size.y * (0.6 if on else 1.0)
+	rect.size = Vector2(cr.size.x, h)
+	cs.position = Vector2(cr.get_center().x, cr.end.y - h / 2.0)
+
+
 func cfg_flag(k: String) -> bool:
 	return ARCH.get(_key(), {}).get(k, false)
 
@@ -499,7 +527,9 @@ func _walk(p: Player, delta: float) -> void:
 	dir = want
 	var dist := absf(p.global_position.x - global_position.x)
 	var spd: float = _tp["walk"] * speed_mult() * _rage_mult()
-	if dist > float(_tp["far"]) and ground_ahead(12.0) and not is_on_wall():
+	# 身子宽的（大块头）站在离人半个身宽 + 26 的地方，不往人身上挤（10-19：水塔一直贴着人走，碰一下就扣血）
+	var far: float = maxf(float(_tp["far"]), body_rect.size.x * 0.5 + 26.0) if arch == "giant" else float(_tp["far"])
+	if dist > far and ground_ahead(12.0) and not is_on_wall():
 		velocity.x = dir * spd
 	elif dist > float(_tp["far"]) and is_on_floor() and _hop_cd <= 0.0 and _can_hop(dir):
 		# 前面一道矮坎挡住（生在凹槽里、台阶）：跳过去，不站着干瞪眼（10-18 美术哥试玩"冲不出去"）
@@ -581,7 +611,7 @@ func _start_move(p: Player) -> void:
 	match _move:
 		"charge", "rush", "bash":
 			_state = CHARGE
-			_timer = CHARGE_TIME * (1.4 if cfg_flag("slide") else 1.0) * (0.5 if _move == "bash" else 1.0)
+			_timer = CHARGE_TIME * (1.2 if cfg_flag("slide") else 1.0) * (0.5 if _move == "bash" else 1.0)
 			Game.sfx("crack", -10.0, 1.2, 0.05)
 		"slam":
 			velocity = _jump_v
@@ -602,10 +632,13 @@ func _start_move(p: Player) -> void:
 			# 预判点一颗，两边各一颗夹住；落地都烧一小块地（颜色跟子弹走）
 			for x in _volley_offsets():
 				var b := _shoot_at(_aim + Vector2(x, 0), "arc")
+				b.set("no_roll", true)       # 抛射的不落地滚（老树桩的橡子原来会滚好几秒，一场挨 6 下）
 				var z := FireZone.new()
 				z.bullet = b
 				z.arena = L3Mob.arena
 				z.cols = _zone_cols()
+				if arch == "giant":
+					z.life = 1.0
 				get_parent().add_child(z)
 			_state = SHOOT
 			_timer = 0.4
@@ -815,7 +848,7 @@ func _plan_tele(p: Player) -> void:
 	match _move:
 		"charge", "rush", "bash":
 			var mult := (RAGE_CHARGE if _rage else 1.0) * (1.15 if _move == "bash" else 1.0)
-			var t := CHARGE_TIME * (1.4 if cfg_flag("slide") else 1.0) * (0.5 if _move == "bash" else 1.0)
+			var t := CHARGE_TIME * (1.2 if cfg_flag("slide") else 1.0) * (0.5 if _move == "bash" else 1.0)
 			var reach := CHARGE_SPEED * speed_mult() * mult * t
 			var from := global_position + Vector2(0, -6)
 			# 用自己的碰撞层（第三关遭遇战里还有挡怪的隐形墙，在屏幕边上），冲撞真会停在哪就标在哪
@@ -951,6 +984,15 @@ func _draw_tele() -> void:
 				_tele.draw_rect(Rect2(p + Vector2(-5, -1), Vector2(11, 1)), col)
 				_tele.draw_rect(Rect2(p + Vector2(-5, -3), Vector2(1, 2)), col)
 				_tele.draw_rect(Rect2(p + Vector2(5, -3), Vector2(1, 2)), col)
+				if _move == "slam" and i == 0:
+					# 落下来身子占多宽：贴地一道虚线，两头竖一下
+					var hw := roundf(body_rect.size.x / 2.0)
+					var xx := -hw
+					while xx <= hw:
+						_tele.draw_rect(Rect2(p + Vector2(xx, 0), Vector2(2, 1)), col)
+						xx += 4.0
+					_tele.draw_rect(Rect2(p + Vector2(-hw, -4), Vector2(1, 4)), col)
+					_tele.draw_rect(Rect2(p + Vector2(hw, -4), Vector2(1, 4)), col)
 				var bob := float(int(_timer * 6.0) % 2)
 				for k in 3:
 					_tele.draw_rect(Rect2(p + Vector2(-k, -8 + k + bob), Vector2(k * 2 + 1, 1)), col)
@@ -1123,6 +1165,8 @@ func _draw_rage() -> void:
 class FireZone extends Node2D:
 	const LIFE := 1.6
 	const HALF := 12.0
+	## 留多久（大块头抛的 1.0 秒：它们身子大、场子挤，原来 1.6 秒满地都是）
+	var life := LIFE
 	const HEIGHT := 10.0
 	const DAMAGE := 8.0
 	var bullet: Node2D
@@ -1157,7 +1201,7 @@ class FireZone extends Node2D:
 			_t = 0.0
 			Game.sfx("vent", -14.0, 1.8, 0.1)
 		_t += delta
-		if _t >= LIFE:
+		if _t >= life:
 			queue_free()
 			return
 		for n in get_tree().get_nodes_in_group("player"):
@@ -1169,7 +1213,7 @@ class FireZone extends Node2D:
 	func _draw() -> void:
 		if _t < 0.0:
 			return
-		var fade := 1.0 - maxf(0.0, _t - (LIFE - 0.4)) / 0.4
+		var fade := 1.0 - maxf(0.0, _t - (life - 0.4)) / 0.4
 		var tick := int(_t * 14.0)
 		# 贴地两行底，上面一列列一窜一窜（1 像素一列，最高 7 格）
 		draw_rect(Rect2(-HALF, -1, HALF * 2.0 + 1.0, 1), Color(cols[0], 0.9 * fade))
@@ -1186,6 +1230,8 @@ class FireZone extends Node2D:
 ## 跺地的冲击波：贴着地面往一边推，推到 reach、撞墙或者台子边就散；碰到脚的挨一下（跳起来躲）
 class GroundWave extends Node2D:
 	const HIT := 12.0
+	## 刚冒出来的这一小会儿不伤人、不往前走（只在原地鼓起来）：贴着它站时也来得及跳（10-19 作者"水塔巨难打"）
+	const STARTUP := 0.15
 	var side := 1.0
 	var reach := 170.0
 	var cols: Array = [EnemyBase.LED_COLOR, EnemyBase.LED_HOT, Color(1.0, 0.8, 0.35)]
@@ -1201,6 +1247,9 @@ class GroundWave extends Node2D:
 
 	func _physics_process(delta: float) -> void:
 		_t += delta
+		if _t < STARTUP:
+			queue_redraw()
+			return
 		var step := L3Elite.WAVE_SPEED * delta
 		var space := get_world_2d().direct_space_state
 		var wall := PhysicsRayQueryParameters2D.create(global_position + Vector2(0, -5), global_position + Vector2(side * (step + 3.0), -5), 1)
@@ -1224,6 +1273,8 @@ class GroundWave extends Node2D:
 	func _draw() -> void:
 		# 一道往前卷的土浪：前面高、后面低，最上面一格亮
 		var hs := [2, 4, 6, 7, 5]
+		if _t < STARTUP:
+			hs = [1, 2, 2, 1]        # 鼓起来：矮矮一包
 		for i in hs.size():
 			var x := -side * (hs.size() - 1 - i)
 			for k in hs[i]:

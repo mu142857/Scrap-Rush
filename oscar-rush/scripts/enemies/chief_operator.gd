@@ -84,6 +84,7 @@ var _die_t := 0.0
 
 
 func _setup() -> void:
+	reveal_moves = ["HOOK_AIM", "SPIN_WARN"]   # 露底（EliteBase，布谷鸟钟会话加的一行）：这几招都亮过就加伤
 	elite_name = "CHIEF OPERATOR"
 	intro_title = "HOLD THE LINE"
 	intro_frame = 4

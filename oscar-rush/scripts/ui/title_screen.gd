@@ -318,8 +318,15 @@ func _animate_in() -> void:
 	_refresh()
 	if not IntroOverlay.played:
 		var intro := IntroOverlay.new()
+		# 片头：标题像被放映出来那样闪亮，其余的字（副标题、选项、提示、右上角图标）等片头放完再淡出来
+		intro.title_node = _title
+		var rest: Array = [_sub, _hint, _icons]
+		rest.append_array(_option_labels)
+		intro.rest_nodes = rest
 		add_child(intro)
 		await intro.finished
+		for n in rest:
+			n.create_tween().tween_property(n, "modulate:a", 1.0, 0.35)
 		# 跳过片头的那一下（空格 / 回车 / C）不能顺手把 START 也按了：菜单是轮询 just_pressed，
 		# 不认 set_input_as_handled，所以等这一帧过去、而且确认键松开了再开放（质检会话 10-17 夜里报的）
 		await get_tree().process_frame
@@ -579,10 +586,7 @@ func _open_mode(sound := true) -> void:
 		ModeSelect.SOLO:
 			_coop = false
 			Run.players = [{"input": "solo", "skin": Run.SKINS[0]}]
-			if not _tutorial_done():
-				_go_tutorial(true)
-				return
-			_open_difficulty()
+			_after_mode()
 		ModeSelect.COOP:
 			_coop = true
 			_enter_lobby()
@@ -623,6 +627,8 @@ func _open_difficulty() -> void:
 func _launch(level: int, difficulty := DifficultySelect.NORMAL) -> void:
 	_busy = true
 	_lobby = false
+	# 真开局了：下次新开局再放序章
+	_prologue_done = false
 	# 新开一局、玩家确认过覆盖：旧档这时才删（在选难度、选武器之间反悔退出的话旧档还在）。进第一关会存新档
 	if _overwrite_ok and Run.has_method("clear_save"):
 		Run.call("clear_save")
@@ -705,6 +711,44 @@ func _open_settings() -> void:
 	await get_tree().process_frame
 	_busy = false
 	_refresh()
+
+
+## 胶片序章（剧情会话做的 scenes/prologue.tscn，约 22 秒，能跳过）：新开一局、选完单人 / 合作以后先放，
+## 放完接原来的流程（第一次进教学，再回来选难度；看过教学就直接回来选难度）。脚本用 load 找，不写类名。
+## 剧情会话定的是每次新开局都放；从选难度退回单人 / 合作再选一次不算新开局，不重放（_prologue_done，真开局时清掉）
+const PROLOGUE_SCENE := "res://scenes/prologue.tscn"
+const PROLOGUE_SCRIPT := "res://scripts/ui/prologue.gd"
+static var _prologue_done := false
+
+
+## 选完单人 / 合作以后：序章 → （第一次）教学 → 选难度
+func _after_mode() -> void:
+	if not _prologue_done and ResourceLoader.exists(PROLOGUE_SCENE) and ResourceLoader.exists(PROLOGUE_SCRIPT):
+		_go_prologue()
+		return
+	if not _tutorial_done():
+		_go_tutorial(true)
+		return
+	_open_difficulty()
+
+
+func _go_prologue() -> void:
+	_busy = true
+	_lobby = false
+	_prologue_done = true
+	var next := "res://scenes/title.tscn"
+	if not _tutorial_done():
+		(load(TUTORIAL_SCRIPT) as GDScript).set("next_scene", "res://scenes/title.tscn")
+		next = TUTORIAL_SCENE
+	(load(PROLOGUE_SCRIPT) as GDScript).set("next_scene", next)
+	# 序章（和教学）放完回到开始界面，直接打开选难度；合作的人还在
+	return_to_levels = true
+	Game.sfx("ui_confirm", -4.0)
+	Run.reset_run()
+	Game.reset_stats()
+	await _fade_to(1.0, 0.5)
+	get_tree().change_scene_to_file(PROLOGUE_SCENE)
+	Game.flash(Color.BLACK, 1.0, 0.6)
 
 
 ## 看过（或跳过）教学没有；教学关脚本不在就当看过，不拦人
@@ -998,7 +1042,4 @@ func _start_coop() -> void:
 			Run.players.append({"input": _slots[i], "skin": Run.SKINS[i]})
 	Game.sfx("ui_confirm", -4.0)
 	_lobby_root.visible = false
-	if not _tutorial_done():
-		_go_tutorial(true)
-		return
-	_open_difficulty()
+	_after_mode()

@@ -103,6 +103,7 @@ var _zone_floor := 0.0
 
 
 func _setup() -> void:
+	reveal_moves = ["SWEEP_WARN", "WAVE_WARN", "THUMP_WARN"]   # 露底（EliteBase，布谷鸟钟会话加的一行）：这几招都亮过就加伤
 	elite_name = "GRAMOPHONE"
 	intro_title = "NOW PLAYING"
 	intro_frame = 5

@@ -258,7 +258,8 @@ func _ready() -> void:
 		sign.text = tr("Exit")
 		sign.arrow = "down"
 		sign.level_width = D.BOUNDS.size.x
-		add_child(sign))
+		add_child(sign)
+		_pickups_off_exit.call_deferred())
 	for t in D.TUBES:
 		var lamp := TubeLamp.new()
 		var m: Rect2 = t["mouth"]
@@ -553,6 +554,7 @@ func _physics_process(delta: float) -> void:
 			if p.global_position.x > right:
 				p.global_position.x = right
 				p.velocity.x = minf(p.velocity.x, 0.0)
+		_keep_pickups_in_view()
 	if _debug:
 		queue_redraw()
 
@@ -674,7 +676,46 @@ func _end_bridge() -> void:
 		if is_instance_valid(w):
 			w.queue_free()
 	_wanderers.clear()
+	# 天桥上还没换的武器（放映机掉的闪光灯）挪到放映室地上，接着能换
+	for w in _bridge_pickups():
+		w.global_position = Vector2(D.B_X0 + 90.0, D.BRIDGE_Y)
+		w.reset_physics_interpolation()
 	_save_bridge_checkpoint()
+
+
+## 留声机死在舞台右边时，掉的武器会落在出口里：人走过去捡就直接出关了。挪到出口左边一点的舞台上（离出口 30 像素，
+## 站在旁边换枪碰不到出口）
+func _pickups_off_exit() -> void:
+	for n in get_tree().get_nodes_in_group("weapon_pickup"):
+		var w := n as Node2D
+		if w and w.global_position.x > D.EXIT.position.x - 24.0 and w.global_position.y > D.EXIT.position.y - 12.0:
+			w.global_position = Vector2(D.EXIT.position.x - 30.0, D.EXIT.end.y - 4.0)
+			w.reset_physics_interpolation()
+
+
+## 精英掉的武器（WeaponPickup）落在天桥上：画面在卷，它要是留在原地就被卷到烧穿边里、拿不到了
+## （10-19 作者报：放映机掉的武器拿不到）。卷着的时候让它一直待在画面里、离火 PICKUP_LEAD 像素以外，
+## 跟着画面往前滑；地面就是胶片（y = BRIDGE_Y），按"下"换枪的条件（站在地上、同一层）照样满足
+const PICKUP_LEAD := 70.0
+
+
+func _bridge_pickups() -> Array[Node2D]:
+	var out: Array[Node2D] = []
+	for n in get_tree().get_nodes_in_group("weapon_pickup"):
+		var w := n as Node2D
+		if w and w.global_position.x >= D.A_X1 and w.global_position.x < D.B_X0 and absf(w.global_position.y - D.BRIDGE_Y) < 8.0:
+			out.append(w)
+	return out
+
+
+func _keep_pickups_in_view() -> void:
+	var v := _cam.view_rect()
+	var lo := v.position.x + BURN_W + PICKUP_LEAD
+	var hi := v.end.x - 24.0
+	for w in _bridge_pickups():
+		var x := clampf(w.global_position.x, lo, maxf(lo, hi))
+		if x != w.global_position.x:
+			w.global_position = Vector2(x, D.BRIDGE_Y)
 
 
 ## 天桥走完存一次档（10-18 夜间打磨）：后半段（放映室、乐池）死了从放映室重来，不用再看一遍两分多钟的卷轴。

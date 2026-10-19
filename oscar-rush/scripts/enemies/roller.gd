@@ -50,6 +50,7 @@ var _next_is_mortar := false
 
 
 func _setup() -> void:
+	reveal_moves = ["WINDUP", "MORTAR_WARN"]   # 露底（EliteBase）：这几招都亮过就加伤；贴身才出的近身招不算
 	elite_name = "STEAM ROLLER"
 	intro_title = "FULL STEAM"
 	intro_frame = 2

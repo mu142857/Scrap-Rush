@@ -12,8 +12,9 @@ extends Control
 ## 环境声换成空旷的风加很远的炉火（Ambience.override = "credits"）。
 ## 署名照作者 10-18 凌晨定的全文（监督会话转来）：
 ##   1 木木：导演 程序 光影 特效      2 奥斯卡：策划 动画 场景设计 画风设计
-##   3 梧桐：立绘                     4 本2兔、Rouri：音乐
-##   5 工具与协作：Godot、Claude、小奥斯卡（作者："小奥斯卡算是一个工具，写到最后的claude那一页"）
+##   3 梧桐：立绘    4 本2兔：音乐（作者 10-19："所有人还是分开吧"；同日"先去掉 Rouri"）
+##   5 工具与协作（小字分组）：美术 Aseprite、Dotpict、小奥斯卡（木木做的）；音乐 FL Studio、Ableton Live 12 Lite；
+##     音效 Python + NumPy；引擎和协作 Godot、Claude
 ##   6：制作于 2026 年 10 月，底下小字：制作工具、字体和 Godot 的授权。按 L / 手柄 Y / 点小字看授权全文
 ## 确认键 / 鼠标左键：跳到下一页；Esc / B / 右键：直接回开始菜单。放完自己回去。
 ## 用法照旧：var page := CreditsMenu.new(); 加到 UI 层; await page.closed（关掉时自己 queue_free）。
@@ -63,7 +64,6 @@ const NAMES := {
 	"Little Oscar": {"zh": "小奥斯卡"},
 	"Wutong": {"zh": "梧桐"},
 	"Ben2tu": {"en": "本2兔", "zh": "本2兔"},
-	"Rouri": {},
 }
 
 ## 每页：blocks = 一组一组的 [小标题（可以空着）, 名字们, 职能们]，竖着排在屏幕中间；颜色是名字的颜色（Linger 里各人的颜色）。
@@ -71,14 +71,11 @@ const NAMES := {
 const SLIDES := [
 	{"blocks": [{"head": "", "names": ["Mumu"], "color": "39e47a",
 		"roles": ["Director / Programming / Lighting / VFX"]}],
-		# 第一关的背景层，前后层走得快慢不一样（视差）。原图很暗，gain 把它提亮
-		"gain": 2.6,
+		# 第三关的一块屏幕：海滩日落（作者 10-19："mumu 的换成第三关的某一个屏幕"）。只裁这一块屏幕，旁边的屏幕不露出来
+		"gain": 1.1,
 		"picture": [
-			{"tex": "res://art/levels/scene1_far.png", "pos": Vector2(-300, -160), "vel": Vector2(-3, 0)},
-			{"tex": "res://art/levels/scene1_truss.png", "pos": Vector2(-300, -160), "vel": Vector2(-5, 0)},
-			{"tex": "res://art/levels/scene1_machines.png", "pos": Vector2(-300, -160), "vel": Vector2(-7, 0)},
-			{"tex": "res://art/levels/scene1_beams.png", "pos": Vector2(-300, -160), "vel": Vector2(-8, 0)},
-			{"tex": "res://art/levels/scene1.png", "pos": Vector2(-300, -160), "vel": Vector2(-9, 0)},
+			{"tex": "res://art/levels/l3_far_1.png", "region": Rect2(1169, 649, 412, 243), "pos": Vector2(34, -1)},
+			{"tex": "res://art/levels/l3_screens_1.png", "region": Rect2(1169, 649, 412, 243), "pos": Vector2(34, -1)},
 		]},
 	{"blocks": [{"head": "", "names": ["Oscar"], "color": "c8b83b",
 		"roles": ["Game Design / Animation / Environment Design / Art Direction"]}], "hold": 5.0,
@@ -92,26 +89,29 @@ const SLIDES := [
 			{"tex": "res://art/chars/robot_portrait.png", "alt": "res://art/chars/robot_portrait_blink.png", "blink": 3.7, "pos": Vector2(192, 8)},
 			{"tex": "res://art/chars/dino_portrait.png", "alt": "res://art/chars/dino_portrait_blink.png", "blink": 3.3, "pos": Vector2(312, 8)},
 		]},
-	{"blocks": [{"head": "", "names": ["Ben2tu", "Rouri"], "color": "3bbcc8", "roles": ["Music"]}],
-		# 第一关 Boss 的锅炉房，放大两倍慢慢横移
-		"gain": 2.4,
+	{"blocks": [{"head": "", "names": ["Ben2tu"], "color": "3bbcc8", "roles": ["Music"]}],
+		# 第二关交换局机房（胶片天桥之前的继电器间）：只裁这一块
+		"gain": 1.7,
 		"picture": [
-			{"tex": "res://art/boss/room_bg.png", "pos": Vector2(-120, -150), "vel": Vector2(-5, 0), "scale": 2},
-			{"tex": "res://art/boss/room_fg.png", "pos": Vector2(-120, -150), "vel": Vector2(-5, 0), "scale": 2},
+			{"tex": "res://art/levels/level2_far_0.png", "region": Rect2(480, 260, 480, 242), "pos": Vector2(0, 0)},
+			{"tex": "res://art/levels/level2_mid_0.png", "region": Rect2(480, 260, 480, 242), "pos": Vector2(0, 0)},
+			{"tex": "res://art/levels/level2_main_0.png", "region": Rect2(480, 260, 480, 242), "pos": Vector2(0, 0)},
 		]},
-	{"blocks": [
-		{"head": "Tools & Collaboration", "names": ["Godot Engine"], "color": "d8d4cc", "roles": []},
-		{"head": "", "names": ["Claude"], "color": "d8d4cc", "roles": ["Anthropic"]},
-		{"head": "", "names": ["Little Oscar"], "color": "d8d4cc", "roles": ["pixel character model"]},
-	], "dy": -24.0,
-		# 第一关的小怪排着队从底下走过去，播它们自己的待机帧
+	{"title": "Tools & Collaboration", "color": "d8d4cc", "gap": 8.0, "hold": 7.5, "blocks": [
+		{"head": "Art", "lines": ["Aseprite (animation)  /  Dotpict (portraits)",
+			"Little Oscar (Oscar's style rules & tools, made by Mumu)"]},
+		{"head": "Music", "lines": ["FL Studio  /  Ableton Live 12 Lite"]},
+		{"head": "Sound Effects", "lines": ["Python + NumPy (synthesized in code, no recorded samples)"]},
+		{"head": "Engine & Collaboration", "lines": ["Godot Engine  /  Claude (Anthropic)"]},
+	],
+		# 第一关的小怪排着队从最底下走过去（字多了，原大小，贴着底边），播它们自己的待机帧
 		"gain": 2.4,
 		"picture": [
-			{"tex": "res://art/enemies/crawler.png", "hf": 4, "frames": [0, 1, 2, 3], "pos": Vector2(-60, 204), "vel": Vector2(16, 0), "wrap": true, "scale": 2},
-			{"tex": "res://art/enemies/kettle.png", "hf": 3, "frames": [0, 1, 2], "pos": Vector2(50, 192), "vel": Vector2(16, 0), "wrap": true, "scale": 2},
-			{"tex": "res://art/enemies/flea.png", "hf": 4, "frames": [0, 1], "pos": Vector2(150, 200), "vel": Vector2(16, 0), "wrap": true, "scale": 2},
-			{"tex": "res://art/enemies/shaver.png", "hf": 4, "frames": [0, 1], "pos": Vector2(250, 216), "vel": Vector2(16, 0), "wrap": true, "scale": 2},
-			{"tex": "res://art/enemies/moth.png", "hf": 3, "frames": [0, 1], "pos": Vector2(360, 176), "vel": Vector2(16, 0), "wrap": true, "scale": 2},
+			{"tex": "res://art/enemies/crawler.png", "hf": 4, "frames": [0, 1, 2, 3], "pos": Vector2(-40, 224), "vel": Vector2(14, 0), "wrap": true},
+			{"tex": "res://art/enemies/kettle.png", "hf": 3, "frames": [0, 1, 2], "pos": Vector2(60, 218), "vel": Vector2(14, 0), "wrap": true},
+			{"tex": "res://art/enemies/flea.png", "hf": 4, "frames": [0, 1], "pos": Vector2(160, 222), "vel": Vector2(14, 0), "wrap": true},
+			{"tex": "res://art/enemies/shaver.png", "hf": 4, "frames": [0, 1], "pos": Vector2(260, 230), "vel": Vector2(14, 0), "wrap": true},
+			{"tex": "res://art/enemies/moth.png", "hf": 3, "frames": [0, 1], "pos": Vector2(360, 222), "vel": Vector2(14, 0), "wrap": true},
 		]},
 	{"big": "Made in October 2026", "sub": "for Ludum Dare 60  /  Old Tech", "color": "d8d4cc", "hold": 7.0,
 		# 结局的家
@@ -326,6 +326,9 @@ func _build(slide: Dictionary) -> void:
 	_words.modulate.a = 1.0
 	var col := Color(slide.get("color", "d8d4cc"))
 	var rows: Array = []   # [文字, 字号, 颜色] 或 null（组之间的空）
+	var gap: float = slide.get("gap", BLOCK_GAP)
+	if slide.has("title"):
+		rows.append([tr(slide["title"]), NAME, col])
 	if slide.has("big"):
 		rows.append([tr(slide["big"]), BIG, col])
 		rows.append([tr(slide["sub"]), SMALL, HEAD_COLOR])
@@ -334,12 +337,17 @@ func _build(slide: Dictionary) -> void:
 			rows.append(null)
 		if b["head"] != "":
 			rows.append([tr(b["head"]), SMALL, HEAD_COLOR])
+		if b.has("lines"):
+			# 工具页：一组一组的小字（作者 10-19："字小一点都写上"）
+			for l: String in b["lines"]:
+				rows.append([tr(l), SMALL, ROLE_COLOR])
+			continue
 		rows.append([_names(b["names"]), NAME, Color(b["color"])])
 		for r: String in b["roles"]:
 			rows.append([tr(r), SMALL, ROLE_COLOR])
 	var height := 0.0
 	for r in rows:
-		height += BLOCK_GAP if r == null else ROW[r[1]]
+		height += gap if r == null else ROW[r[1]]
 	var foot: Array = slide.get("then", [])
 	# 有小字的页，大字整体往上挪一点，给底下的小字留地方
 	var top := roundf((SCREEN.y - height) * 0.5 - (ROW[SMALL] * (foot.size() + 1) * 0.5 if not foot.is_empty() else 0.0))
@@ -347,7 +355,7 @@ func _build(slide: Dictionary) -> void:
 	var y := top
 	for r in rows:
 		if r == null:
-			y += BLOCK_GAP
+			y += gap
 			continue
 		_lines.append(_label(r[0], r[1], r[2], y))
 		y += ROW[r[1]]
@@ -605,10 +613,13 @@ void fragment() {
 			var hf: int = it.get("hf", 1)
 			var fw := tex.get_width() / hf
 			var src := Rect2(0, 0, fw, tex.get_height())
-			if hf > 1:
+			if it.has("region"):
+				src = it["region"]
+			elif hf > 1:
 				var frames: Array = it.get("frames", [0])
 				src.position.x = int(frames[int(_t * 6.0) % frames.size()]) * fw
 			var p: Vector2 = it["pos"] + it.get("vel", Vector2.ZERO) * _t
 			if it.get("wrap", false):
 				p.x = fposmod(p.x + fw * k, size.x + fw * k * 2.0) - fw * k
-			draw_texture_rect_region(tex, Rect2(p.round(), src.size * k), src)
+			var m: float = it.get("mod", 1.0)
+			draw_texture_rect_region(tex, Rect2(p.round(), src.size * k), src, Color(m, m, m))

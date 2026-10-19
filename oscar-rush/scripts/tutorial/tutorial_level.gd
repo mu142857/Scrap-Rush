@@ -3,10 +3,13 @@ extends Node2D
 ## 教学关「片头」（2026-10-18 作者："你的新的关卡我觉得可以作为一个教学关，很短就行"）。
 ## 五台老电视排成一排，每台是录像里的一个房间，一台教一样，做完这一样右边的门才开：
 ##   0 卧室   移动、跳、火箭靴（翻过一摞纸箱）
-##   1 客厅   射击和蓄力（三个不会还手的靶子）
-##   2 阁楼   马灯就是命；放下马灯（跑得快、飞得久）飞上高架拍开关；回来捡起马灯，带着它过门
-##   3 厨房   遭遇战关门；清场回血、存档点
-##   4 儿童房 一只小精英；它掉一把武器，站上去按"下"换；然后出门
+##   1 客厅   射击和蓄力：三台铁皮打靶机（站着的、举挡板只怕蓄满的、在轨道上滑的），不还手
+##   2 阁楼   马灯就是命；放下马灯（跑得快、飞得久），一只发条铁皮蛾飞下来扑地上的灯，打掉它；
+##            飞过雪花拍开关；回来捡起马灯，带着它过门
+##   3 厨房   遭遇战关门（发条拳击手：头上冒 ! 再出拳，教看预警）；清场回血、存档点
+##   4 儿童房 精英「大陪练」（冲撞、跳砸）；它掉一把武器，站上去按"下"换；然后出门
+## 怪都是教学关专属的训练器材（10-19 作者："教学关还没有独特的敌人"，挑了方案 2「训练靶场」）：
+## 脚本 tutorial_target / tutorial_moth / tutorial_boxer / tutorial_coach.gd，美术 草图/教学关/tutorial_mobs.py。
 ## 画面用第三关的画法画（草图/教学关/render_rooms.py → art/tutorial/room_<i>.png、tutorial_data.gd）。
 ## 提示框和新手提示（Coach）同一个样式，放在屏幕上方；教学关里 Coach 和底部按键条都藏起来，同一时间只有一段字。
 ## 马灯在教学关里碎不了：掉到 0 自动补满，提示一句。
@@ -41,6 +44,9 @@ var _prompt: TutorialPrompt
 var _sub := 0
 var _t := 0.0
 var _targets: Array[Node] = []
+var _shield_said := false
+var _moth: Node2D
+var _boxer_said := false
 var _switch_hit := false
 var _switch: Node2D
 var _static: TutorialStatic
@@ -120,6 +126,8 @@ func _ready() -> void:
 		var sl: Label = fx.get("_state_label")
 		if sl:
 			sl.visible = false
+	# 大陪练的跳砸、冲撞标记按这个范围算（第三关开头会改回它自己的）
+	L3Mob.arena = Rect2(0, 0, end_x + 126, D.SIZE.y + 40)
 	_prompt = TutorialPrompt.new()
 	add_child(_prompt)
 	_say_step()
@@ -234,6 +242,10 @@ func _physics_process(delta: float) -> void:
 			if _sub == 0 and _room_of(p.global_position.x) == 1:
 				_sub = 1
 				_spawn_targets()
+			# 第一次打在挡板上（没蓄满）：说一句怎么打倒它
+			if _sub == 1 and not _shield_said and _targets.any(func(e): return is_instance_valid(e) and e.get("blocked") and not e.get("dead")):
+				_shield_said = true
+				_say(_shield_text())
 			if _sub == 1 and _targets.all(func(e): return not is_instance_valid(e) or e.get("dead")):
 				_sub = 2
 				_say(tr("Nice. The door is open"), true)
@@ -267,23 +279,29 @@ func _tick_lantern_step(p: Player) -> void:
 		2:
 			if p.crystal == null:
 				_sub = 3
-				_say(tr("Now fly over to the switch"))
+				_spawn_moth()
+				_say(tr("A moth! Lanterns left on the ground get attacked. Shoot it"), false, true)
 		3:
-			if _switch and _switch.get("hit"):
+			# 拍了开关也算过（先飞过去也不卡）
+			if not is_instance_valid(_moth) or _moth.get("dead") or (_switch and _switch.get("hit")):
 				_sub = 4
+				_say(tr("Now fly over to the switch"))
+		4:
+			if _switch and _switch.get("hit"):
+				_sub = 5
 				_static.call("bridge")
 				_say(tr("A bridge! Go back, press %s to pick up the lantern") % _key("crystal"))
-		4:
+		5:
 			if p.crystal != null:
-				_sub = 5
+				_sub = 6
 				_say(tr("Carry it over the bridge and out"), true)
 				_open(2)
 	# 灯没拿在手上，门不开（教"带着灯走"）
-	if _sub == 5 and p.crystal == null and _doors[2].get("open"):
+	if _sub == 6 and p.crystal == null and _doors[2].get("open"):
 		_doors[2].call("set_open", false)
-		_sub = 4
+		_sub = 5
 		_say(tr("Go back, press %s to pick up the lantern") % _key("crystal"))
-	if _sub == 5 and p.global_position.x > _rooms[2]["ox"] + D.SIZE.x - 4:
+	if _sub == 6 and p.global_position.x > _rooms[2]["ox"] + D.SIZE.x - 4:
 		_next()
 
 
@@ -311,9 +329,16 @@ func _tick_fight_step(p: Player) -> void:
 		0:
 			if _room_of(p.global_position.x) == 3:
 				_sub = 1
-				_enc = _make_encounter(3, [["crawler", "crawler"], ["crawler", "flea"]])
+				_enc = _make_encounter(3, [["boxer"], ["boxer", "boxer"]])
 				_say(tr("Doors shut: clear the fight to open them"))
 		1:
+			# 第一次有拳击手收拳：教看头上的 !
+			if not _boxer_said:
+				for e in get_tree().get_nodes_in_group("enemy"):
+					if e is TutorialBoxer and e.is_winding():
+						_boxer_said = true
+						_say(tr("A red ! means it's about to strike. Jump over or back off"))
+						break
 			if _enc and _enc.cleared:
 				_sub = 2
 				_t = 0.0
@@ -329,7 +354,7 @@ func _tick_elite_step(p: Player) -> void:
 		0:
 			if _room_of(p.global_position.x) == 4:
 				_sub = 1
-				_enc = _make_encounter(4, [["cuckoo"]])
+				_enc = _make_encounter(4, [["coach"]])
 				_say(tr("Last one: an elite. Elites drop weapons"))
 		1:
 			# 精英出场卡在屏幕上方：出场时先把提示收起来
@@ -369,6 +394,12 @@ func _say_step() -> void:
 			_prompt.show_text("")
 
 
+func _shield_text() -> String:
+	if Upgrades.weapon == "flash":
+		return tr("Shielded! Only a full charge knocks it down")
+	return tr("Shielded! Keep hitting it")
+
+
 func _shoot_text() -> String:
 	var k := _key("attack")
 	match Upgrades.weapon:
@@ -393,14 +424,27 @@ func _open(i: int) -> void:
 	Game.sfx("ready", -6.0)
 
 
+## 客厅三台铁皮打靶机：站着的、举挡板的、在轨道上滑的
 func _spawn_targets() -> void:
 	var r: Dictionary = _rooms[1]
+	var ox: float = r["ox"]
 	for k in 3:
-		var e: Node2D = load(Encounter.TYPES["crawler"]).new()
-		e.position = Vector2(r["ox"] + 200 + k * 70, r["floor"])
+		var e := TutorialTarget.new()
+		e.kind = ["plain", "shield", "rail"][k]
+		e.position = Vector2(ox + 190 + k * 80, r["floor"])
+		if e.kind == "rail":
+			e.rail = Vector2(ox + 330, ox + 400)
 		add_child(e)
-		e.set("contact_damage", 0.0)
 		_targets.append(e)
+
+
+## 阁楼：放下马灯以后，一只发条铁皮蛾从屋顶左边飞下来扑地上的灯
+func _spawn_moth() -> void:
+	var r: Dictionary = _rooms[2]
+	_moth = TutorialMoth.new()
+	_moth.position = Vector2(r["ox"] + 40, r["floor"] - 150)
+	add_child(_moth)
+	Game.sfx("buzz", -12.0, 1.6)
 
 
 func _make_encounter(i: int, waves: Array) -> Encounter:
@@ -413,20 +457,29 @@ func _make_encounter(i: int, waves: Array) -> Encounter:
 	enc.floor_left = r["floor"]
 	enc.floor_right = r["floor"]
 	enc.waves = waves
-	enc.spawn_hook = _spawn_small_elite
+	enc.spawn_hook = _spawn_tutorial_mob.bind(i)
 	add_child(enc)
 	return enc
 
 
-## 教学关的精英：布谷鸟钟，血砍到 450，打起来半分钟内
-func _spawn_small_elite(kind: String, x: float) -> Node2D:
-	if kind != "cuckoo":
-		return null
-	var e: Node2D = load(Encounter.TYPES["cuckoo"]).new()
-	e.position = Vector2(x, _rooms[4]["floor"] - 40.0)
+## 教学关专属的怪（遭遇战按名字生）：拳击手从上面落下来；大陪练生在离人远的那头，血砍到 450，打起来半分钟内
+func _spawn_tutorial_mob(kind: String, x: float, room: int) -> Node2D:
+	var r: Dictionary = _rooms[room]
+	var e: EnemyBase
+	match kind:
+		"boxer":
+			e = TutorialBoxer.new()
+		"coach":
+			e = TutorialCoach.new()
+			var g: Rect2 = r["glass"]
+			x = g.end.x - 50.0 if _players[0].global_position.x < g.get_center().x else g.position.x + 50.0
+		_:
+			return null
+	e.position = Vector2(x, r["floor"] - 40.0)
 	add_child(e)
-	e.set("max_hp", 450.0)
-	e.set("hp", 450.0)
+	if kind == "coach":
+		e.max_hp = 450.0
+		e.hp = 450.0
 	return e
 
 

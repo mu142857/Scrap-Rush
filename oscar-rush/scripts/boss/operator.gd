@@ -19,7 +19,7 @@ signal hp_changed(hp: float, max_hp: float)
 signal phase_changed(phase: int)
 signal defeated
 
-const BASE_HP := 5600.0  # 夜间打磨：武器加强后站桩 26～30 秒就能打死，+20%；10-18 作者嫌太简单：3800 → 5200（站桩 45～55 秒，真人 60～90 秒）；吊低 10 像素后闪光灯快了 12%，再补到 5600
+const BASE_HP := 6200.0  # 10-18 作者嫌太简单：3800 → 5600；10-19 重做招式（零碎弹幕删了、自动瞄准不再被小球分心，打得更快）再补到 6200：站桩 7 把武器 50~65 秒
 const CONTACT_DAMAGE := 10.0
 const CANVAS_ORIGIN := Vector2(48, 111)
 const DIAL := Vector2(48, 40) - CANVAS_ORIGIN

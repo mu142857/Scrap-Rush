@@ -35,7 +35,7 @@ const CREW_SEATS := [
 	{"pos": Vector2(290, 252), "face": -1, "crate": false},
 ]
 const NAMES := {
-	"charge": ["QUICK CHARGE", "faster charge / fire rate / hammer cooldown"],
+	"charge": ["QUICK CHARGE", "your weapon attacks faster"],
 	"fuel": ["BIG TANK", "rocket fuel +0.35s"],
 	"plating": ["PLATING", "blocks a hit every %ds"],
 	"damping": ["DAMPER", "emotion rises 20% slower"],
@@ -135,6 +135,7 @@ var _flare := 0.0
 
 
 func _ready() -> void:
+	CrewLine.say("shop", Vector2(8, 134))   # 柜台的船员招呼一句；放在货架价签和柜台中间那条空处（顶上是信息卡、上排是货）（立绘添加会话，10-19）
 	# 调试：在编辑器里直接运行这个场景（F6）时，手上没零件就先给 6 个，方便试买
 	if OS.is_debug_build() and get_tree().current_scene == self and Run.parts == 0:
 		Run.add_part(6)
@@ -373,6 +374,60 @@ func _gear_detail(id: String, lv: int) -> String:
 	return NAMES[id][1]
 
 
+## 快充：按站在货前那个人手上的武器写具体变多少（作者 10-19："改，不然有迷惑性"，原来只写了老三把）。
+## 双人各看各的：谁站到货架前就写谁的枪。数从各武器的常量读；最短/最快的下限写在各武器脚本里，这里照抄
+const QUICK_LABEL := {
+	"flash": "lamp charge", "rivet": "rivets per second", "hammer": "hammer cooldown",
+	"shotgun": "shotgun reload", "laser": "laser charge", "record": "disc speed, out and back",
+	"tongs": "tongs zap every",
+}
+const QUICK_SCRIPTS := {
+	"shotgun": "res://scripts/combat/weapons/shotgun.gd",
+	"laser": "res://scripts/combat/weapons/laser.gd",
+	"record": "res://scripts/combat/weapons/record.gd",
+	"tongs": "res://scripts/combat/weapons/tongs.gd",
+}
+
+
+func _quick_value(w: String, lv: int) -> float:
+	var k: Dictionary = load(QUICK_SCRIPTS[w]).get_script_constant_map() if QUICK_SCRIPTS.has(w) else {}
+	match w:
+		"flash":
+			return maxf(Player.CHARGE_TIME - Player.CHARGE_UPGRADE * lv, Player.CHARGE_TIME_MIN)
+		"rivet":
+			return 1.0 / maxf(Player.RIVET_INTERVAL - Player.RIVET_UPGRADE * lv, 0.05)
+		"hammer":
+			return maxf(Player.HAMMER_COOLDOWN - Player.HAMMER_UPGRADE * lv, 0.75)
+		"shotgun":
+			return maxf(k["INTERVAL"] - k["INTERVAL_UPGRADE"] * lv, 0.8)
+		"laser":
+			return maxf(k["CHARGE_TIME"] - k["CHARGE_UPGRADE"] * lv, 0.45)
+		"record":
+			return k["QUICK_SPEED"] * lv * 100.0
+		"tongs":
+			return maxf(TeslaArc.INTERVAL - k["INTERVAL_UPGRADE"] * lv, 0.18)
+	return 0.0
+
+
+func _quick_text(w: String, v: float) -> String:
+	match w:
+		"rivet":
+			return str(roundi(v))
+		"record":
+			return "+%d%%" % roundi(v)
+	return tr("%.2fs") % v
+
+
+## lv = 现在的等级；没满级写"现在 > 下一级"，满级只写现在
+func _quick_detail(w: String, lv: int) -> String:
+	if not QUICK_LABEL.has(w):
+		return tr("your weapon attacks faster")
+	var now := _quick_text(w, _quick_value(w, lv))
+	if lv >= Upgrades.MAX_LEVEL:
+		return "%s  %s" % [tr(QUICK_LABEL[w]), now]
+	return "%s  %s > %s" % [tr(QUICK_LABEL[w]), now, _quick_text(w, _quick_value(w, lv + 1))]
+
+
 func _on_buy(st: ShopStand, p: Player) -> void:
 	var info := st.info
 	if not info.get("can_buy", false):
@@ -565,6 +620,8 @@ func _update_info_box(delta: float) -> void:
 				detail_col = UiStyle.POOR
 		elif focus.id == "mutation" and info.get("swap", false):
 			detail_col = UiStyle.POOR
+		elif focus.id == "charge":
+			detail = _quick_detail(_weapon_of(_buyer(focus)), Upgrades.level("charge"))
 		if focus.id == "mutation":
 			# 信息卡底部"★ 和你的 XX 很配"：看站在货架前那个人手上的枪
 			_card_cur = _weapon_of(_buyer(focus))

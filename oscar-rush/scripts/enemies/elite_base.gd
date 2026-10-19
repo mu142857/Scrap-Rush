@@ -97,6 +97,23 @@ var _death_pop := 0.0
 var _shield: Array[Sprite2D] = []
 var _shield_ping := 0.0
 
+## 露底（10-19 作者："当玩家看过所有技能了，受到的伤害加百分之二十，然后之后会越来越多"）：
+## 子类在 _setup() 里填 reveal_moves = 这只精英的几招（填状态名，比如 "WAVE_WARN"；第三关精英填 _pattern 的招名）。
+## 每招第一次出现记一下；全部亮过一次就"露底"：受到的伤害 ×1.2，之后每 8 秒再 +0.1，最多 ×2.0。
+## 只看离多远都会放的招（贴身才出的近身招不算，不然远程打的人永远等不到露底）。
+## 看得出来：露底那一下冒一股蒸汽、白闪一下、"嗤——咔"一声；头顶一排小红格（每 +0.1 一格）一闪一闪，
+## 倍率越高闪得越快，身上裂纹越多、越红。每再涨一档冒一小股汽。Boss 不用这套。
+const EXPOSE_BASE := 1.2
+const EXPOSE_STEP := 0.1
+const EXPOSE_EVERY := 8.0
+const EXPOSE_MAX := 2.0
+var reveal_moves: Array = []
+var _revealed := {}
+var _reveal_map := {}
+var _expose_mult := 1.0
+var _expose_t := 0.0
+var _expose_fx: Node2D
+
 
 func _ready() -> void:
 	big = true
@@ -198,6 +215,7 @@ func _physics_process(delta: float) -> void:
 		_tick_intro(delta)
 	else:
 		super._physics_process(delta)
+		_tick_reveal(delta)
 		if _hit_jolt > 0.0 and (_lift_layer or hit_jolt):
 			_hit_jolt -= delta
 			_sprite.position.x += _jolt_dir
@@ -209,6 +227,92 @@ func _physics_process(delta: float) -> void:
 	if _lift_layer:
 		_sync_lift()
 	_sync_shield(delta)
+	if _expose_fx:
+		_expose_fx.queue_redraw()
+
+
+## 露底：记下这一帧在放的招；全亮过就开始加伤
+func _tick_reveal(delta: float) -> void:
+	if reveal_moves.is_empty() or dead:
+		return
+	if _expose_mult <= 1.0:
+		var mv := _current_move_name()
+		if mv != "" and reveal_moves.has(mv) and not _revealed.has(mv):
+			_revealed[mv] = true
+			if _revealed.size() >= reveal_moves.size():
+				_expose()
+		return
+	_expose_t += delta
+	if _expose_t >= EXPOSE_EVERY and _expose_mult < EXPOSE_MAX - 0.001:
+		_expose_t -= EXPOSE_EVERY
+		_expose_mult = minf(_expose_mult + EXPOSE_STEP, EXPOSE_MAX)
+		Game.sparks(get_parent(), aim_point() + Vector2(0, -body_rect.size.y * 0.3), Color(0.85, 0.85, 0.88), 6, 50.0, Vector2.UP)
+		Game.sfx("vent", -14.0, 1.2 + (_expose_mult - 1.0) * 0.4, 0.05)
+
+
+## 这一帧在放哪一招：第三关精英看 _pattern（招名），别的看 state / _state 的名字
+func _current_move_name() -> String:
+	var pat = get("_pattern")
+	if pat is String and pat != "":
+		return pat
+	var st = get("state")
+	if st == null:
+		st = get("_state")
+	if st == null or not (st is int):
+		return ""
+	if _reveal_map.is_empty():
+		var m: Dictionary = (get_script() as GDScript).get_script_constant_map()
+		if m.get("State") is Dictionary:
+			for n in m["State"]:
+				_reveal_map[m["State"][n]] = n
+		for n in reveal_moves:
+			if m.get(n) is int:
+				_reveal_map[m[n]] = n
+	return str(_reveal_map.get(st, ""))
+
+
+func _expose() -> void:
+	_expose_mult = EXPOSE_BASE
+	_expose_t = 0.0
+	_flash = 1.0
+	Game.add_shake(2.0)
+	Game.sfx("vent", -6.0, 0.9)
+	Game.sfx("crack", -10.0, 1.3)
+	Game.sparks(get_parent(), aim_point() + Vector2(0, -body_rect.size.y * 0.3), Color(0.9, 0.9, 0.92), 16, 70.0, Vector2.UP)
+	if _expose_fx == null:
+		_expose_fx = Node2D.new()
+		_expose_fx.z_index = 9
+		var m := CanvasItemMaterial.new()
+		m.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+		_expose_fx.material = m
+		_expose_fx.draw.connect(_draw_expose)
+		add_child(_expose_fx)
+
+
+## 头顶一排小红格（每 +0.1 一格，最多 10 格）、身上的过热裂纹
+func _draw_expose() -> void:
+	if _expose_mult <= 1.0 or dead or dying():
+		return
+	var lv := int(roundf((_expose_mult - 1.0) / EXPOSE_STEP))
+	var hot := Color(1.0, 0.35, 0.2)
+	var warm := Color(1.0, 0.75, 0.35)
+	var blink := int(_time * (3.0 + lv * 1.2)) % 2 == 0
+	var top := body_rect.position.y - 5.0
+	var w := lv * 3 - 1
+	var x0 := roundf(-w / 2.0)
+	for i in lv:
+		var c := hot if (i < lv - 1 or blink) else warm
+		_expose_fx.draw_rect(Rect2(x0 + i * 3, top, 2, 2), c)
+	# 裂纹：从身子上沿往下几道折线，倍率越高越多、越亮
+	var cracks := clampi(lv / 2 + 1, 1, 5)
+	var a := 0.45 + 0.08 * lv
+	for k in cracks:
+		var fx := body_rect.position.x + body_rect.size.x * (0.2 + 0.6 * float(k) / maxf(cracks - 1, 1))
+		var y := body_rect.position.y + 2.0
+		var x := roundf(fx)
+		for j in 3 + lv / 3:
+			_expose_fx.draw_rect(Rect2(x, y + j * 2, 1, 2), Color(hot, a))
+			x += 1.0 if (k + j) % 2 == 0 else -1.0
 
 
 ## 出场时打不动的白边：一闪一闪（打上去那一下全亮），出场完了收起来
@@ -390,7 +494,7 @@ func hurt(damage: float, from_dir: Vector2, full: bool) -> void:
 			Game.sfx("ding", -16.0, 1.7, 0.1)
 		_shield_ping = 0.12
 		return
-	super.hurt(damage, from_dir, full)
+	super.hurt(damage * _expose_mult, from_dir, full)
 	_hit_jolt = HIT_JOLT
 	_jolt_dir = signf(from_dir.x) if from_dir.x != 0.0 else 0.0
 

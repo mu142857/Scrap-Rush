@@ -61,6 +61,7 @@ var _attack_dir := -1
 
 
 func _setup() -> void:
+	reveal_moves = ["WAVE_WARN", "CHORD_WARN", "ARP_WARN"]   # 露底（EliteBase）：这几招都亮过就加伤；贴身才出的近身招不算
 	elite_name = "PLAYER PIANO"
 	intro_title = "ENCORE"
 	intro_frame = 5

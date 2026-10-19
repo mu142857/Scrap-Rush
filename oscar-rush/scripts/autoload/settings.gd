@@ -200,9 +200,9 @@ func _apply_fullscreen() -> void:
 func _fit_soon() -> void:
 	for i in 3:
 		await get_tree().process_frame
-	fit_window()
+	fit_window(true)
 	await get_tree().create_timer(0.6, true, false, true).timeout
-	fit_window()
+	fit_window(true)
 
 
 ## 窗口模式：窗口（连标题栏）放得进这块屏幕能用的区域（去掉菜单栏、刘海、程序坞）。
@@ -210,7 +210,9 @@ func _fit_soon() -> void:
 ## 然后整个挪进屏幕里、居中。全屏不管：画面按 16:9 缩放、四周加黑边（stretch aspect = keep），HUD 不会被裁。
 ## 起因：project.godot 的窗口默认 1440×810，有的 Mac 显示设置（比如"更大的文字"）下屏幕没这么大，
 ## 窗口右边、下边跑出屏幕，右上角的情绪表和底部的名字条就被切掉了
-func fit_window() -> void:
+## grow：同时把窗口放大到放得下的最大整数倍（启动、退出全屏时用；10-18 作者：Retina 上别只有半屏）。
+## 不传就只在放不下时缩小（玩家自己拖过窗口大小，不去动它）
+func fit_window(grow := false) -> void:
 	if DisplayServer.window_get_mode() != DisplayServer.WINDOW_MODE_WINDOWED:
 		return
 	var screen := DisplayServer.window_get_current_screen()
@@ -220,7 +222,12 @@ func fit_window() -> void:
 	var size := DisplayServer.window_get_size()
 	var deco := DisplayServer.window_get_size_with_decorations() - size
 	var room := area.size - deco - Vector2i(16, 16)
-	if size.x > room.x or size.y > room.y:
+	if grow:
+		var kk := maxi(1, mini(room.x / 480, room.y / 270))
+		if Vector2i(480 * kk, 270 * kk) != size:
+			size = Vector2i(480 * kk, 270 * kk)
+			DisplayServer.window_set_size(size)
+	elif size.x > room.x or size.y > room.y:
 		var k := mini(room.x / 480, room.y / 270)
 		if k >= 1:
 			size = Vector2i(480 * k, 270 * k)

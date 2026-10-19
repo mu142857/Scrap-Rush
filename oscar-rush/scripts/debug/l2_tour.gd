@@ -42,6 +42,9 @@ const SHOTS := {
 	"sign_duck": [Vector2(3040, 300), 5, 0.0, 90],
 	"sign_exit": [Vector2(3600, 500), 5, 0.0, 90],
 	"sign_burn": [Vector2(960, 300), -1, 0.0, 70],
+	# 天桥上精英掉的武器拿不拿得到（10-19 作者报放映机掉的武器拿不到）：不截图，只打印
+	"wpick": [Vector2(1760, 300), 2, 1700.0, 99999],
+	"wpick_exit": [Vector2(3560, 520), 5, 0.0, 99999],
 	"lamp2": [Vector2(600, 430), -1, 0.0, 70],
 	"lamp3": [Vector2(110, 250), -1, 0.0, 70],
 	"lamp4": [Vector2(630, 300), -1, 0.0, 70],
@@ -272,6 +275,23 @@ func _single() -> void:
 				n.set("_vel", Vector2(-260, 0))
 	if shot == "knock":
 		_knock_test(lvl)
+	if shot == "wpick":
+		_wpick_test(lvl)
+		return
+	if shot == "wpick_exit":
+		if _frame == 10:
+			_wp = WeaponPickup.new()
+			_wp.set("weapon", "record")
+			_wp.position = Vector2(3670, 500)
+			lvl.add_child(_wp)
+			var e4: Node = lvl.get("_encounters")[3]
+			e4.started = true
+			e4.cleared = true
+			e4.finished.emit()
+		if _frame == 20:
+			print("[wpick] exit: pickup moved to %s, exit=%s, inside_exit=%s" % [_wp.global_position.round(), lvl.D.EXIT, lvl.D.EXIT.grow(22).has_point(_wp.global_position)])
+			get_tree().quit()
+		return
 	if shot == "screen" and _frame == s[3] - 4:
 		var cam: Camera2D = lvl.get("_cam")
 		cam.set_process(false)
@@ -285,6 +305,51 @@ func _single() -> void:
 				print("[l2shot] encounter %d..%d started=%s cleared=%s" % [n.left, n.right, n.started, n.cleared])
 		_run([0, "shot", shot])
 	if _frame == s[3] + 6:
+		get_tree().quit()
+
+
+var _wp: Node2D
+var _wp_from := ""
+
+
+## "wpick" 单拍：火边放一把武器，卷 3 秒看它还在不在画面里，走过去按"下"换，再走完天桥看它挪到哪
+func _wpick_test(lvl: Node) -> void:
+	var cam: Node = lvl.get("_cam")
+	var p := get_tree().get_nodes_in_group("player")[0] as CharacterBody2D
+	if _frame == 3:
+		lvl.set("_reel_i", 1)
+		lvl.set("_cued", 1)
+		lvl.set("_state", 2)
+		cam.set("scrolling", true)
+		cam.set("scroll_x", 1700.0)
+		cam.set("scroll_y", 262.0)
+		cam.call("set_wide", true)
+		cam.set("zoom", Vector2.ONE)
+		cam.set("global_position", Vector2(1700.0, 262.0))
+		p.global_position = Vector2(1760, 299)
+	if _frame == 10:
+		_wp_from = str(p.call("weapon"))
+		_wp = WeaponPickup.new()
+		_wp.set("weapon", "rivet" if _wp_from != "rivet" else "flash")
+		var v: Rect2 = cam.call("view_rect")
+		_wp.position = Vector2(v.position.x + 30.0, 300.0)
+		lvl.add_child(_wp)
+		print("[wpick] dropped at x=%.0f view_left=%.0f (in the fire)" % [_wp.position.x, v.position.x])
+	if _frame == 370:
+		var v: Rect2 = cam.call("view_rect")
+		print("[wpick] after 3s: x=%.0f view=%.0f..%.0f fire_edge=%.0f in_view=%s" % [_wp.global_position.x, v.position.x, v.end.x,
+			v.position.x + 20.0, v.grow(-10).has_point(_wp.global_position + Vector2(0, -5))])
+		p.global_position = Vector2(_wp.global_position.x, 299)
+		p.velocity = Vector2.ZERO
+	if _frame == 400:
+		Input.action_press(str(p.get("input_prefix")) + "_down")
+	if _frame == 402:
+		Input.action_release(str(p.get("input_prefix")) + "_down")
+	if _frame == 420:
+		print("[wpick] swap: had=%s now=%s on_floor=%s pickup_now=%s" % [_wp_from, p.call("weapon"), p.is_on_floor(), _wp.get("weapon")])
+		lvl.call("_end_bridge")
+	if _frame == 425:
+		print("[wpick] after bridge end: pickup at %s (booth floor y=300, x>2840)" % _wp.global_position.round())
 		get_tree().quit()
 
 

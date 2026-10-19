@@ -78,6 +78,7 @@ var _relay: RelayLine
 
 
 func _setup() -> void:
+	reveal_moves = ["MORSE_WARN", "RELAY_WARN"]   # 露底（EliteBase）：这几招都亮过就加伤；贴身才出的近身招不算
 	elite_name = "TELEGRAPHER"
 	intro_title = "URGENT. STOP."
 	intro_frame = 5

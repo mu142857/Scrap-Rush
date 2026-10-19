@@ -35,6 +35,8 @@ IGNORE = {
     "SPEED",  # 图鉴按常量名找怪的速度（SPEED_NAMES），不是界面字
     "LEVEL %d",  # level_intro 先拼成 "LEVEL 1/2/3" 再 tr，那几条在表里
     "SCRAP-TEK 86   BIOS v1.986", "%dK",  # 第三关开机画面的品牌行和内存数，画面道具，不翻
+    "LB", "RB", "LS", "RS", "Share", " / RT",  # 手柄按钮缩写，两种语言一样
+    "WINDUP",  # 精英招式常量名（reveal_moves）
 }
 ## 路径、动作名、属性路径、调试输出（"[tube] t=..."）
 SKIP = re.compile(r"^(\[\w+\]|res://|user://|ui_|--|#|%s_|modulate|position|global_position|rotation|scale|color:|self_modulate|offset|parameters/)")
@@ -89,6 +91,8 @@ def main() -> int:
         if re.fullmatch(r"[.#oOX]+", s):  # 像素图案（"..XX.."、"#oOo#"）
             continue
         src_line = (ROOT / gd).read_text(encoding="utf-8").splitlines()[line - 1] if line > 0 else ""
+        if re.search(r"\bprint(_rich|err)?\(", src_line):  # 调试输出
+            continue
         lit = re.escape('"' + s + '"')
         if re.search(r"\[\s*" + lit + r"\s*\]|\.get\(\s*" + lit, src_line):  # 字典取值 d["KEY"] / d.get("KEY")，是常量名
             continue

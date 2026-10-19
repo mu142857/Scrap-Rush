@@ -98,6 +98,7 @@ var _marker: LeapMarker
 
 
 func _setup() -> void:
+	reveal_moves = ["SLAM_WARN", "LEAP_WARN", "COIL_WARN"]   # 露底（EliteBase，布谷鸟钟会话加的一行）：这几招都亮过就加伤
 	elite_name = "WATCHMAN"
 	intro_title = "CURFEW"
 	intro_frame = 4

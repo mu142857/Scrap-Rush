@@ -1,9 +1,10 @@
 class_name CodexMenu
 extends Control
-## 图鉴（开始菜单右上角的书本图标）。一本书四册，最上面一排是册的页签：
-##   成就（codex_achievements.gd，10-18 作者要放在第一页）、怪物图鉴（bestiary_menu.gd，embedded 模式嵌进来）、
+## 图鉴（开始菜单右上角的书本图标）。一本书五册，最上面一排是册的页签：
+##   成就（codex_achievements.gd，10-18 作者要放在第一页）、人物（codex_crew.gd，10-19 加：四个船员）、
+##   怪物图鉴（bestiary_menu.gd，embedded 模式嵌进来）、
 ##   武器图鉴（codex_weapons.gd）、变异与升级（codex_mutations.gd）。
-## - 换册：Tab / Shift+Tab、数字键 1~4、手柄 LT/RT、鼠标点页签
+## - 换册：Tab / Shift+Tab、数字键 1~5、手柄 LT/RT、鼠标点页签
 ## - 册里面：方向键 / WASD / 十字键选；怪物图鉴里 Q/E、LB/RB 换排序，R / Y 反过来排，F / X 筛选精英和 Boss
 ## - 返回：Esc、手柄 B、右键、点右上角"返回"
 ## 开始界面用法（游戏细节讨论会话接的）：var page = load("res://scripts/ui/codex_menu.gd").new();
@@ -14,16 +15,16 @@ signal closed
 
 const WARM := UiStyle.WARM
 const DIM := UiStyle.DIM
-const CHAPTERS := ["ACHIEVEMENTS", "BESTIARY", "WEAPON GUIDE", "MUTATIONS & GEAR"]
+const CHAPTERS := ["ACHIEVEMENTS", "CREW", "BESTIARY", "WEAPON GUIDE", "MUTATIONS & GEAR"]
 const CH_X := 14.0
 const CH_Y := 8.0
-const CH_W := [84.0, 76.0, 84.0, 120.0]
+const CH_W := [80.0, 40.0, 62.0, 78.0, 104.0]
 const CH_H := 17.0
 const CH_GAP := 5.0
 const BACK_BTN := Rect2(424, 10, 44, 15)
 const TRIGGER_ON := 0.6
 
-## 0 成就、1 怪物、2 武器、3 变异与升级；add_child 之前设
+## 0 成就、1 人物、2 怪物、3 武器、4 变异与升级；add_child 之前设
 var start_chapter := 0
 
 var _chapter := 0
@@ -53,6 +54,7 @@ func _ready() -> void:
 	add_child(_frame)
 
 	_pages.append(CodexAchievements.new())
+	_pages.append(CodexCrew.new())
 	var monsters := BestiaryMenu.new()
 	monsters.embedded = true
 	_pages.append(monsters)
@@ -121,7 +123,7 @@ func _show_hint() -> void:
 	var pad := Controls.using_pad
 	var move := Controls.label("select") if pad else "WASD"
 	var chapter := "LT/RT" if pad else "Tab"
-	if _chapter == 1:
+	if _chapter == 2:
 		_hint.text = tr("%s move  %s sort  %s reverse  %s filter  %s chapter  %s back") % [move, "LB/RB" if pad else "Q/E",
 			"Y" if pad else "R", "X" if pad else "F", chapter, Controls.label("back")]
 	else:
@@ -158,8 +160,8 @@ func _input(event: InputEvent) -> void:
 		_show_chapter(_chapter + ck)
 		Game.sfx("ui_move", -10.0)
 	elif event is InputEventKey and event.pressed and not event.echo \
-			and event.physical_keycode in [KEY_1, KEY_2, KEY_3, KEY_4]:
-		var to: int = [KEY_1, KEY_2, KEY_3, KEY_4].find(event.physical_keycode)
+			and event.physical_keycode in [KEY_1, KEY_2, KEY_3, KEY_4, KEY_5]:
+		var to: int = [KEY_1, KEY_2, KEY_3, KEY_4, KEY_5].find(event.physical_keycode)
 		if to != _chapter:
 			_show_chapter(to)
 			Game.sfx("ui_move", -10.0)

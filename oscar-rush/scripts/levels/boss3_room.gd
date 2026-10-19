@@ -161,6 +161,7 @@ func _build_extras() -> void:
 func _after_defeat() -> void:
 	var tv := boss as TVBoss
 	await _show_card("", defeat_line)
+	CrewLine.boss(self, "end")   # 船员"它还没关"：壁灯亮起时说，结局的字出来前就淡掉（立绘添加会话，10-19）
 	_bar.visible = false
 	hud.visible = false
 	_hide_overlays()
@@ -361,7 +362,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_can_quit = false
 		# 先进一局结算（用时、马灯碎了几次、零件……，"游戏细节讨论"会话做的），
 		# 结算画面退出时再清掉这一局、回开始界面，所以这里不 reset_run
-		SceneFade.go(get_tree(), "res://scenes/results.tscn", 1.2)
+		# 10-19：结算之前先放一段收尾胶片（整盘带子倒回去，停在家，interlude.gd 的 finale）
+		SceneFade.go(get_tree(), Interlude.route("finale", "res://scenes/results.tscn"), 1.2)
 		return
 	# 结局里不许按 R 重打
 	if _state < 3:

@@ -75,6 +75,7 @@ var _summons: Array[Node2D] = []
 
 
 func _setup() -> void:
+	reveal_moves = ["PLUG_WARN", "PULL_WARN"]   # 露底（EliteBase，布谷鸟钟会话加的一行）：这几招都亮过就加伤
 	elite_name = "OPERATOR SWITCHBOARD"
 	intro_title = "PLEASE HOLD"
 	intro_frame = 2

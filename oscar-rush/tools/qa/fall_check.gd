@@ -23,6 +23,10 @@ var _stats := {"drop": [0, 0], "dive": [0, 0]}
 var _bad := 0
 var _skipped := 0
 var _settle := 0
+## 关卡载入后先等 3 秒再开始：第二关开场有"胶囊砸穿天花板"的落地演出，会把主角瞬移到 LANDING (250, 540)，
+## 赶在演出里开测会被当成"穿地"（游戏设计 10-19 报的 seed 1、2 两个 bad 都是这个）
+const WARMUP := 120 * 3
+var _ready_f := 0
 
 
 func _initialize() -> void:
@@ -49,6 +53,7 @@ func _physics_process(_d: float) -> bool:
 		if "_leaving" in current_scene:
 			current_scene.set("_leaving", true)
 		_p = get_nodes_in_group("player")[0]
+		_ready_f = _f
 		for e in get_nodes_in_group("enemy"):
 			(e as Node).process_mode = Node.PROCESS_MODE_DISABLED
 		# 遭遇战不让开打（不然门落下、怪出来）
@@ -60,6 +65,8 @@ func _physics_process(_d: float) -> bool:
 		print("SCENE CHANGED (", _kind, " from ", _start.round(), ")")
 		return true
 	_p.set("_invuln", 99.0)
+	if _f - _ready_f < WARMUP:
+		return false
 	match _phase:
 		0:
 			if _trial >= TRIALS:

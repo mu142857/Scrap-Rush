@@ -345,6 +345,11 @@ func _confirm() -> void:
 			Game.flash(Color.BLACK, 1.0, 0.6)
 			Engine.time_scale = 1.0
 			get_tree().paused = false
+			# 主动回标题就是回主菜单：清掉新开局流程留下的"回来直接开选难度"标记（教学关、序章里回标题时会留着，
+			# 不清的话回到开始界面会直接跳进选难度；10-19 作者发现的）
+			var title_script := load("res://scripts/ui/title_screen.gd") as GDScript
+			title_script.set("return_to_levels", false)
+			title_script.set("_prologue_done", false)
 			get_tree().change_scene_to_file(TITLE_SCENE)
 
 

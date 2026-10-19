@@ -371,6 +371,7 @@ func _on_defeated() -> void:
 func _after_defeat() -> void:
 	if defeat_line != "":
 		await _show_card("", defeat_line)
+	CrewLine.boss(self, "end")   # 船员打完说一句（立绘添加会话，10-19）
 	Run.add_part()
 	# 右边闸门升起，放人出去
 	_exit_wall.set_deferred("disabled", true)
@@ -391,7 +392,7 @@ func _leave() -> void:
 	if is_inside_tree(): await get_tree().create_timer(2.5).timeout
 	if next_shop != "":
 		ShopRoom.next_scene = next_shop
-		SceneFade.go(get_tree(), "res://scenes/shop.tscn")
+		SceneFade.go(get_tree(), Interlude.route(scene_file_path, "res://scenes/shop.tscn"))   # 打完 Boss1、2 先放一段胶片幕间（interlude.gd）
 	else:
 		SceneFade.go(get_tree(), next_scene)
 

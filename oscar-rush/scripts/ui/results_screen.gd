@@ -33,6 +33,7 @@ func _ready() -> void:
 	frame.size = Vector2(480, 270)
 	frame.draw.connect(func() -> void: UiStyle.panel(frame, CARD, false, 0.0))
 	add_child(frame)
+	CrewLine.results_row(self)   # 四个船员站在卡片两边（立绘添加会话，10-19）
 	_label(tr("RUN SUMMARY"), 0, 24, 480, 22, UiStyle.WARM, 3, HORIZONTAL_ALIGNMENT_CENTER)
 	var s: Dictionary = Game.run_stats
 	var t := int(s.get("time", 0.0))

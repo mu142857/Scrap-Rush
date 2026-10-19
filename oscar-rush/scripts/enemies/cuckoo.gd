@@ -45,6 +45,7 @@ const DOOR_RECT := Rect2(-3, -30, 8, 7)
 
 
 func _setup() -> void:
+	reveal_moves = ["WARN"]   # 露底（EliteBase）：这几招都亮过就加伤；贴身才出的近身招不算
 	elite_name = "CUCKOO CLOCK"
 	intro_title = "TIME'S UP"
 	intro_frame = 3

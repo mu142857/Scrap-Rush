@@ -275,6 +275,7 @@ func _draw_box() -> void:
 	_box.draw_rect(r, Color(0.04, 0.035, 0.05, 0.82))
 	_box.draw_rect(Rect2(r.position, Vector2(r.size.x, 1)), Color(WARM, 0.6))
 	_box.draw_rect(Rect2(r.position + Vector2(0, r.size.y - 1), Vector2(r.size.x, 1)), Color(WARM, 0.25))
+	CrewLine.coach_face(_box, r, _box.get_global_transform_with_canvas().origin)   # 提示是机器人说的：左边一张小脸（立绘添加会话，10-19）
 	# "马灯"那条：往左上角的灯画一个会跳的小箭头
 	if _tip == "lantern" or _tip == "low":
 		var bob := roundf(sin(_tip_t * 6.0) * 2.0)
