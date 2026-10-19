@@ -16,8 +16,8 @@ const AMB_DUCK_DB := -8.0
 const OFF_DB := -60.0
 ## 曲目：[文件, 循环长度（22050Hz 下的采样数）, 音量修正 dB]
 const TRACKS := {
-	"home": ["res://music/backhome.wav", 1411200, 0.0],
-	"game": ["res://music/back_to_the_game.wav", 1587600, -2.0],
+	"home": ["res://music/backhome.ogg", 1411200, 0.0],
+	"game": ["res://music/back_to_the_game.ogg", 1587600, -2.0],
 }
 ## 场景 → 曲目（第二关、第三关的主场景按区域再细分，见 _want）
 const SCENES := {
@@ -96,15 +96,13 @@ func _player(name: String) -> AudioStreamPlayer:
 	if _players.has(name):
 		return _players[name]
 	var info: Array = TRACKS[name]
-	var s := load(info[0]) as AudioStreamWAV
+	# 10-19（游戏设计会话）：作者"游戏还是声音卡顿"。网页版改用 Sample 方式放声音（浏览器自己混音，不跟着画面卡），
+	# QOA 压缩的 wav 在 Sample 方式下是哑的，所以音乐换成 ogg（原 wav 留在 music/ 里，不再加载）
+	var s := load(info[0]) as AudioStream
 	if s == null:
 		return null
-	# 整段循环：导入设置里已经是前向循环、整段（music/*.wav.import 的 edit/loop_mode=2），Godot 自己把终点设成最后一格。
-	# 万一导入设置被改回不循环，这里补上，规矩和导入器一样（终点 = 采样数 - 1）。QOA 按帧压，起点放 0（帧的开头）最稳
-	if s.loop_mode == AudioStreamWAV.LOOP_DISABLED:
-		s.loop_mode = AudioStreamWAV.LOOP_FORWARD
-		s.loop_begin = 0
-		s.loop_end = int(info[1]) - 1
+	if s is AudioStreamOggVorbis:
+		(s as AudioStreamOggVorbis).loop = true
 	var p := AudioStreamPlayer.new()
 	p.stream = s
 	p.bus = BUS

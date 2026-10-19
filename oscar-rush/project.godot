@@ -25,7 +25,8 @@ config/windows_native_icon="res://art/icon/icon.ico"
 
 [audio]
 
-general/default_playback_type.web=0
+driver/output_latency.web=200
+general/default_playback_type.web=1
 
 [autoload]
 

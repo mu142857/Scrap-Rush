@@ -37,6 +37,10 @@ var language := ""
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	# 网页版锁 60 帧（10-19 作者："全屏声音会卡顿，画面也会卡顿"）：高刷新率屏幕上浏览器每秒叫 120、144 次，
+	# 单线程网页版画面和声音都在主线程上，多画的帧只会挤掉声音。游戏逻辑本来就是 60 次物理帧
+	if OS.has_feature("web"):
+		Engine.max_fps = 60
 	if OS.get_environment("SCRAP_SETTINGS_PATH") != "":
 		_path = OS.get_environment("SCRAP_SETTINGS_PATH")
 	get_tree().root.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF

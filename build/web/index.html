@@ -19,7 +19,7 @@
 		  tried once more; a failed start reloads the page once; a start that takes long says so
 		  after 12 s and gives up after 60 s.
 		- The version and export time sit in the bottom-left corner: web/export_web.sh writes them in
-		  for v1.8 · 10.20 04:29, from web/VERSION and the clock.
+		  for v2.0 · 10.20 05:03, from web/VERSION and the clock.
 		-->
 		<style>
 html, body, #canvas {
@@ -39,9 +39,10 @@ body {
 	-webkit-tap-highlight-color: transparent;
 }
 
+/* 画布固定 1440×810（480×270 的 3 倍，见下面 fitCanvas），全屏、窗口多大都只用 CSS 等比放大、四周黑边，不重新按屏幕分辨率画 */
 #canvas {
 	display: block;
-	/* 画布像素有上限（见下面的 devicePixelRatio），浏览器放大时按像素放大，不糊 */
+	position: absolute;
 	image-rendering: pixelated;
 	image-rendering: crisp-edges;
 }
@@ -139,7 +140,7 @@ body {
 <link rel="icon" type="image/png" sizes="16x16" href="favicon_16.png">
 </head>
 	<body>
-		<canvas id="canvas">
+		<canvas id="canvas" width="1440" height="810">
 			Your browser does not support the canvas tag.
 		</canvas>
 
@@ -151,7 +152,7 @@ body {
 			<img id="status-splash" src="index.png" alt="Rewind Rush">
 			<canvas id="status-holes"></canvas>
 			<div id="status-line"></div>
-			<div id="status-version">v1.8 · 10.20 04:29</div>
+			<div id="status-version">v2.0 · 10.20 05:03</div>
 			<div id="status-phones"></div>
 			<div id="status-notice"></div>
 			<button id="status-retry" type="button"></button>
@@ -162,17 +163,48 @@ body {
 window.scrapZh = false;
 window.scrapText = function (zh, en) { return window.scrapZh ? zh : en; };
 
-// 画布分辨率上限（10-19 作者同学："主界面卡的不行"；内存占用优化会话查的，这段是它给的）：
-// stretch 是 canvas_items，Godot 按"页面尺寸 × devicePixelRatio"开画布，视网膜屏全屏就是 2880×1800、3840×2160，集显填不动像素
-// （软件渲染模拟弱显卡：2880×1800 一帧 1300~1500 毫秒，1440×900 只要 310~375 毫秒，帧时跟像素数成正比）。
-// 画布最长边超过 1920 时，把像素比除以一个整数，浏览器整数倍放大；#canvas 用 pixelated，像素图不糊。
+// 固定渲染分辨率（10-19 作者："全屏声音会卡顿，画面也会卡顿……不全屏就不会卡顿"；"我平时大于屏幕都是缩放的"）：
+// 以前画布跟着窗口和 devicePixelRatio 变（canvas_resize_policy=2），全屏就是 2560×1440、3840×2160，单线程网页版画面和声音都在主线程上，
+// 一帧画不完声音就断。现在导出预设 canvas_resize_policy=0（Godot 不动画布尺寸），画布永远 1440×810，
+// 这里只按窗口大小等比缩放画布元素（CSS，四周黑边）。鼠标位置 Godot 按元素大小换算（canvas.width / rect.width），所以元素本身要摆在内容的位置，不能用 object-fit。
+// 游戏设置里的"全屏"：Godot 默认让画布元素自己全屏（浏览器会把它拉满整屏、鼠标对不上），改成让整个页面全屏，照样走这里的缩放。
 (function () {
-	const real = window.devicePixelRatio || 1;
-	const capped = function () {
-		const long = Math.max(window.innerWidth, window.innerHeight) * real;
-		return long > 1920 ? real / Math.ceil(long / 1920) : real;
-	};
-	try { Object.defineProperty(window, 'devicePixelRatio', { configurable: true, get: capped }); } catch (e) { /* 改不了就照原样 */ }
+	const CW = 1440, CH = 810;
+	function fitCanvas() {
+		const c = document.getElementById('canvas');
+		if (!c) {
+			return;
+		}
+		const vw = window.innerWidth, vh = window.innerHeight;
+		const sc = Math.min(vw / CW, vh / CH);
+		const w = Math.round(CW * sc), h = Math.round(CH * sc);
+		c.style.width = w + 'px';
+		c.style.height = h + 'px';
+		c.style.left = Math.floor((vw - w) / 2) + 'px';
+		c.style.top = Math.floor((vh - h) / 2) + 'px';
+	}
+	window.scrapFitCanvas = fitCanvas;
+	window.addEventListener('resize', fitCanvas);
+	document.addEventListener('fullscreenchange', fitCanvas);
+	document.addEventListener('webkitfullscreenchange', fitCanvas);
+	function hookFullscreen() {
+		const c = document.getElementById('canvas');
+		if (!c) {
+			return;
+		}
+		const root = document.documentElement;
+		const req = root.requestFullscreen || root.webkitRequestFullscreen;
+		if (req) {
+			c.requestFullscreen = function () { return req.call(root); };
+			c.webkitRequestFullscreen = c.requestFullscreen;
+		}
+		fitCanvas();
+	}
+	if (document.getElementById('canvas')) {
+		hookFullscreen();
+	} else {
+		document.addEventListener('DOMContentLoaded', hookFullscreen);
+	}
 }());
 
 // 浏览器全屏时 Esc 被浏览器拿去退出全屏，游戏收不到（10-19 作者在 itch 上发现："点击 esc 会退出全屏，而不是回到上一个"）。
@@ -398,7 +430,7 @@ window.scrapText = function (zh, en) { return window.scrapZh ? zh : en; };
 		</script>
 		<script src="index.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":6750892,"index.wasm":28080428},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":0,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":10556612,"index.wasm":28080428},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 
