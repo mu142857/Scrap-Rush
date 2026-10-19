@@ -19,9 +19,9 @@ const CARD_Y := 58.0
 const CARD_GAP := 14.0
 ## [难度, 名字, 说明, 卡的强调色]
 const LEVELS := [
-	[EASY, "EASY", "Enemies hit softer and the lantern lasts longer.", Color8(150, 200, 140)],
-	[NORMAL, "NORMAL", "The game as it was made to be played.", Color8(255, 211, 138)],
-	[HARD, "HARD", "Tougher machines, less room for mistakes.", Color8(230, 110, 80)],
+	[EASY, "EASY", "For rookies. You know who you are.", Color8(150, 200, 140)],
+	[NORMAL, "NORMAL", "The original recipe.", Color8(255, 211, 138)],
+	[HARD, "HARD", "Big talk. Now try staying alive.", Color8(230, 110, 80)],
 ]
 
 ## 上次选的（同一次打开游戏里记着，下次默认停在这里）

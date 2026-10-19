@@ -61,7 +61,7 @@ func _ready() -> void:
 		var num := _label(str(lv), x, CARD_Y + 18, CARD_W, 33, UiStyle.WARM if open else UiStyle.DIM, 4)
 		var name := _label(tr(LEVELS[i][1]), x, CARD_Y + 70, CARD_W, 11, UiStyle.WARM if open else UiStyle.DIM, 2)
 		var sub := _label(tr(LEVELS[i][2]), x, CARD_Y + 86, CARD_W, 11, UiStyle.DIM, 2)
-		var info := _label(tr("Start here") if open else tr("Reach level %d to unlock") % lv, x + 6, CARD_Y + 112, CARD_W - 12, 11,
+		var info := _label(tr("Beginnings") if open else tr("Reach level %d to unlock") % lv, x + 6, CARD_Y + 112, CARD_W - 12, 11,
 				UiStyle.TEXT if open else UiStyle.DIM, 2, true)
 		num.visible = open
 		_labels.append([num, name, sub, info])

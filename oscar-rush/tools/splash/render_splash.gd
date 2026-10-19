@@ -1,4 +1,5 @@
 extends Node
+## ⚠ 10-19 晚起 art/ui/boot_splash.png 改由 tools/splash/make_splash.py 画（作者挑的封面 A6 的 16:9 版）；这里是之前的空胶片版，留着备用。
 ## 重画启动画面 art/ui/boot_splash.png（project.godot 的 application/boot_splash/image，网页版加载页也用它）。
 ## 用游戏里同一套字（Hud.small_text）在 480×270 的 SubViewport 里画，再最近邻放大到 960×540。画什么在 splash_art.gd。
 ## 跑法（要开窗口，headless 画不出来）：

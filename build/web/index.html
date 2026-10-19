@@ -2,8 +2,25 @@
 <html lang="en">
 	<head>
 		<meta charset="utf-8">
-		<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0">
-		<title>Scrap Rush</title>
+		<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, viewport-fit=cover">
+		<title>Rewind Rush</title>
+		<!--
+		Rewind Rush's web page (formerly Scrap Rush) (itch.io / Ludum Dare), adapted from Linger's Bilibili shell
+		(Linger/linger_bilibili/bilibili/shell.html) without the Bilibili SDK. Differences from Godot's own shell:
+		- The engine (index.wasm) and the pack (index.pck) are fetched pre-gzipped (index.wasm.gz.bin,
+		  index.pck.gz.bin, written by web/export_web.sh) and unzipped in the browser as they stream in,
+		  so the download is small on any host. If the host already unzipped it on the way, or the
+		  browser has no DecompressionStream, or a .gz.bin is missing, the plain files are used.
+		- The loading screen is the game's own boot splash (index.png = index.png = art/ui/boot_splash.png, the
+		  same picture Godot shows next and the web click-to-start screen uses), with a thin warm bar
+		  and a status line under it, in Chinese or English by the browser's language.
+		- Loading that hangs or fails: no answer in 15 s or no new data in 20 s gives up and lets
+		  Godot fetch again (saying so under the bar); a wasm that won't compile is fetched whole and
+		  tried once more; a failed start reloads the page once; a start that takes long says so
+		  after 12 s and gives up after 60 s.
+		- The version and export time sit in the bottom-left corner: web/export_web.sh writes them in
+		  for v1.6 · 10.20 04:04, from web/VERSION and the clock.
+		-->
 		<style>
 html, body, #canvas {
 	margin: 0;
@@ -12,10 +29,14 @@ html, body, #canvas {
 }
 
 body {
-	color: white;
-	background-color: black;
+	color: #e6e0d9;
+	background-color: #08080a;
 	overflow: hidden;
 	touch-action: none;
+	-webkit-user-select: none;
+	user-select: none;
+	-webkit-touch-callout: none;
+	-webkit-tap-highlight-color: transparent;
 }
 
 #canvas {
@@ -26,74 +47,94 @@ body {
 	outline: none;
 }
 
-#status, #status-splash, #status-progress {
-	position: absolute;
-	left: 0;
-	right: 0;
-}
-
-#status, #status-splash {
-	top: 0;
-	bottom: 0;
-}
-
 #status {
+	position: fixed;
+	inset: 0;
 	background-color: #08080a;
 	display: flex;
 	flex-direction: column;
 	justify-content: center;
 	align-items: center;
-	visibility: hidden;
 }
 
+/* 启动画面：和 Godot 接下来显示的那张、网页版"点击开始"那张是同一张图，切过去不会跳 */
 #status-splash {
-	max-height: 100%;
-	max-width: 100%;
-	margin: auto;
-}
-
-#status-splash.show-image--false {
-	display: none;
-}
-
-#status-splash.fullsize--true {
-	height: 100%;
+	position: absolute;
+	inset: 0;
 	width: 100%;
+	height: 100%;
 	object-fit: contain;
-}
-
-#status-splash.use-filter--false {
 	image-rendering: pixelated;
+	image-rendering: crisp-edges;
 }
 
-#status-progress, #status-notice {
-	display: none;
+/* 进度：启动图最下面那条齿孔带，孔一格格亮起来。图里的孔本来就是亮的（tools/splash/make_splash.py），
+   这块画布把还没下载到的孔盖成暗的；下载完画布全空 = 图本身，接着出来的 Godot 启动画面一模一样 */
+#status-holes {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	pointer-events: none;
 }
 
-#status-progress {
-	bottom: 10%;
-	width: 50%;
-	margin: 0 auto;
+#status-line {
+	position: absolute;
+	color: #a8a29c;
+	text-shadow: 0 0 3px rgba(0, 0, 0, 0.9);
+	font-family: sans-serif;
+	font-size: 12px;
+}
+
+#status-version {
+	position: absolute;
+	color: #a8a29c;
+	text-shadow: 0 0 3px rgba(0, 0, 0, 0.9);
+	font-family: sans-serif;
+	font-size: 11px;
+}
+
+/* 建议佩戴耳机：画面右上角一行小字（游戏里开始界面第一次出现时也有一行） */
+#status-phones {
+	position: absolute;
+	color: #a8a29c;
+	text-shadow: 0 0 3px rgba(0, 0, 0, 0.9);
+	font-family: sans-serif;
+	font-size: 12px;
+	opacity: 0.85;
 }
 
 #status-notice {
-	background-color: #5b3943;
-	border-radius: 0.5rem;
-	border: 1px solid #9b3943;
-	color: #e0e0e0;
-	font-family: 'Noto Sans', 'Droid Sans', Arial, sans-serif;
-	line-height: 1.3;
+	display: none;
+	position: relative;
 	margin: 0 2rem;
-	overflow: hidden;
-	padding: 1rem;
+	padding: 0.6em 1em;
+	color: #e6e0d9;
+	background-color: rgba(0, 0, 0, 0.8);
+	font-family: sans-serif;
+	line-height: 1.5;
 	text-align: center;
-	z-index: 1;
+	white-space: pre-line;
+}
+
+#status-retry {
+	display: none;
+	margin-top: 0.8em;
+	padding: 0.4em 1.2em;
+	color: #08080a;
+	background-color: #ffd38a;
+	border: 0;
+	font-family: sans-serif;
+	font-size: 14px;
+	cursor: pointer;
 }
 		</style>
 		<link id="-gd-engine-icon" rel="icon" type="image/png" href="index.icon.png" />
 <link rel="apple-touch-icon" href="index.apple-touch-icon.png"/>
-<style>body, #status { background-color: #08080a !important; } #status-progress { accent-color: #ffd38a; width: 240px; }</style>
-	</head>
+
+	<link rel="icon" type="image/png" sizes="32x32" href="favicon_32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon_16.png">
+</head>
 	<body>
 		<canvas id="canvas">
 			Your browser does not support the canvas tag.
@@ -104,115 +145,317 @@ body {
 		</noscript>
 
 		<div id="status">
-			<img id="status-splash" class="show-image--true fullsize--false use-filter--false" src="index.png" alt="">
-			<progress id="status-progress"></progress>
+			<img id="status-splash" src="index.png" alt="Rewind Rush">
+			<canvas id="status-holes"></canvas>
+			<div id="status-line"></div>
+			<div id="status-version">v1.6 · 10.20 04:04</div>
+			<div id="status-phones"></div>
 			<div id="status-notice"></div>
+			<button id="status-retry" type="button"></button>
 		</div>
 
+		<script>
+// 加载页默认英文（10-19 作者：默认英文；游戏里没选过语言也是英文，两边一致）。以前跟浏览器语言走：/^zh/i.test(navigator.language)
+window.scrapZh = false;
+window.scrapText = function (zh, en) { return window.scrapZh ? zh : en; };
+
+// 加载界面的排版：启动图是 240×135 的底放大 4 倍（object-fit: contain，铺满能铺的、居中），
+// 文字和齿孔都按图在屏幕上的位置和倍数（sc = 图里一个底像素多大）摆
+(function () {
+	// 和 tools/splash/make_splash.py 里的一样：下面那条齿孔带从 y 127 起高 8，孔 4×3，x 从 3 起每 10 一个
+	const BW = 240, BH = 135, BAND_Y = 127, BAND = 8, HOLE_X0 = 3, HOLE_STEP = 10, HOLE_W = 4, HOLE_H = 3;
+	const DIM = 'rgb(110, 92, 70)';
+	let progress = 0;
+	function geom() {
+		const vw = window.innerWidth, vh = window.innerHeight;
+		const sc = Math.min(vw / BW, vh / BH);
+		return { vw: vw, vh: vh, sc: sc, left: (vw - BW * sc) / 2, top: (vh - BH * sc) / 2 };
+	}
+	function drawHoles() {
+		const c = document.getElementById('status-holes');
+		if (!c) {
+			return;
+		}
+		const g = geom();
+		const dpr = window.devicePixelRatio || 1;
+		c.width = Math.round(g.vw * dpr);
+		c.height = Math.round(g.vh * dpr);
+		const ctx = c.getContext('2d');
+		ctx.clearRect(0, 0, c.width, c.height);
+		ctx.fillStyle = DIM;
+		const holes = Math.ceil((BW - HOLE_X0) / HOLE_STEP);
+		const lit = Math.floor(progress * holes + 1e-6);
+		const hy = BAND_Y + Math.floor((BAND - HOLE_H) / 2);
+		for (let i = lit; i < holes; i++) {
+			const x = HOLE_X0 + i * HOLE_STEP;
+			// 往外多盖半个设备像素：图是最近邻放大的，边上不留亮线
+			const x0 = Math.floor((g.left + x * g.sc) * dpr) - 1, y0 = Math.floor((g.top + hy * g.sc) * dpr) - 1;
+			const x1 = Math.ceil((g.left + (x + HOLE_W) * g.sc) * dpr) + 1, y1 = Math.ceil((g.top + (hy + HOLE_H) * g.sc) * dpr) + 1;
+			ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+		}
+	}
+	function place(id, css) {
+		const e = document.getElementById(id);
+		if (e) {
+			Object.assign(e.style, css);
+		}
+	}
+	function layout() {
+		const g = geom();
+		const px = function (v) { return Math.round(v) + 'px'; };
+		// 左下角地板上（四个人站在右半边，左边空着）：上面版本号，下面"Loading... 44%"，贴着齿孔带
+		place('status-line', { left: px(g.left + 5 * g.sc), bottom: px(g.vh - (g.top + (BAND_Y - 1) * g.sc)) });
+		place('status-version', { left: px(g.left + 5 * g.sc), bottom: px(g.vh - (g.top + (BAND_Y - 6) * g.sc)) });
+		// 右上角，齿孔带下面、标题右边
+		place('status-phones', { right: px(g.vw - (g.left + (BW - 5) * g.sc)), top: px(g.top + (BAND + 3) * g.sc) });
+		drawHoles();
+	}
+	window.scrapSetProgress = function (p) {
+		progress = Math.max(0, Math.min(1, p));
+		drawHoles();
+	};
+	window.addEventListener('resize', layout);
+	// 这段脚本在 #status 后面，元素已经有了：马上排一次；滚动条、字体到齐后再排一次
+	layout();
+	document.addEventListener('DOMContentLoaded', layout);
+}());
+
+// 引擎和资源包是 gzip 压过的，边下边解压。Godot 的下载器按原名去拿、按原大小算进度，所以进度条照样准。
+// 下载卡住（一直不回、下到一半不动）时给它加时限，断开报错，让 Godot 自己重下（最多 4 遍）。
+(function () {
+	const PACKED = { 'index.wasm': 'index.wasm.gz.bin', 'index.pck': 'index.pck.gz.bin' };
+	const TYPES = { 'index.wasm': 'application/wasm', 'index.pck': 'application/octet-stream' };
+	if (typeof DecompressionStream !== 'function' || typeof ReadableStream !== 'function') {
+		return;   // 旧浏览器：直接下原文件
+	}
+	const realFetch = window.fetch.bind(window);
+	const HEAD_WAIT = 15000;
+	const CHUNK_WAIT = 20000;
+	function stalled(why) {
+		const e = new Error('download stalled (' + why + ')');
+		e.stalled = true;
+		if (typeof window.scrapNetRetry === 'function') {
+			window.scrapNetRetry();
+		}
+		return e;
+	}
+	function within(promise, ms, why, ctl) {
+		let timer = 0;
+		const late = new Promise(function (resolve, reject) {
+			timer = setTimeout(function () {
+				reject(stalled(why));
+				if (ctl) {
+					ctl.abort();
+				}
+			}, ms);
+		});
+		return Promise.race([promise, late]).then(function (v) {
+			clearTimeout(timer);
+			return v;
+		}, function (e) {
+			clearTimeout(timer);
+			throw e;
+		});
+	}
+	window.fetch = function (input, init) {
+		const url = typeof input === 'string' ? input : (input && input.url) || '';
+		const name = url.split('?')[0].split('/').pop();
+		if (!Object.prototype.hasOwnProperty.call(PACKED, name)) {
+			return realFetch(input, init);
+		}
+		const packedUrl = url.replace(name, PACKED[name]);
+		const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+		const opts = Object.assign({}, init || {}, ctl ? { signal: ctl.signal } : {});
+		return within(realFetch(packedUrl, opts), HEAD_WAIT, 'no answer', ctl).then(function (res) {
+			if (!res.ok || !res.body) {
+				return realFetch(input, init);
+			}
+			// 服务器要是半路已经解压了（Content-Encoding），拿到的就是原数据：看前两个字节再决定
+			const reader = res.body.getReader();
+			return within(reader.read(), CHUNK_WAIT, 'no data', ctl).then(function (first) {
+				const head = first.value || new Uint8Array(0);
+				const gz = head.length >= 2 && head[0] === 0x1f && head[1] === 0x8b;
+				let stream = new ReadableStream({
+					start: function (controller) {
+						if (head.length) {
+							controller.enqueue(head);
+						}
+						if (first.done) {
+							controller.close();
+						}
+					},
+					pull: function (controller) {
+						return within(reader.read(), CHUNK_WAIT, 'stopped halfway', ctl).then(function (r) {
+							if (r.done) {
+								controller.close();
+							} else {
+								controller.enqueue(r.value);
+							}
+						}, function (e) {
+							controller.error(e);
+						});
+					},
+				});
+				if (gz) {
+					stream = stream.pipeThrough(new DecompressionStream('gzip'));
+				}
+				return new Response(stream, { headers: { 'content-type': TYPES[name] } });
+			});
+		}).catch(function (e) {
+			if (e && (e.stalled || e.name === 'AbortError')) {
+				throw e;      // 卡住的：交给 Godot 重下压缩包，别换成大的原文件
+			}
+			return realFetch(input, init);
+		});
+	};
+}());
+
+// 编译 wasm 失败时 Godot 原来的代码既不成功也不报错，加载界面会永远停在 100%：
+// 边下边编译失败就重新下一遍、整块编译再试一次；还不行就在加载界面上报错
+(function () {
+	if (typeof WebAssembly !== 'object') {
+		return;
+	}
+	const realStreaming = WebAssembly.instantiateStreaming;
+	const realInstantiate = WebAssembly.instantiate;
+	function report(e) {
+		if (typeof window.scrapBootFail === 'function') {
+			window.scrapBootFail(e);
+		}
+		throw e;
+	}
+	function again(imports) {
+		return window.fetch('index.wasm', { cache: 'no-store' }).then(function (res) {
+			return res.arrayBuffer();
+		}).then(function (buf) {
+			return realInstantiate.call(WebAssembly, buf, imports);
+		});
+	}
+	if (typeof realStreaming === 'function') {
+		WebAssembly.instantiateStreaming = function (source, imports) {
+			return realStreaming.call(WebAssembly, source, imports).catch(function (e) {
+				console.warn('wasm streaming failed, retrying', e);
+				return again(imports);
+			}).catch(report);
+		};
+	}
+	WebAssembly.instantiate = function (source, imports) {
+		const p = realInstantiate.call(WebAssembly, source, imports);
+		return source instanceof WebAssembly.Module ? p : p.catch(report);
+	};
+}());
+		</script>
 		<script src="index.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":3786068,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":6748320,"index.wasm":28080428},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 
 (function () {
-	const statusOverlay = document.getElementById('status');
-	const statusProgress = document.getElementById('status-progress');
-	const statusNotice = document.getElementById('status-notice');
+	const T = window.scrapText;
+	const status = document.getElementById('status');
+	const line = document.getElementById('status-line');
+	const notice = document.getElementById('status-notice');
+	const retry = document.getElementById('status-retry');
+	const started = Date.now();
+	// 用编辑器直接导出（没跑 web/export_web.sh）时版本号没被填上：藏起来，别把占位符露给玩家
+	const ver = document.getElementById('status-version');
+	if (ver.textContent.indexOf('__SCRAP') >= 0) {
+		ver.style.display = 'none';
+	}
+	line.textContent = T('正在下载……', 'Loading...');
+	document.getElementById('status-phones').textContent = T('🎧 建议佩戴耳机', '🎧 Headphones recommended');
+	retry.textContent = T('重新加载', 'Reload');
+	retry.addEventListener('click', function () { location.reload(); });
 
-	let initializing = true;
-	let statusMode = '';
-
-	function setStatusMode(mode) {
-		if (statusMode === mode || !initializing) {
+	let failed = false;
+	const TIMEOUT = 'timeout';
+	function fail(err) {
+		if (failed) {
 			return;
 		}
-		if (mode === 'hidden') {
-			statusOverlay.remove();
-			initializing = false;
-			return;
-		}
-		statusOverlay.style.visibility = 'visible';
-		statusProgress.style.display = mode === 'progress' ? 'block' : 'none';
-		statusNotice.style.display = mode === 'notice' ? 'block' : 'none';
-		statusMode = mode;
-	}
-
-	function setStatusNotice(text) {
-		while (statusNotice.lastChild) {
-			statusNotice.removeChild(statusNotice.lastChild);
-		}
-		const lines = text.split('\n');
-		lines.forEach((line) => {
-			statusNotice.appendChild(document.createTextNode(line));
-			statusNotice.appendChild(document.createElement('br'));
-		});
-	}
-
-	function displayFailureNotice(err) {
+		failed = true;
 		console.error(err);
-		if (err instanceof Error) {
-			setStatusNotice(err.message);
-		} else if (typeof err === 'string') {
-			setStatusNotice(err);
+		const text = err instanceof Error ? err.message : (typeof err === 'string' ? err : 'error');
+		// 启动失败（不是超时）先自动刷新重来一次：多半是一时内存紧，文件有缓存，第二次很快。只重来一次
+		let retried = false;
+		try {
+			retried = sessionStorage.getItem('scrapBootRetry') === '1';
+			if (!retried && text !== TIMEOUT) {
+				sessionStorage.setItem('scrapBootRetry', '1');
+				line.textContent = T('启动失败，自动重试一次……', 'Failed to start, retrying once...');
+				setTimeout(function () { location.reload(); }, 800);
+				return;
+			}
+		} catch (e) { /* 存不了就不重试，直接报 */ }
+		const memory = /memory|allocat|oom/i.test(text);
+		if (text === TIMEOUT) {
+			notice.textContent = T('启动太久没有反应。\n点下面的按钮重新加载。', 'The game is taking too long to start.\nPress the button to reload.');
+		} else if (memory) {
+			notice.textContent = T('内存不够，游戏没能启动。\n关掉其他标签页再试。\n', 'Not enough memory to start the game.\nClose other tabs and try again.\n') + text;
 		} else {
-			setStatusNotice('An unknown error occurred.');
+			notice.textContent = T('加载失败。\n', 'Loading failed.\n') + text;
 		}
-		setStatusMode('notice');
-		initializing = false;
+		notice.style.display = 'block';
+		retry.style.display = 'block';
+		line.textContent = '';
 	}
+	window.scrapBootFail = fail;
+	let netRetries = 0;
+	window.scrapNetRetry = function () {
+		netRetries += 1;
+		if (!failed && fullAt === 0) {
+			line.textContent = T('网络卡住了，正在重新连接（第 ' + netRetries + ' 次）……', 'Connection stalled, retrying (' + netRetries + ')...');
+		}
+	};
+	// 下载完以后还要编译、启动，慢的电脑要十几秒：别让人以为卡死了；一分钟没反应就报超时、给重新加载按钮
+	let fullAt = 0;
+	let booted = false;
+	const watch = setInterval(function () {
+		if (booted || failed) {
+			clearInterval(watch);
+			return;
+		}
+		if (fullAt > 0 && Date.now() - fullAt > 60000) {
+			clearInterval(watch);
+			fail(TIMEOUT);
+		} else if (fullAt > 0 && Date.now() - fullAt > 12000) {
+			line.textContent = T('电脑有点慢，正在启动……', 'Still starting up...');
+		}
+	}, 1000);
 
 	const missing = Engine.getMissingFeatures({
 		threads: GODOT_THREADS_ENABLED,
 	});
-
 	if (missing.length !== 0) {
-		if (GODOT_CONFIG['serviceWorker'] && GODOT_CONFIG['ensureCrossOriginIsolationHeaders'] && 'serviceWorker' in navigator) {
-			let serviceWorkerRegistrationPromise;
-			try {
-				serviceWorkerRegistrationPromise = navigator.serviceWorker.getRegistration();
-			} catch (err) {
-				serviceWorkerRegistrationPromise = Promise.reject(new Error('Service worker registration failed.'));
-			}
-			// There's a chance that installing the service worker would fix the issue
-			Promise.race([
-				serviceWorkerRegistrationPromise.then((registration) => {
-					if (registration != null) {
-						return Promise.reject(new Error('Service worker already exists.'));
-					}
-					return registration;
-				}).then(() => engine.installServiceWorker()),
-				// For some reason, `getRegistration()` can stall
-				new Promise((resolve) => {
-					setTimeout(() => resolve(), 2000);
-				}),
-			]).then(() => {
-				// Reload if there was no error.
-				window.location.reload();
-			}).catch((err) => {
-				console.error('Error while registering service worker:', err);
-			});
-		} else {
-			// Display the message as usual
-			const missingMsg = 'Error\nThe following features required to run Godot projects on the Web are missing:\n';
-			displayFailureNotice(missingMsg + missing.join('\n'));
-		}
-	} else {
-		setStatusMode('progress');
-		engine.startGame({
-			'onProgress': function (current, total) {
-				if (current > 0 && total > 0) {
-					statusProgress.value = current;
-					statusProgress.max = total;
-				} else {
-					statusProgress.removeAttribute('value');
-					statusProgress.removeAttribute('max');
-				}
-			},
-		}).then(() => {
-			setStatusMode('hidden');
-		}, displayFailureNotice);
+		fail(T('这个浏览器缺少运行游戏所需的功能：\n', 'This browser is missing features the game needs:\n') + missing.join('\n'));
+		return;
 	}
+	engine.startGame({
+		'onProgress': function (current, total) {
+			if (failed) {
+				return;
+			}
+			if (current > 0 && total > 0) {
+				const pct = Math.min(1, current / total);
+				window.scrapSetProgress(pct);
+				if (pct >= 1) {
+					fullAt = fullAt || Date.now();
+					line.textContent = T('下载好了，启动中……', 'Starting...');
+				} else if (Date.now() - started > 15000 && pct < 0.5) {
+					line.textContent = T('网有点慢，再等等……', 'Slow connection, hang on...');
+				} else if (netRetries === 0) {
+					line.textContent = T('正在下载……', 'Loading...') + ' ' + Math.floor(pct * 100) + '%';
+				}
+			}
+		},
+	}).then(function () {
+		booted = true;
+		try { sessionStorage.removeItem('scrapBootRetry'); } catch (e) { /* 无所谓 */ }
+		status.remove();
+	}, function (err) {
+		fail(err);
+	});
 }());
 		</script>
 	</body>

@@ -233,7 +233,7 @@ func _after_defeat() -> void:
 	await _type(_end_title, "THE END", 0.12)
 	Game.add_shake(2.0)
 	if is_inside_tree(): await get_tree().create_timer(0.6).timeout
-	await _type(_end_sub, "Scrap Rush  -  thanks for playing", 0.035)
+	await _type(_end_sub, "Rewind Rush  -  thanks for playing", 0.035)
 	if _perfect:
 		# 满血通关的小奖励：THE END 下面一行暖黄小字
 		var lantern := Label.new()

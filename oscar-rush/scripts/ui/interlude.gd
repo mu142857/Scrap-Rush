@@ -19,11 +19,11 @@ const BY_SCENE := {
 const KINDS := {
 	"boss1": {"roll": 0.6, "shots": [
 		{"kind": "junk", "gain": 2.3, "caption": "", "hold": 1.6},
-		{"kind": "reels", "gain": 1.5, "caption": "The boilers are cold. Up ahead, phones still ring.", "hold": 3.2},
+		{"kind": "reels", "gain": 1.5, "caption": "The boilers have gone cold... upstairs, the phone is still ringing.", "hold": 3.2},
 	]},
 	"boss2": {"roll": 0.6, "shots": [
 		{"kind": "reels", "gain": 1.5, "caption": "", "hold": 1.6},
-		{"kind": "wall", "gain": 1.15, "caption": "The film burned out. Past it, a wall of TVs, still on.", "hold": 3.2},
+		{"kind": "wall", "gain": 1.15, "caption": "The film has burned away... deeper in, the screens still glow.", "hold": 3.2},
 	]},
 	"finale": {"roll": 0.22, "rewind": true, "shots": [
 		{"kind": "tv", "gain": 1.25, "caption": "", "hold": 0.35},

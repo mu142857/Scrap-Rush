@@ -11,7 +11,7 @@ extends RefCounted
 ## 加了新字：往 text.csv 加一行，再跑 python3 tools/subset_font.py 重新生成字体子集
 ## （fonts/PixelFont.ttf 留 GB2312 一级常用字 + 用到的字，完整的原字体在 tools/fonts/）。
 ##
-## Settings.language：""= 跟随系统（中文系统用中文，其他用英文），"en"、"zh" = 玩家选过。
+## Settings.language：""= 没选过，用英文（10-19 起不再跟随系统），"en"、"zh" = 玩家选过。
 ## 字体：天王星像素 11Px（文泉驿点阵宋体 11px 的矢量版，GPLv2 + 字体嵌入例外），英文和中文同一套，
 ## 11 号字一个汉字正好 11×11 像素；22、33 号是整 2、3 倍。
 
@@ -33,11 +33,12 @@ static func apply(language: String) -> void:
 	TranslationServer.set_locale(resolve(language))
 
 
-## "" 跟随系统；网页版的系统语言是浏览器的语言
+## "" = 玩家没选过：一律英文（10-19 作者："导出一个版本，默认英文的"；以前是跟随系统 / 浏览器语言）。
+## 设置里切成中文会存成 "zh"，以后照存的来
 static func resolve(language: String) -> String:
 	if language in LANGS:
 		return language
-	return "zh" if OS.get_locale_language() == "zh" else "en"
+	return "en"
 
 
 static func current() -> String:

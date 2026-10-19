@@ -95,13 +95,13 @@ func _text(tip: String) -> String:
 			# 每把武器一句，写在武器登记表里（WeaponRegistry 的 coach）
 			return tr(str(WeaponRegistry.value(Upgrades.weapon, "coach", "Hold %s to charge,  release to shoot.  Watch the ring fill"))) % k
 		"lantern":
-			return "Hits crack the lantern. It's your light - and your life"
+			return "Guard the lantern. It is home to light and life."
 		"drop":
-			return tr("%s  Put the lantern down: you take the hits, but moths go for it") % Controls.key_name(s, "crystal")
+			return tr("%s  Set the lantern down, and the moths will gather.") % Controls.key_name(s, "crystal")
 		"low":
-			return "The lantern is almost out. The shop can mend it"
+			return "The light's fading... have it mended at the shop."
 		"heal":
-			return "Clearing a fight and lamp oil from wrecks mend the lantern"
+			return "Lamp oil soaks into the wick."
 		"resumed":
 			return "Back at the last cleared fight"
 		"tube":

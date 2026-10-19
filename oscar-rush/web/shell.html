@@ -5,7 +5,7 @@
 		<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, viewport-fit=cover">
 		<title>$GODOT_PROJECT_NAME</title>
 		<!--
-		Scrap Rush's web page (itch.io / Ludum Dare), adapted from Linger's Bilibili shell
+		Rewind Rush's web page (formerly Scrap Rush) (itch.io / Ludum Dare), adapted from Linger's Bilibili shell
 		(Linger/linger_bilibili/bilibili/shell.html) without the Bilibili SDK. Differences from Godot's own shell:
 		- The engine (index.wasm) and the pack (index.pck) are fetched pre-gzipped (index.wasm.gz.bin,
 		  index.pck.gz.bin, written by web/export_web.sh) and unzipped in the browser as they stream in,
@@ -68,55 +68,39 @@ body {
 	image-rendering: crisp-edges;
 }
 
-/* 进度条：画面下方正中，暖黄色（和游戏里的标题字一个颜色），--s 是一个游戏像素多大（fit() 算） */
-#status-bar {
+/* 进度：启动图最下面那条齿孔带，孔一格格亮起来。图里的孔本来就是亮的（tools/splash/make_splash.py），
+   这块画布把还没下载到的孔盖成暗的；下载完画布全空 = 图本身，接着出来的 Godot 启动画面一模一样 */
+#status-holes {
 	position: absolute;
-	bottom: 14%;
-	left: 50%;
-	transform: translateX(-50%);
-	width: calc(120px * var(--s, 2));
-	height: calc(2px * var(--s, 2));
-	background-color: #2a2622;
-}
-
-#status-fill {
-	width: 0;
+	inset: 0;
+	width: 100%;
 	height: 100%;
-	background-color: #ffd38a;
+	pointer-events: none;
 }
 
 #status-line {
 	position: absolute;
-	bottom: calc(14% - 2.2em);
-	left: 0;
-	right: 0;
 	color: #a8a29c;
 	text-shadow: 0 0 3px rgba(0, 0, 0, 0.9);
 	font-family: sans-serif;
 	font-size: 12px;
-	text-align: center;
 }
 
 #status-version {
 	position: absolute;
-	bottom: 8px;
-	left: 10px;
-	color: #8c8780;
+	color: #a8a29c;
+	text-shadow: 0 0 3px rgba(0, 0, 0, 0.9);
 	font-family: sans-serif;
 	font-size: 11px;
 }
 
-/* 建议佩戴耳机：画面上方一行小字（游戏里开始界面第一次出现时也有一行） */
+/* 建议佩戴耳机：画面右上角一行小字（游戏里开始界面第一次出现时也有一行） */
 #status-phones {
 	position: absolute;
-	top: 10px;
-	left: 0;
-	right: 0;
 	color: #a8a29c;
 	text-shadow: 0 0 3px rgba(0, 0, 0, 0.9);
 	font-family: sans-serif;
 	font-size: 12px;
-	text-align: center;
 	opacity: 0.85;
 }
 
@@ -157,8 +141,8 @@ body {
 		</noscript>
 
 		<div id="status">
-			<img id="status-splash" src="$GODOT_SPLASH" alt="Scrap Rush">
-			<div id="status-bar"><div id="status-fill"></div></div>
+			<img id="status-splash" src="$GODOT_SPLASH" alt="Rewind Rush">
+			<canvas id="status-holes"></canvas>
 			<div id="status-line"></div>
 			<div id="status-version">__SCRAP_VERSION__</div>
 			<div id="status-phones"></div>
@@ -167,19 +151,69 @@ body {
 		</div>
 
 		<script>
-// 中文浏览器用中文，其余英文（Ludum Dare 的玩家多是英文）
-window.scrapZh = /^zh/i.test(navigator.language || '');
+// 加载页默认英文（10-19 作者：默认英文；游戏里没选过语言也是英文，两边一致）。以前跟浏览器语言走：/^zh/i.test(navigator.language)
+window.scrapZh = false;
 window.scrapText = function (zh, en) { return window.scrapZh ? zh : en; };
 
-// 加载界面的像素倍数：和游戏一样按整数倍放大
+// 加载界面的排版：启动图是 240×135 的底放大 4 倍（object-fit: contain，铺满能铺的、居中），
+// 文字和齿孔都按图在屏幕上的位置和倍数（sc = 图里一个底像素多大）摆
 (function () {
-	function fit() {
-		const dpr = window.devicePixelRatio || 1;
-		const s = Math.max(1, Math.floor(Math.min(window.innerWidth / 480, window.innerHeight / 270) * dpr * 2)) / dpr;
-		document.documentElement.style.setProperty('--s', String(s / 2));
+	// 和 tools/splash/make_splash.py 里的一样：下面那条齿孔带从 y 127 起高 8，孔 4×3，x 从 3 起每 10 一个
+	const BW = 240, BH = 135, BAND_Y = 127, BAND = 8, HOLE_X0 = 3, HOLE_STEP = 10, HOLE_W = 4, HOLE_H = 3;
+	const DIM = 'rgb(110, 92, 70)';
+	let progress = 0;
+	function geom() {
+		const vw = window.innerWidth, vh = window.innerHeight;
+		const sc = Math.min(vw / BW, vh / BH);
+		return { vw: vw, vh: vh, sc: sc, left: (vw - BW * sc) / 2, top: (vh - BH * sc) / 2 };
 	}
-	window.addEventListener('resize', fit);
-	fit();
+	function drawHoles() {
+		const c = document.getElementById('status-holes');
+		if (!c) {
+			return;
+		}
+		const g = geom();
+		const dpr = window.devicePixelRatio || 1;
+		c.width = Math.round(g.vw * dpr);
+		c.height = Math.round(g.vh * dpr);
+		const ctx = c.getContext('2d');
+		ctx.clearRect(0, 0, c.width, c.height);
+		ctx.fillStyle = DIM;
+		const holes = Math.ceil((BW - HOLE_X0) / HOLE_STEP);
+		const lit = Math.floor(progress * holes + 1e-6);
+		const hy = BAND_Y + Math.floor((BAND - HOLE_H) / 2);
+		for (let i = lit; i < holes; i++) {
+			const x = HOLE_X0 + i * HOLE_STEP;
+			// 往外多盖半个设备像素：图是最近邻放大的，边上不留亮线
+			const x0 = Math.floor((g.left + x * g.sc) * dpr) - 1, y0 = Math.floor((g.top + hy * g.sc) * dpr) - 1;
+			const x1 = Math.ceil((g.left + (x + HOLE_W) * g.sc) * dpr) + 1, y1 = Math.ceil((g.top + (hy + HOLE_H) * g.sc) * dpr) + 1;
+			ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+		}
+	}
+	function place(id, css) {
+		const e = document.getElementById(id);
+		if (e) {
+			Object.assign(e.style, css);
+		}
+	}
+	function layout() {
+		const g = geom();
+		const px = function (v) { return Math.round(v) + 'px'; };
+		// 左下角地板上（四个人站在右半边，左边空着）：上面版本号，下面"Loading... 44%"，贴着齿孔带
+		place('status-line', { left: px(g.left + 5 * g.sc), bottom: px(g.vh - (g.top + (BAND_Y - 1) * g.sc)) });
+		place('status-version', { left: px(g.left + 5 * g.sc), bottom: px(g.vh - (g.top + (BAND_Y - 6) * g.sc)) });
+		// 右上角，齿孔带下面、标题右边
+		place('status-phones', { right: px(g.vw - (g.left + (BW - 5) * g.sc)), top: px(g.top + (BAND + 3) * g.sc) });
+		drawHoles();
+	}
+	window.scrapSetProgress = function (p) {
+		progress = Math.max(0, Math.min(1, p));
+		drawHoles();
+	};
+	window.addEventListener('resize', layout);
+	// 这段脚本在 #status 后面，元素已经有了：马上排一次；滚动条、字体到齐后再排一次
+	layout();
+	document.addEventListener('DOMContentLoaded', layout);
 }());
 
 // 引擎和资源包是 gzip 压过的，边下边解压。Godot 的下载器按原名去拿、按原大小算进度，所以进度条照样准。
@@ -316,7 +350,6 @@ const engine = new Engine(GODOT_CONFIG);
 (function () {
 	const T = window.scrapText;
 	const status = document.getElementById('status');
-	const fill = document.getElementById('status-fill');
 	const line = document.getElementById('status-line');
 	const notice = document.getElementById('status-notice');
 	const retry = document.getElementById('status-retry');
@@ -401,7 +434,7 @@ const engine = new Engine(GODOT_CONFIG);
 			}
 			if (current > 0 && total > 0) {
 				const pct = Math.min(1, current / total);
-				fill.style.width = (pct * 100).toFixed(1) + '%';
+				window.scrapSetProgress(pct);
 				if (pct >= 1) {
 					fullAt = fullAt || Date.now();
 					line.textContent = T('下载好了，启动中……', 'Starting...');

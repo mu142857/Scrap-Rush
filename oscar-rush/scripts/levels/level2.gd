@@ -95,14 +95,14 @@ const CUE_LEAD := 150.0
 const TUBE_SPEED := 460.0
 
 const HINTS := [
-	{"zone": Rect2(40, 470, 160, 70), "at": Vector2(120, 506), "text": "Go right", "arrow": "right"},
-	{"zone": Rect2(330, 470, 90, 70), "at": Vector2(400, 500), "text": "Clear the room, then step into the tube", "arrow": "right"},
-	{"zone": Rect2(800, 370, 100, 60), "at": Vector2(880, 392), "text": "Into the tube", "arrow": "right"},
-	{"zone": Rect2(330, 180, 110, 70), "at": Vector2(380, 214), "text": "Go left", "arrow": "left"},
-	{"zone": Rect2(52, 180, 100, 70), "at": Vector2(74, 214), "text": "Into the tube", "arrow": "left"},
-	{"zone": Rect2(600, 230, 200, 70), "at": Vector2(700, 262), "text": "Go right", "arrow": "right"},
-	{"zone": Rect2(900, 220, 100, 80), "at": Vector2(980, 262), "text": "The film is burning. Keep moving!", "arrow": "right"},
-	{"zone": Rect2(2980, 220, 140, 80), "at": Vector2(3090, 280), "text": "Duck under", "arrow": "right"},
+	{"zone": Rect2(40, 470, 160, 70), "at": Vector2(120, 506), "text": "Keep right. There's more road ahead.", "arrow": "right"},
+	{"zone": Rect2(330, 470, 90, 70), "at": Vector2(400, 500), "text": "Clear them out... then take the tube.", "arrow": "right"},
+	{"zone": Rect2(800, 370, 100, 60), "at": Vector2(880, 392), "text": "Into the tube. The rats live in there.", "arrow": "right"},
+	{"zone": Rect2(330, 180, 110, 70), "at": Vector2(380, 214), "text": "Left. The way is over there.", "arrow": "left"},
+	{"zone": Rect2(52, 180, 100, 70), "at": Vector2(74, 214), "text": "Into the tube. The rats live in there.", "arrow": "left"},
+	{"zone": Rect2(600, 230, 200, 70), "at": Vector2(700, 262), "text": "Keep right. There's more road ahead.", "arrow": "right"},
+	{"zone": Rect2(900, 220, 100, 80), "at": Vector2(980, 262), "text": "The film's burning... keep moving!", "arrow": "right"},
+	{"zone": Rect2(2980, 220, 140, 80), "at": Vector2(3090, 280), "text": "Maybe... underneath?", "arrow": "right"},
 ]
 
 enum { PRE, START, ROLL, REEL, HOLD, POST }

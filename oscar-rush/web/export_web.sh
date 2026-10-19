@@ -1,7 +1,7 @@
 #!/bin/bash
 # 导出网页版（itch.io / Ludum Dare 用），照 meme、《不散》的 bilibili/export_web.sh，去掉了 B 站的部分。
 #
-#   bash web/export_web.sh              -> ../build/web/ 和 ../build/scrap_rush_web.zip（上传 itch 用这个 zip）
+#   bash web/export_web.sh              -> ../build/web/ 和 ../build/rewind_rush_web.zip（上传 itch 用这个 zip）
 #   bash web/export_web.sh <输出目录>    -> 导出到别的目录（测试用），zip 放在它旁边
 #
 # 1. 用 web/ 里的精简引擎（只有 2D、单线程、关掉不用的模块，从 meme 拷来，配置见 custom.py，Godot 4.7.2）
@@ -15,7 +15,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 GODOT="/Applications/Godot.app/Contents/MacOS/Godot"
 OUT="${1:-../build/web}"
-ZIP="$(dirname "$OUT")/scrap_rush_web.zip"
+ZIP="$(dirname "$OUT")/rewind_rush_web.zip"
 rm -rf "${OUT:?}"
 mkdir -p "$OUT"
 "$GODOT" --headless --export-release "Web" "$OUT/index.html"
@@ -38,6 +38,15 @@ print("index.js：下载器出错重试的补丁已打上")
 PY
 VERSION="v$(tr -d '[:space:]' < web/VERSION) · $(TZ=Asia/Shanghai date '+%m.%d %H:%M')"
 sed -i '' "s/__SCRAP_VERSION__/$VERSION/" "$OUT/index.html"
+# 图标：Godot 自己生成的 index.icon.png（128，来自 application/config/icon）留着；再放单画的 16 / 32 给浏览器标签用，
+# 手机主屏的 180 换成最近邻放大的（Godot 是平滑缩放，像素图会糊）。图在 art/icon/，tools/make_icons.py 生成。
+if [ -f art/icon/favicon_32.png ]; then
+	cp art/icon/favicon_16.png art/icon/favicon_32.png "$OUT/"
+	cp art/icon/apple_touch_180.png "$OUT/index.apple-touch-icon.png"
+	sed -i '' 's|</head>|<link rel="icon" type="image/png" sizes="32x32" href="favicon_32.png">\
+<link rel="icon" type="image/png" sizes="16x16" href="favicon_16.png">\
+</head>|' "$OUT/index.html"
+fi
 gzip -9 -c "$OUT/index.wasm" > "$OUT/index.wasm.gz.bin"
 gzip -9 -c "$OUT/index.pck" > "$OUT/index.pck.gz.bin"
 rm -f "$ZIP"

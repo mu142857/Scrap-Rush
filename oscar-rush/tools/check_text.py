@@ -22,14 +22,13 @@ FONT = ROOT / "fonts/PixelFont.ttf"
 
 ## 不是给玩家看的（内部用的名字、信号、分组……），或者故意不翻的
 IGNORE = {
-    "SCRAP RUSH",  # Logo，不翻
     "RED",  # 主角名，不翻
     "CH%d",  # 老电视屏幕上的频道号，3×5 自画字只认 C、H 和数字
     "BRIDGE_TRIGGER", "Master", "Music", "SFX", "UI", "Ambience", "RESTART", "TITLE", "ENGLISH",  # 音频总线、菜单内部选项名
     "LanternAura", "SCRAP_NO_AUTOPAUSE",
     "Encounter",  # find_children 用的类名
     "Aaron Mumu", "Godot Engine\n\n", "Uranus Pixel 11Px / WenQuanYi Bitmap Song\n",  # 制作人员页的人名、引擎名、字体名
-    "Mumu", "Oscar", "Little Oscar", "Zpbrqols", "Wutong", "Ben2tu", "Rouri",  # 制作人员的名字
+    "Mumu", "Oscar", "Little Oscar", "Zpbrqols", "Wutong", "Ben2tu", "Bentootoo", "Rouri",  # 制作人员的名字
     "WASD", "LB/RB", "LT/RT", "Tab", "Q/E",  # 按键名，两种语言一样
     "LEVEL ",  # 图鉴里拼成 "LEVEL 1/2/3" 再 tr，那几条在表里
     "SPEED",  # 图鉴按常量名找怪的速度（SPEED_NAMES），不是界面字
@@ -37,14 +36,16 @@ IGNORE = {
     "SCRAP-TEK 86   BIOS v1.986", "%dK",  # 第三关开机画面的品牌行和内存数，画面道具，不翻
     "LB", "RB", "LS", "RS", "Share", " / RT",  # 手柄按钮缩写，两种语言一样
     "WINDUP",  # 精英招式常量名（reveal_moves）
+    "TAPE %d · %s", "STEAM", "SIGNAL", "STATIC",  # 关卡名字卡先拼成 "TAPE 1 · STEAM" 再 tr，那三条在表里
 }
 ## 路径、动作名、属性路径、调试输出（"[tube] t=..."）
 SKIP = re.compile(r"^(\[\w+\]|res://|user://|ui_|--|#|%s_|modulate|position|global_position|rotation|scale|color:|self_modulate|offset|parameters/)")
-STRING = re.compile(r'"((?:[^"\\]|\\.)*)"')
+## GDScript 双引号、单引号都能写字符串（tr('Swapped with "%s".')），两种都认
+STRING = re.compile(r'"((?:[^"\\]|\\.)*)"|\'((?:[^\'\\]|\\.)*)\'')
 
 
 def unescape(s: str) -> str:
-    return s.replace('\\"', '"').replace("\\n", "\n").replace("\\t", "\t").replace("\\\\", "\\")
+    return s.replace('\\"', '"').replace("\\'", "'").replace("\\n", "\n").replace("\\t", "\t").replace("\\\\", "\\")
 
 
 def code_strings():
@@ -61,7 +62,7 @@ def code_strings():
             if line.strip().startswith("#"):
                 continue
             for m in STRING.finditer(line):
-                yield gd, i, unescape(m.group(1))
+                yield gd, i, unescape(m.group(1) if m.group(1) is not None else m.group(2))
 
 
 def main() -> int:
@@ -74,9 +75,10 @@ def main() -> int:
         # 带 %d / %s / {jump} 的句子要先翻再填数，代码里得写成 tr("…") % …，不然 Label 对不上原文、一直是英文
         if s in keys and re.search(r"%[ds]|\{\w+\}", s):
             src = (ROOT / gd).read_text(encoding="utf-8").splitlines()[line - 1] if line > 0 else ""
-            lit = '"' + s.replace("\n", "\\n").replace('"', '\\"') + '"'
+            esc = s.replace("\n", "\\n")
+            lits = ['"' + esc.replace('"', '\\"') + '"', "'" + esc.replace("'", "\\'") + "'"]
             # 只抓「字面量后面直接 % 或 .format(」的写法；写在数据表里、用的时候再 tr 的不算
-            used_raw = re.search(re.escape(lit) + r"\s*(%|\.format\()", src)
+            used_raw = re.search("(?:" + "|".join(re.escape(x) for x in lits) + r")\s*(%|\.format\()", src)
             if used_raw and not src[: used_raw.start()].rstrip().endswith("tr("):
                 print(f"格式串没包 tr()：{gd.relative_to(ROOT)}:{line}  {s!r}")
                 problems += 1
@@ -93,7 +95,7 @@ def main() -> int:
         src_line = (ROOT / gd).read_text(encoding="utf-8").splitlines()[line - 1] if line > 0 else ""
         if re.search(r"\bprint(_rich|err)?\(", src_line):  # 调试输出
             continue
-        lit = re.escape('"' + s + '"')
+        lit = "(?:" + re.escape('"' + s + '"') + "|" + re.escape("'" + s + "'") + ")"
         if re.search(r"\[\s*" + lit + r"\s*\]|\.get\(\s*" + lit, src_line):  # 字典取值 d["KEY"] / d.get("KEY")，是常量名
             continue
         print(f"没进 text.csv：{gd.relative_to(ROOT)}:{line}  {s!r}")

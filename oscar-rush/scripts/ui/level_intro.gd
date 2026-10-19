@@ -147,7 +147,7 @@ func _make_card() -> Control:
 	c.modulate.a = 0.0
 	var small := Label.new()
 	small.label_settings = Hud.small_text(Color(0.78, 0.76, 0.73))
-	small.text = tr("LEVEL %d" % level_no)   # text.csv 里是 "LEVEL 1" / "LEVEL 2" / "LEVEL 3" 各一行
+	small.text = tr("TAPE %d · %s" % [level_no, ["STEAM", "SIGNAL", "STATIC"][level_no - 1]]) if level_no in [1, 2, 3] else tr("LEVEL %d" % level_no)   # 10-19 改名 REWIND RUSH：三关是三盘录像带（text.csv "TAPE 1 · STEAM" 等，剧情会话改）
 	small.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	small.position = Vector2(0, CARD_Y + 4)
 	small.size = Vector2(480, 14)

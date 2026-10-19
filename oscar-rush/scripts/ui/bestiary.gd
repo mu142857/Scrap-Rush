@@ -309,15 +309,15 @@ static func entries() -> Array:
 	var E := _entries
 	# ---- 第一关：锅炉房
 	E.append(_mob("1", "crawler", "Gear Crawler", 4, [0, 1, 2, 3],
-		"A gear bug that crawls back and forth. One full shot breaks it."))
+		"Bug spray doesn't seem to work on him."))
 	E.append(_mob("1", "moth", "Lamp Moth", 3, [0, 1],
-		"Always flies at the brightest thing: your lantern, your charge. Hit it as it pulls up."))
+		"He doesn't like sleeping with the lights on."))
 	E.append(_mob("1", "kettle", "Kettle", 3, [0, 1, 2],
-		"Bolted down. Its steam won't hurt, but it pushes you off course."))
+		"Rumour has it, his owner used him to sterilize their underwear."))
 	E.append(_mob("1", "shaver", "Shaver", 4, [0, 1],
-		"Small and fast. After a slash it rests; that's your opening."))
+		"Enchantment: Tetanus III"))
 	E.append(_mob("1", "flea", "Spring Flea", 4, [0, 1],
-		"Bounces at you. A red mark shows where it will land."))
+		"Steer clear of their flea market. It's all second-hand."))
 	E.append(_elite("1", "cuckoo", "CUCKOO CLOCK", "TIME'S UP", 7, [0, 1],
 		"Counts down, then fires a tin bird. Hit it while the door is open for double damage."))
 	E.append(_elite("1", "sewing", "SEWING MACHINE", "STITCHED UP", 6, [0, 1],
@@ -332,17 +332,17 @@ static func entries() -> Array:
 		"Charges until it hits a wall, then stays stunned. Punish it while it's dizzy."))
 	# ---- 第二关：交换台、胶片天桥、放映厅
 	E.append(_mob("2", "wire_snake", "Wire Snake", 6, [0, 1],
-		"Hangs from the ceiling and lunges down. Hit it while it reels back up."))
+		"Her favourite snack? Computer mice."))
 	E.append(_mob("2", "fuse_beetle", "Fuse Beetle", 4, [0, 1],
-		"Explodes when it dies, shocking the floor and other enemies. Lure the crowd together."))
+		"The Fuse Beetle has always been self-conscious about his body. He dreams of being long. Green, preferably."))
 	E.append(_mob("2", "phone", "Crank Phone", 5, [1, 2],
-		"Plays dead, then rings for help. Take it out first."))
+		"He calls his mum at the same time every day. Get him before he rings for backup."))
 	E.append(_mob("2", "scavenger", "Scavenger", 6, [0, 1],
-		"Steals your lantern from the floor. Hit it twice to make it drop the lantern."))
+		"Selling scrap made the Scavenger the richest person in this wasteland. Hit it twice and it drops your lantern."))
 	E.append(_mob("2", "slide_projector", "Slide Projector", 4, [0, 1],
-		"Aims a red line, then fires. Hit it while it aims to cancel the shot."))
+		"The Slide Projector dreams of being able to speak. Hit it while it aims and the shot fizzles."))
 	E.append(_mob("2", "film_reel", "Film Reel", 8, [0, 1, 2],
-		"Rolls along the floor and breaks on its second wall. Jump it or shoot it."))
+		"The film is his girlfriend."))
 	E.append(_mob("2", "audience", "Audience", 9, [0, 1],
 		"Sits still until one stands. Then the whole row pounces."))
 	E.append(_mob("2", "usher", "Usher", 8, [0, 1, 2, 3],

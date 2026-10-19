@@ -132,6 +132,11 @@ func _setup() -> bool:
 				continue
 			var first := _ray(Vector2(x, sy), Vector2(x, top + 1), 1 | 64, [])
 			_expect = (first["position"] as Vector2).y if not first.is_empty() else top
+			# 起点离第一块平台至少 24 像素：太近的话刚按"下"人就落到平台上了，
+			# 落地那一帧按"下"本来就是"从单向平台往下跳"（正常玩法），不算快速下落穿平台
+			# （10-19 监督转来的第二关 (96, 221) 多掉 25 像素就是这个：起点只比 224 的平台高 3 像素）
+			if _expect - sy < 24.0:
+				continue
 			_start = Vector2(x, sy)
 		# 人站得下：起点不嵌墙
 		_p.global_position = _start

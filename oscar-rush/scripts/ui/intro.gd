@@ -30,7 +30,7 @@ const FRAMES_ON_TITLE := false
 # —— 开游戏的片头（10-18 作者："点击小三角运行游戏，这个也是有动画的"，奥斯卡那段挪到第一关以后开头太突兀）——
 ## 老电视开机（10-19 作者：开游戏的片头和新开一局的胶片序章重复了，都是 3、2、1 倒数；序章留着胶片，这里换成电视）：
 ## 黑屏中间先亮一个点 → 拉成一条横线 → 上下撑开成整屏，露出开始界面 → 雪花、扫描线、滚动的亮条慢慢退掉，
-## 标题 SCRAP RUSH 像信号对上那样闪几下亮起来，菜单其余的字最后淡出来。约 2 秒，任意键、点击、Start 跳过。
+## 标题 REWIND RUSH 像信号对上那样闪几下亮起来（左上角像录像机倒带那样闪一个 ◀◀，跟着雪花一起退掉），菜单其余的字最后淡出来。约 2 秒，任意键、点击、Start 跳过。
 ## 开始界面在 add_child 之前把标题 Label 交给 title_node，其余要后出来的交给 rest_nodes
 const T_DOT := 0.3         # 中间的亮点
 const T_LINE := 0.2        # 拉成横线
@@ -82,27 +82,16 @@ func _ready() -> void:
 		_splash.centered = false
 		_splash.scale = Vector2(0.5, 0.5)
 		add_child(_splash)
-		# 中文模式：图里画死的副标题 "LUDUM DARE 60 / OLD TECH" 用底色盖掉，换成会翻译的字，和开始界面那行一样
-		if Lang.is_zh():
-			var cover := ColorRect.new()
-			cover.color = Color8(8, 8, 10)
-			cover.position = Vector2(164, 125)
-			cover.size = Vector2(152, 13)
-			add_child(cover)
-			var sub := Label.new()
-			sub.label_settings = Hud.small_text(Color(0.55, 0.55, 0.6))
-			sub.text = "LUDUM DARE 60  /  OLD TECH"
-			sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			sub.position = Vector2(0, 124)
-			sub.size = Vector2(480, 14)
-			add_child(sub)
+		# 启动图（tools/splash/make_splash.py，照作者挑的封面 A6）上只有 REWIND RUSH，没有要翻译的字
 		_prompt = Label.new()
 		var st := Hud.small_text(Hud.WARM)
 		_prompt.label_settings = st
 		_prompt.text = "CLICK OR PRESS ANY KEY"
-		_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		_prompt.position = Vector2(0, 196)
-		_prompt.size = Vector2(480, 17)
+		# 左下角地板上、齿孔带上面，和网页加载页"Loading..."那行同一个地方（启动图是 tools/splash/make_splash.py 画的：
+		# 四个人和 Red 在右半边，左边地板空着）
+		_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		_prompt.position = Vector2(10, 236)
+		_prompt.size = Vector2(200, 17)
 		add_child(_prompt)
 	if not FRAMES_ON_TITLE:
 		_sprite.visible = false
@@ -265,6 +254,15 @@ func _draw_film() -> void:
 		y += 3.0
 	var roll_y := fposmod(_film_t * 160.0, 300.0) - 15.0
 	_film.draw_rect(Rect2(0, maxf(roll_y, area.position.y), 480, 12), Color(TV_WHITE, 0.08 * k))
+	# 录像机屏显 ◀◀：游戏名叫 REWIND RUSH（10-19 改名），整屏撑开以后左上角一闪一闪，雪花退掉它也退掉。
+	# 字体里没有 ◀，用方块拼两个朝左的三角（每个 5 宽 9 高）
+	if _film_t >= t_screen - T_OPEN * 0.5 and fmod(_film_t, 0.4) < 0.26:
+		var col := Color(TV_WHITE, 0.9 * k)
+		for j in 2:
+			var x0 := 18.0 + j * 6.0
+			for x in 5:
+				var h := 1 + x * 2
+				_film.draw_rect(Rect2(x0 + x, 20.0 - x, 1, h), col)
 
 
 func _finish() -> void:

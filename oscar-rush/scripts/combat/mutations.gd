@@ -343,6 +343,8 @@ static func try_rewind() -> bool:
 				cn.global_position = snap["crystal"]
 				if cn.has_method("reset_physics_interpolation"):
 					cn.call("reset_physics_interpolation")
+	# 5 秒前人可能还在闸门外面、灯可能还放在上一个场子里：正在打的遭遇战把人拉回来、灯飞回手上
+	tree.call_group("encounter", "keep_inside")
 	Run.crystal_hp = maxf(float(snap["hp"]), Run.crystal_max * REWIND_MIN_HP)
 	Run.crystal_changed.emit(Run.crystal_hp, Run.crystal_max)
 	proc_frame = Engine.get_physics_frames()

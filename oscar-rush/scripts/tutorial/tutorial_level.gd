@@ -248,7 +248,7 @@ func _physics_process(delta: float) -> void:
 				_say(_shield_text())
 			if _sub == 1 and _targets.all(func(e): return not is_instance_valid(e) or e.get("dead")):
 				_sub = 2
-				_say(tr("Nice. The door is open"), true)
+				_say(tr("Good... the door's open."), true)
 				_open(1)
 			if _sub == 2 and p.global_position.x > _rooms[1]["ox"] + D.SIZE.x - 4:
 				_next()
@@ -270,7 +270,7 @@ func _tick_lantern_step(p: Player) -> void:
 	match _sub:
 		0:
 			_sub = 1
-			_say(tr("This lantern is your life: hits crack it, not you"), false, true)
+			_say(tr("Keep that lantern safe. If it breaks, your journey ends here."), false, true)
 			_t = 0.0
 		1:
 			if _t > 3.5:
@@ -280,7 +280,7 @@ func _tick_lantern_step(p: Player) -> void:
 			if p.crystal == null:
 				_sub = 3
 				_spawn_moth()
-				_say(tr("A moth! Lanterns left on the ground get attacked. Shoot it"), false, true)
+				_say(tr("A moth! It's after the lantern on the ground."), false, true)
 		3:
 			# 拍了开关也算过（先飞过去也不卡）
 			if not is_instance_valid(_moth) or _moth.get("dead") or (_switch and _switch.get("hit")):
@@ -330,7 +330,7 @@ func _tick_fight_step(p: Player) -> void:
 			if _room_of(p.global_position.x) == 3:
 				_sub = 1
 				_enc = _make_encounter(3, [["boxer"], ["boxer", "boxer"]])
-				_say(tr("Doors shut: clear the fight to open them"))
+				_say(tr("Doors shut. Clear the fight to get through."))
 		1:
 			# 第一次有拳击手收拳：教看头上的 !
 			if not _boxer_said:
@@ -342,7 +342,7 @@ func _tick_fight_step(p: Player) -> void:
 			if _enc and _enc.cleared:
 				_sub = 2
 				_t = 0.0
-				_say(tr("Cleared: lantern mended. If it breaks, you restart here"), true)
+				_say(tr("The lantern is one step closer to home. If it breaks, you restart here."), true)
 				_open(3)
 		2:
 			if p.global_position.x > _rooms[3]["ox"] + D.SIZE.x - 4:
@@ -372,7 +372,7 @@ func _tick_elite_step(p: Player) -> void:
 			var now := str(p.call("weapon")) if p.has_method("weapon") else ""
 			if now != _weapon_before or not is_instance_valid(_pickup):
 				_sub = 3
-				_say(tr("That's all. Out the door, and the tape plays"), true)
+				_say(tr("That's all. Out you go."), true)
 				_open(4)
 				step = 5
 
@@ -396,8 +396,8 @@ func _say_step() -> void:
 
 func _shield_text() -> String:
 	if Upgrades.weapon == "flash":
-		return tr("Shielded! Only a full charge knocks it down")
-	return tr("Shielded! Keep hitting it")
+		return tr("Shielded! Full charge, let it have it!")
+	return tr("Shielded! Not enough, again!")
 
 
 func _shoot_text() -> String:
@@ -497,7 +497,7 @@ func _drop_weapon(i: int) -> void:
 func _on_crystal_broken() -> void:
 	# 教学关不死：马灯补满，提示一句
 	Run.heal_crystal(Run.crystal_max)
-	_say(tr("Lantern broken! Normally you'd restart. Mended for now"), false, true)
+	_say(tr("Broken lantern! Lucky this is practice... fixed it for you."), false, true)
 
 
 func _finish() -> void:

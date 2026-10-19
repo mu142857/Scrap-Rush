@@ -21,7 +21,7 @@ const BLINK_TIME := 0.13
 ## [船员, 名字, 身份, 介绍]（英文，也是 text.csv 的键）
 const CREW := [
 	["red", "RED", "Lantern bearer",
-		"The youngest aboard, always first with the lantern. She pressed record on the tape; she wants to press play too."],
+		"The youngest aboard. Always first to pick up the lantern. She pressed record... now she wants to press play."],
 	["robot", "ROBOT", "Copper-plated mechanic",
 		"Kept the old ship flying with tape and hope. Talks like a manual. When its dial eyes spin, it's worried."],
 	["dino", "DINO", "The gentle giant",

@@ -1,6 +1,6 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://cytldwtfxnkkd"]
 
-[ext_resource type="Script" path="res://scripts/levels/level3.gd" id="1"]
+[ext_resource type="Script" uid="uid://deen5mhlkql7v" path="res://scripts/levels/level3.gd" id="1"]
 
-[node name="Level3" type="Node2D"]
+[node name="Level3" type="Node2D" unique_id=1718911371]
 script = ExtResource("1")

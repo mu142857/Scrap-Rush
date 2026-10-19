@@ -1,7 +1,7 @@
 class_name Music
 extends Node
 ## 背景音乐（2026-10-18，本2兔的两首；游戏细节讨论会话接的）。挂在 Game 下面，换场景也一直在，所以同一首跨场景不断。
-##   backhome（"home"）：安静、稀疏 → 开始界面、选难度 / 选武器、商店、结算、制作人员，以及第三关走到最后的家里（"It looks just like the tape."）
+##   backhome（"home"）：安静、稀疏 → 开始界面、选难度 / 选武器、商店、结算、制作人员，以及第三关走到最后的家里（"This is it... just like the tape."）
 ##   back_to_the_game（"game"）：120 BPM、低音推着走 → 三关、气动管、三个 Boss 房
 ## 两首都是处理好的整段循环（tools/gen_music.py：22050Hz 立体声，按小节切、首尾无缝），QOA 导入，循环点按采样数设。
 ## 换曲：两个播放器交叉淡入淡出（等功率，XFADE 秒）。同一首就不重开，接着放。

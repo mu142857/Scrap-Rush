@@ -566,7 +566,7 @@ func _place_hints() -> void:
 	var first: Array = D.SCREENS[0]["rect"]
 	var signs := [
 		{"zone": Rect2(0, D.START.y - 80, first[0] + 60, 80), "at": Vector2(first[0] + 20, D.START.y - 40),
-		 "text": "Walk into the screens", "arrow": "right"},
+		 "text": "To the other side of the screen.", "arrow": "right"},
 		{"zone": Rect2(D.END.x - 60, D.END.y - 60, 120, 60), "at": D.END + Vector2(0, -36), "text": "Home", "arrow": "down"},
 	]
 	# 每个洞底下都放一块"按住跳顺着电线爬"（2026-10-17 夜：原来只有第一个洞有，走别的路线的人看不到）
@@ -582,9 +582,9 @@ func _place_hints() -> void:
 		var pr: Array = prev["rect"]
 		var r: Array = s["rect"]
 		signs.append({"zone": Rect2(pr[2] - 70, prev["floor"] - 60, 70, 60), "at": Vector2(pr[2] - 34, prev["floor"] - 30),
-			"text": "Dead end - find a cable up", "arrow": "left"})
+			"text": "No way through. Try climbing a cable.", "arrow": "left"})
 		signs.append({"zone": Rect2(r[0], s["floor"] - 60, 70, 60), "at": Vector2(r[0] + 34, s["floor"] - 30),
-			"text": "Dead end - find a cable up", "arrow": "right"})
+			"text": "No way through. Try climbing a cable.", "arrow": "right"})
 	for h in signs:
 		var sign := HintSign.new()
 		# 区域下边都正好在地面上，Rect2.has_point 不算下边线：人站着不动时 y 正好等于地面，牌子会时有时无。
@@ -740,7 +740,7 @@ func _physics_process(_delta: float) -> void:
 		if not _home_seen and _in_home(p.global_position):
 			_home_seen = true
 			Game.sfx("tvon", -8.0, 0.9)
-			hud.show_banner(tr("It looks just like the tape."), 2.6)
+			hud.show_banner(tr("This is it... just like the tape."), 2.6)
 
 		# 洞里的电线：按住跳往上爬（关卡的 _physics_process 先于玩家跑，玩家那边再加重力也还是往上）
 		if Input.is_action_pressed(p.input_prefix + "_jump"):

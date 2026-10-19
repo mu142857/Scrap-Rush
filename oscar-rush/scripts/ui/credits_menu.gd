@@ -12,13 +12,14 @@ extends Control
 ## 环境声换成空旷的风加很远的炉火（Ambience.override = "credits"）。
 ## 署名照作者 10-18 凌晨定的全文（监督会话转来）：
 ##   1 木木：导演 程序 光影 特效      2 奥斯卡：策划 动画 场景设计 画风设计
-##   3 梧桐：立绘    4 本2兔：音乐（作者 10-19："所有人还是分开吧"；同日"先去掉 Rouri"）
+##   3 本2兔（英文 Bentootoo）：音乐、文案    4 梧桐：立绘（作者 10-19："所有人还是分开吧"、"先去掉 Rouri"、
+##     "Bentootoo 加上文案标签，然后在梧桐前面"）
 ##   5 工具与协作（小字分组）：美术 Aseprite、Dotpict、小奥斯卡（木木做的）；音乐 FL Studio、Ableton Live 12 Lite；
 ##     音效 Python + NumPy；引擎和协作 Godot、Claude
 ##   6：制作于 2026 年 10 月，底下小字：制作工具、字体和 Godot 的授权。按 L / 手柄 Y / 点小字看授权全文
 ## 确认键 / 鼠标左键：跳到下一页；Esc / B / 右键：直接回开始菜单。放完自己回去。
 ## 用法照旧：var page := CreditsMenu.new(); 加到 UI 层; await page.closed（关掉时自己 queue_free）。
-## 名字的中英文写法照 Linger（NAMES）；本2兔、小奥斯卡 Linger 里没有，先这样写，等作者确认（见报告）。
+## 名字的中英文写法照 Linger（NAMES）；本2兔英文写 Bentootoo（作者 10-19 定）。
 
 signal closed
 
@@ -63,7 +64,7 @@ const NAMES := {
 	"Oscar": {"zh": "Zpbrqols"},
 	"Little Oscar": {"zh": "小奥斯卡"},
 	"Wutong": {"zh": "梧桐"},
-	"Ben2tu": {"en": "本2兔", "zh": "本2兔"},
+	"Ben2tu": {"en": "Bentootoo", "zh": "本2兔"},
 }
 
 ## 每页：blocks = 一组一组的 [小标题（可以空着）, 名字们, 职能们]，竖着排在屏幕中间；颜色是名字的颜色（Linger 里各人的颜色）。
@@ -82,20 +83,20 @@ const SLIDES := [
 		# 他画的开场：机器垒满的那一格
 		"gain": 1.9,
 		"picture": [{"tex": "res://art/intro/14.png", "pos": Vector2(0, -4), "vel": Vector2(0, -2)}]},
-	{"blocks": [{"head": "", "names": ["Wutong"], "color": "e08638", "roles": ["Portraits"]}], "dy": 52.0,
-		# 她画的三张对话框立绘，偶尔眨一下眼；字往下挪，给立绘留地方
-		"picture": [
-			{"tex": "res://art/chars/red_portrait.png", "alt": "res://art/chars/red_portrait_blink.png", "blink": 2.9, "pos": Vector2(72, 8)},
-			{"tex": "res://art/chars/robot_portrait.png", "alt": "res://art/chars/robot_portrait_blink.png", "blink": 3.7, "pos": Vector2(192, 8)},
-			{"tex": "res://art/chars/dino_portrait.png", "alt": "res://art/chars/dino_portrait_blink.png", "blink": 3.3, "pos": Vector2(312, 8)},
-		]},
-	{"blocks": [{"head": "", "names": ["Ben2tu"], "color": "3bbcc8", "roles": ["Music"]}],
+	{"blocks": [{"head": "", "names": ["Ben2tu"], "color": "3bbcc8", "roles": ["Music / Writing"]}],
 		# 第二关交换局机房（胶片天桥之前的继电器间）：只裁这一块
 		"gain": 1.7,
 		"picture": [
 			{"tex": "res://art/levels/level2_far_0.png", "region": Rect2(480, 260, 480, 242), "pos": Vector2(0, 0)},
 			{"tex": "res://art/levels/level2_mid_0.png", "region": Rect2(480, 260, 480, 242), "pos": Vector2(0, 0)},
 			{"tex": "res://art/levels/level2_main_0.png", "region": Rect2(480, 260, 480, 242), "pos": Vector2(0, 0)},
+		]},
+	{"blocks": [{"head": "", "names": ["Wutong"], "color": "e08638", "roles": ["Portraits"]}], "dy": 52.0,
+		# 她画的三张对话框立绘，偶尔眨一下眼；字往下挪，给立绘留地方
+		"picture": [
+			{"tex": "res://art/chars/red_portrait.png", "alt": "res://art/chars/red_portrait_blink.png", "blink": 2.9, "pos": Vector2(72, 8)},
+			{"tex": "res://art/chars/robot_portrait.png", "alt": "res://art/chars/robot_portrait_blink.png", "blink": 3.7, "pos": Vector2(192, 8)},
+			{"tex": "res://art/chars/dino_portrait.png", "alt": "res://art/chars/dino_portrait_blink.png", "blink": 3.3, "pos": Vector2(312, 8)},
 		]},
 	{"title": "Tools & Collaboration", "color": "d8d4cc", "gap": 8.0, "hold": 7.5, "blocks": [
 		{"head": "Art", "lines": ["Aseprite (animation)  /  Dotpict (portraits)",

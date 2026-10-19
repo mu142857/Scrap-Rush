@@ -45,13 +45,16 @@ const WARM := Color8(255, 211, 138)
 const DIM := Color(0.55, 0.55, 0.6)
 const LIT := Color(1, 1, 1)
 const OPTION_TOP := 104.0
+## 副标题（三关：蒸汽·信号·雪花）的位置；中文模式多一行"倒带冲刺"，副标题往下挪 SUB_ZH_SHIFT
+const SUB_Y := 72.0
+const SUB_ZH_SHIFT := 13.0
 const OPTION_STEP := 20.0
 
 var _options: Array[String] = ["START", "TUTORIAL", "CREDITS", "QUIT"]
 var _option_hints: Array[String] = [
-	"Play alone or together, then pick a difficulty.",
-	"A short practice run: five old TVs, one skill each.",
-	"Who made this, and the licenses.",
+	"You don't have to go alone.",
+	"Every TV has something to teach you.",
+	"For the friends we met along the way.",
 	"",
 ]
 ## 教学关（剧情会话做的 scenes/tutorial.tscn）。脚本用 load 找、静态成员用 get / set / call 调，不写类名：
@@ -106,6 +109,8 @@ var _crew: Array[Dictionary] = []
 var _ui: CanvasLayer
 var _title: Label
 var _sub: Label
+## 中文模式下大字下面那行"倒带冲刺"（挂在 _sub 下面）
+var _name_zh: Label
 var _option_labels: Array[Label] = []
 var _hint: Label
 var _fade: ColorRect
@@ -252,8 +257,14 @@ func _build_ui() -> void:
 	_ui.layer = 20
 	add_child(_ui)
 
-	_title = _label("SCRAP RUSH", 30.0, 33, WARM, 4)
-	_sub = _label("LUDUM DARE 60  /  OLD TECH", 72.0, 11, DIM, 2)
+	# 游戏名 10-19 改成 REWIND RUSH / 倒带冲刺（作者："Rewind Rush，就这个了"）。大字不管什么语言都是英文
+	# （像素字体的中文放到 33 号不好看）；中文模式在大字下面加一行小字"倒带冲刺"，副标题往下挪一行，见 _process
+	_title = _label("REWIND RUSH", 30.0, 33, WARM, 4)
+	_title.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	_sub = _label("STEAM · SIGNAL · STATIC", SUB_Y, 11, DIM, 2)
+	# 挂在副标题下面：副标题藏起来、淡入淡出时它跟着走，不用另外进各个列表
+	_name_zh = _label("REWIND RUSH", 0.0, 11, WARM.darkened(0.15), 2, _sub)
+	_name_zh.position = Vector2(0, -SUB_ZH_SHIFT)
 	for i in _options.size():
 		_option_labels.append(_label(_options[i], OPTION_TOP + i * _step(), 22, DIM, 3))
 	_hint = _label("", 246.0, 11, DIM, 2)
@@ -426,6 +437,10 @@ func _process(delta: float) -> void:
 	_cam.position.x = CAM_CENTER.x + sin(_time * 0.12) * CAM_DRIFT
 	_animate_crew(delta)
 	_icons.queue_redraw()
+	# 设置里切了语言，这里跟着换（每帧看一眼，便宜）
+	var zh := Lang.is_zh()
+	_name_zh.visible = zh
+	_sub.position.y = SUB_Y + (SUB_ZH_SHIFT if zh else 0.0)
 	if _busy:
 		return
 	if _lobby:

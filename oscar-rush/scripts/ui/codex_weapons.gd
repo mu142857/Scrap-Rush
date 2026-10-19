@@ -35,7 +35,7 @@ const WEAPONS := [
 	["shotgun", "SCRAP SHOTGUN", "shotgun", 4, 3, 2, "No light: moths ignore it", ""],
 	["laser", "CRT LASER", "laser", 5, 1, 5, "Glows: moths chase the light", ""],
 	["record", "RECORD SLINGER", "record", 3, 3, 4, "No light: moths ignore it",
-		"Throw a record. It flies back and cuts both ways."],
+		"Throw a record. Cuts both ways. Old hits still hurt."],
 	["tongs", "TESLA TONGS", "tongs", 2, 4, 3, "Glows: moths chase the light", ""],
 ]
 const STAT_NAMES := ["POWER", "RATE", "REACH"]

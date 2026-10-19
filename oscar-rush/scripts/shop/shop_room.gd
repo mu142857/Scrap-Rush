@@ -40,7 +40,7 @@ const NAMES := {
 	"plating": ["PLATING", "blocks a hit every %ds"],
 	"damping": ["DAMPER", "emotion rises 20% slower"],
 	"repair": ["REPAIR LANTERN", "lantern +25"],
-	"refresh": ["REFRESH", "restock + new mutations"],
+	"refresh": ["REFRESH", "Restock. New mutations."],
 	"flash": ["FLASH LAMP", "hold to charge, full shot pierces"],
 	"hammer": ["STEAM HAMMER", "steam blast all around you"],
 	"tongs": ["SHOCK TONGS", "arc jumps 3 (5 when full)"],
@@ -90,9 +90,9 @@ const INTRO_TIME := 6.0
 ## 站到货前面时照常显示那件货，走开后接着翻没看完的页
 const GUIDE_PAGE := 4.0
 const GUIDE := [
-	["SPEND YOUR PARTS", "parts: one drops after every fight", "", "part"],
-	["WHAT'S WORTH IT", "gear (1 part): small boost, up to Lv3", "mutation (2): changes every attack", "charge"],
-	["LEVER: REFRESH", "first pull free: new mutations", "sold-out items come back too", "refresh"],
+	["Those parts won't spend themselves.", "parts: one drops after every fight", "", "part"],
+	["Find something you like.", "gear (1 part): small boost, up to Lv3", "Mutation (2): a twist on every attack", "charge"],
+	["LEVER: REFRESH", "First one's free: new mutations", "sold-out items come back too", "refresh"],
 ]
 ## 这一局里是不是已经带着看过一次了（只有第一次进店多翻两页）
 static var guided := false
@@ -344,7 +344,7 @@ func _info(st: ShopStand) -> Dictionary:
 			var price: int = Upgrades.PRICE["repair"]
 			var full := Run.crystal_hp >= Run.crystal_max
 			return {"title": NAMES["repair"][0],
-					"detail": "lantern is fine" if full else tr("lantern +%d   (%d/%d)") % [roundi(_repair_amount()), ceili(Run.crystal_hp), int(Run.crystal_max)],
+					"detail": "Lantern's fine. Save your parts." if full else tr("lantern +%d   (%d/%d)") % [roundi(_repair_amount()), ceili(Run.crystal_hp), int(Run.crystal_max)],
 					"price": 0 if full else price, "can_buy": not full and parts >= price}
 		"refresh":
 			var price: int = 0 if not _refresh_used else Upgrades.PRICE["refresh"]
@@ -548,7 +548,7 @@ func _show_intro() -> void:
 		_set_info([page[0], page[1], third], [UiStyle.WARM, UiStyle.TEXT, UiStyle.WARM if page[2] == "" else UiStyle.TEXT])
 		return
 	# 第三行顺便说出口在哪：进门时出口在画面外（夜间打磨：出口不好找）
-	_set_info(["SPEND YOUR PARTS", "walk up to a glowing item", tr("%s: BUY      EXIT: KEEP RIGHT") % _key],
+	_set_info(["Those parts won't spend themselves.", "Something catch your eye? Step closer.", tr("%s: BUY      EXIT: KEEP RIGHT") % _key],
 			[UiStyle.WARM, UiStyle.TEXT, UiStyle.WARM])
 
 

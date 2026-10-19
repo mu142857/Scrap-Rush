@@ -93,6 +93,41 @@ func drop() -> void:
 	Game.sfx("lantern_drop", -8.0, 1.0, 0.05)
 
 
+## 遭遇战关门时（和倒带之后）调：灯放在场子外面，就飞回离它最近的空手的人手上，返回 true。
+## Oscar 10-19："把灯放在一个打完的房子里就无敌了"：空手挨打只晕一下不扣灯，灯丢在清完的场子里，下一场就打不死。
+## 原设计是"放下灯打得更利索，但灯会被打"，所以灯得跟进场子：放在场子里照样可以放下打
+func recall_into(zone: Rect2) -> bool:
+	if carrier != null or zone.has_point(global_position):
+		return false
+	var best: Player = null
+	var best_d := INF
+	for n in get_tree().get_nodes_in_group("player"):
+		var p := n as Player
+		if p == null or p.crystal != null:
+			continue
+		var d := p.global_position.distance_to(global_position)
+		if d < best_d:
+			best = p
+			best_d = d
+	if best == null:
+		return false
+	Game.sparks(get_parent(), global_position + Vector2(0, -5), GLASS, 8, 50.0)
+	pick_up(best, true)
+	global_position = best.global_position + Vector2(HAND.x * best.facing, HAND.y + HOOK_HEIGHT)
+	reset_physics_interpolation()
+	_swing_v += 6.0
+	_hurt_flash = 0.6
+	_recall_t = RECALL_SHOW
+	Game.sfx("lantern_pick", -4.0, 1.3)
+	Game.sparks(get_parent(), global_position + Vector2(0, -5), GLASS, 8, 50.0)
+	return true
+
+
+## 飞回来以后，灯上面写"马灯飞回来了"写多久（秒）
+const RECALL_SHOW := 1.6
+var _recall_t := 0.0
+
+
 ## 提灯的人挨打，伤害直接转给水晶
 func take_carried_hit(damage: float) -> void:
 	_on_damaged(damage)
@@ -155,6 +190,11 @@ func _physics_process(delta: float) -> void:
 
 func _update_prompt() -> void:
 	_prompt.visible = false
+	if _recall_t > 0.0:
+		_recall_t -= get_physics_process_delta_time()
+		_prompt.text = tr("Lantern's back!")
+		_prompt.visible = true
+		return
 	if carrier != null:
 		return
 	for n in get_tree().get_nodes_in_group("player"):

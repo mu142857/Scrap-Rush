@@ -12,7 +12,7 @@ extends Control
 ## 开头是第二关那套 3、2、1 片头；放完画面慢慢暗到黑（放映机停了），再切到下一个场景，下一个场景从黑里淡入
 ## （作者：以前烧成白一下跳到教学关太突兀）。
 ## 翻页：任意键、鼠标、手柄键、触屏 = 下一格（倒计时里按就直接开片；最后一格按就暗场、走）。
-## Esc / 手柄 Start 整段跳过（10-19 作者：任意键跳过整段不行，要一次翻一页）。
+## Esc / 手柄 Start 回主菜单（10-19 作者：任意键跳过整段不行，要一次翻一页；Esc 是"退出回主页面"，不是整段跳过）。
 ## 全用现成的贴图加画矩形，不加新图。
 
 const LEADER := preload("res://art/levels/level2_intro_leader.png")
@@ -44,10 +44,10 @@ const END_FADE := 1.6      # 放完暗到黑
 const END_BLACK := 0.3
 
 const SHOTS := [
-	{"kind": "junk", "gain": 2.3, "caption": "Old machines get dumped here. They don't stay dead."},
-	{"kind": "reels", "gain": 1.5, "caption": "We sealed the last tape of home inside a lantern."},
-	{"kind": "tv", "gain": 1.25, "caption": "Deep inside, one old TV can still play it."},
-	{"kind": "home", "gain": 1.0, "caption": "The house on the hill. Let's go see if the porch light is on."},
+	{"kind": "junk", "gain": 2.3, "caption": "On a planet of scrap, the old machines found a home."},
+	{"kind": "reels", "gain": 1.5, "caption": "Hope... hidden in a lantern."},
+	{"kind": "tv", "gain": 1.25, "caption": "Find the place where the old screen still glows."},
+	{"kind": "home", "gain": 1.0, "caption": "Somehow, you know... the porch is up on the hill."},
 ]
 
 ## 主角四人（贴图 16×20 一格、7 格：0~3 待机，4~6 走），走在最前面的红色提马灯
@@ -158,7 +158,7 @@ func _ready() -> void:
 	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_hint.position = Vector2(0, BAND + 4.0)
 	_hint.size = Vector2(472, 14)
-	_hint.text = tr("Any key: next    Esc: skip")
+	_hint.text = tr("Any key: next    Esc: title")
 	_hint.modulate.a = 0.0
 	add_child(_hint)
 	_black = ColorRect.new()
@@ -362,8 +362,13 @@ func _input(event: InputEvent) -> void:
 	var skip_all: bool = (event is InputEventKey and event.keycode == KEY_ESCAPE) \
 			or (event is InputEventJoypadButton and event.button_index == JOY_BUTTON_START)
 	if skip_all:
-		# Esc / Start = 跳过整段序章，照常往下走（进教学或选难度）；其余的键一次翻一页（10-19 作者在宣传视频会话里定的）。
-		# 作者报的"退出回到选难度、不回主菜单"是暂停菜单的事，那边"回标题"会清标记，不在这里
+		# Esc / Start = 不玩了、回主菜单；其余的键一次翻一页，翻完照常往下走（进教学或选难度）。
+		# 10-19 作者报"在电影开头……退出不会退出到主页面，而是退出到关卡难度选择"，之后在游戏细节讨论会话里
+		# 又当面选了一次：Esc 回主菜单，不做整段跳过，提示跟着改成"Esc 回主菜单"。清的是开始界面的"回来开选难度"标记
+		next_scene = "res://scenes/title.tscn"
+		var title_script := load("res://scripts/ui/title_screen.gd") as GDScript
+		title_script.set("return_to_levels", false)
+		title_script.set("_prologue_done", false)
 		_start_end()
 	else:
 		_next()

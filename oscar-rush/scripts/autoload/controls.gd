@@ -220,7 +220,8 @@ func import_bindings(kb: Dictionary, pad: Dictionary) -> void:
 ## 键盘键的显示名（按键盘上印的字，物理键码转成当前布局的键名）
 func key_label(code: int) -> String:
 	var shown := code
-	if DisplayServer.has_method("keyboard_get_label_from_physical") and DisplayServer.get_name() != "headless":
+	# 网页版的显示服务器不支持这个（每调一次控制台报一条 ERROR，10-19 导出网页版时测出来的），直接用物理键名
+	if DisplayServer.has_method("keyboard_get_label_from_physical") and DisplayServer.get_name() != "headless" and not OS.has_feature("web"):
 		var lab: int = DisplayServer.keyboard_get_label_from_physical(code)
 		if lab != KEY_NONE:
 			shown = lab

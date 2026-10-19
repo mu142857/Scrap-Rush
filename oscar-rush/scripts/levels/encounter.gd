@@ -87,6 +87,7 @@ var _key := ""
 
 
 func _ready() -> void:
+	add_to_group("encounter")
 	for h in hazards:
 		var e := _make(h[0])
 		if e:
@@ -182,7 +183,7 @@ func _start() -> void:
 	var players := get_tree().get_nodes_in_group("player")
 	if not players.is_empty():
 		_entered_left = (players[0] as Node2D).global_position.x < (left + right) / 2.0
-	_pull_players_in()
+	keep_inside()
 	for g in _gates:
 		g.slam()
 	Game.add_shake(4.0)
@@ -265,6 +266,18 @@ func _tick_queue(delta: float) -> void:
 ## 关门时还在场子外面（或者正站在闸门底下）的人，拉到离得近的那扇门里侧：
 ## 两人模式里 1P 进场触发关门时，2P 要是站在闸门下或门外，会被门挤到外面、整场都进不来（夜间打磨测出来的）
 const PULL_IN := 14.0
+
+
+## 关门时把人拉进场子，灯留在场子外面就飞回人手上（商店会话 10-19：灯丢在清完的场子里就无敌，见 crystal.gd 的 recall_into）。
+## 倒带磁带把人倒回门外时也调这里（mutations.gd 用 call_group("encounter", "keep_inside")）；只管正在打的这一场
+func keep_inside() -> void:
+	if not started or cleared:
+		return
+	_pull_players_in()
+	var zone := Rect2(left + GATE_W, ceil_y - 4.0, right - left - GATE_W * 2.0, maxf(floor_left, floor_right) - ceil_y + 8.0)
+	for c in get_tree().get_nodes_in_group("crystal"):
+		if c.has_method("recall_into"):
+			c.call("recall_into", zone)
 
 
 func _pull_players_in() -> void:
