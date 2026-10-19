@@ -27,10 +27,25 @@ static func apply(language: String) -> void:
 	if not _loaded:
 		_loaded = true
 		if ResourceLoader.exists(TRANSLATION):
-			TranslationServer.add_translation(load(TRANSLATION))
+			if web_keys():
+				# 网页版：按键提示里的 Esc 换成 P / Backspace（见 web_key_text.gd，游戏细节讨论会话 10-19 加的）
+				var zh := WebKeyText.new()
+				zh.locale = "zh"
+				zh.base = load(TRANSLATION)
+				TranslationServer.add_translation(zh)
+				var en := WebKeyText.new()
+				en.locale = "en"
+				TranslationServer.add_translation(en)
+			else:
+				TranslationServer.add_translation(load(TRANSLATION))
 		else:
 			push_warning("没找到 %s：text.csv 还没导入（编辑器里切一下窗口就会导入）" % TRANSLATION)
 	TranslationServer.set_locale(resolve(language))
+
+
+## 网页版（或测试时设 SCRAP_WEB_KEYS=1）：Esc 在浏览器全屏时会被浏览器拿去退出全屏，提示改写 P / Backspace
+static func web_keys() -> bool:
+	return OS.has_feature("web") or OS.get_environment("SCRAP_WEB_KEYS") == "1"
 
 
 ## "" = 玩家没选过：一律英文（10-19 作者："导出一个版本，默认英文的"；以前是跟随系统 / 浏览器语言）。

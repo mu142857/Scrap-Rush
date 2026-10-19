@@ -19,7 +19,7 @@
 		  tried once more; a failed start reloads the page once; a start that takes long says so
 		  after 12 s and gives up after 60 s.
 		- The version and export time sit in the bottom-left corner: web/export_web.sh writes them in
-		  for v1.6 · 10.20 04:04, from web/VERSION and the clock.
+		  for v1.8 · 10.20 04:29, from web/VERSION and the clock.
 		-->
 		<style>
 html, body, #canvas {
@@ -41,6 +41,9 @@ body {
 
 #canvas {
 	display: block;
+	/* 画布像素有上限（见下面的 devicePixelRatio），浏览器放大时按像素放大，不糊 */
+	image-rendering: pixelated;
+	image-rendering: crisp-edges;
 }
 
 #canvas:focus {
@@ -148,7 +151,7 @@ body {
 			<img id="status-splash" src="index.png" alt="Rewind Rush">
 			<canvas id="status-holes"></canvas>
 			<div id="status-line"></div>
-			<div id="status-version">v1.6 · 10.20 04:04</div>
+			<div id="status-version">v1.8 · 10.20 04:29</div>
 			<div id="status-phones"></div>
 			<div id="status-notice"></div>
 			<button id="status-retry" type="button"></button>
@@ -158,6 +161,54 @@ body {
 // 加载页默认英文（10-19 作者：默认英文；游戏里没选过语言也是英文，两边一致）。以前跟浏览器语言走：/^zh/i.test(navigator.language)
 window.scrapZh = false;
 window.scrapText = function (zh, en) { return window.scrapZh ? zh : en; };
+
+// 画布分辨率上限（10-19 作者同学："主界面卡的不行"；内存占用优化会话查的，这段是它给的）：
+// stretch 是 canvas_items，Godot 按"页面尺寸 × devicePixelRatio"开画布，视网膜屏全屏就是 2880×1800、3840×2160，集显填不动像素
+// （软件渲染模拟弱显卡：2880×1800 一帧 1300~1500 毫秒，1440×900 只要 310~375 毫秒，帧时跟像素数成正比）。
+// 画布最长边超过 1920 时，把像素比除以一个整数，浏览器整数倍放大；#canvas 用 pixelated，像素图不糊。
+(function () {
+	const real = window.devicePixelRatio || 1;
+	const capped = function () {
+		const long = Math.max(window.innerWidth, window.innerHeight) * real;
+		return long > 1920 ? real / Math.ceil(long / 1920) : real;
+	};
+	try { Object.defineProperty(window, 'devicePixelRatio', { configurable: true, get: capped }); } catch (e) { /* 改不了就照原样 */ }
+}());
+
+// 浏览器全屏时 Esc 被浏览器拿去退出全屏，游戏收不到（10-19 作者在 itch 上发现："点击 esc 会退出全屏，而不是回到上一个"）。
+// 备用键：P（暂停）和 Backspace（返回）在这里先拦下来，换成 Esc 发给游戏的画布；游戏里认 Esc 的地方就都认它们。
+// 游戏的提示在网页版也写成 P / Backspace（scripts/autoload/web_key_text.gd）。默认键位没用到 P 和 Backspace（单人 A D W C V S，2P J L I M N K）。
+// 能用 Keyboard Lock 的浏览器（Chrome、Edge 全屏时）顺便锁住 Esc，那时 Esc 也直接给游戏，长按 Esc 照样退出全屏。
+(function () {
+	function remap(e) {
+		if (e.code !== 'KeyP' && e.code !== 'Backspace') {
+			return;
+		}
+		if (e.ctrlKey || e.metaKey || e.altKey) {
+			return;
+		}
+		const canvas = document.getElementById('canvas');
+		if (!canvas) {
+			return;
+		}
+		e.preventDefault();
+		e.stopImmediatePropagation();
+		canvas.dispatchEvent(new KeyboardEvent(e.type, {
+			key: 'Escape', code: 'Escape', keyCode: 27, which: 27, repeat: e.repeat, bubbles: true, cancelable: true,
+		}));
+	}
+	window.addEventListener('keydown', remap, true);
+	window.addEventListener('keyup', remap, true);
+	document.addEventListener('fullscreenchange', function () {
+		try {
+			if (document.fullscreenElement && navigator.keyboard && navigator.keyboard.lock) {
+				navigator.keyboard.lock(['Escape']).catch(function () { /* iframe 里不让锁就算了，P / Backspace 照样能用 */ });
+			} else if (navigator.keyboard && navigator.keyboard.unlock) {
+				navigator.keyboard.unlock();
+			}
+		} catch (err) { /* 同上 */ }
+	});
+}());
 
 // 加载界面的排版：启动图是 240×135 的底放大 4 倍（object-fit: contain，铺满能铺的、居中），
 // 文字和齿孔都按图在屏幕上的位置和倍数（sc = 图里一个底像素多大）摆
@@ -347,7 +398,7 @@ window.scrapText = function (zh, en) { return window.scrapZh ? zh : en; };
 		</script>
 		<script src="index.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":6748320,"index.wasm":28080428},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":6750892,"index.wasm":28080428},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 

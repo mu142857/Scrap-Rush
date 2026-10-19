@@ -89,8 +89,19 @@ const PAD_NAMES := {"move": "Stick", "jump": "A", "attack": "X", "crystal": "Y",
 ## 菜单里的键：键盘一套、手柄一套
 const MENU_KB := {"confirm": "Space / C", "back": "Esc", "pause": "Esc", "select": "W/S", "change": "A/D",
 	"scroll": "W/S", "page": "A/D"}
+## 网页版：浏览器全屏时 Esc 被浏览器拿去退出全屏，返回用 Backspace、暂停用 P（shell.html 把这两个键转成 Esc）
+const MENU_KB_WEB := {"back": "Backspace", "pause": "P"}
 const MENU_PAD := {"confirm": "A", "back": "B", "pause": "Start", "select": "D-pad", "change": "Left/Right",
 	"scroll": "Up/Down", "page": "Left/Right"}
+
+
+## 退出前先把网页版的按键提示译文（WebKeyText，脚本写的 Translation）从 TranslationServer 卸掉：
+## 留到引擎最后才释放的话，GDScript 已经关了，退出时会崩（Abort trap）
+func _exit_tree() -> void:
+	for loc in ["en", "zh"]:
+		for tr_res in TranslationServer.find_translations(loc, true):
+			if tr_res is WebKeyText:
+				TranslationServer.remove_translation(tr_res)
 
 
 func _ready() -> void:
@@ -258,6 +269,8 @@ func key_name(scheme: String, what: String) -> String:
 ## confirm / back / pause / select / change / scroll / page，以及 move / jump / attack / crystal / down
 func label(what: String) -> String:
 	if MENU_KB.has(what):
+		if not using_pad and MENU_KB_WEB.has(what) and Lang.web_keys():
+			return MENU_KB_WEB[what]
 		return tr((MENU_PAD if using_pad else MENU_KB)[what])
 	return key_name("solo", what)
 

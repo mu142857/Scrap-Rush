@@ -107,7 +107,8 @@ func _editable(i: int, col: int) -> bool:
 func _cell_text(i: int, col: int) -> String:
 	var a: String = ROWS[i][0]
 	if a == "pause":
-		return "Esc" if col == 0 else "Start"
+		# 网页版暂停是 P（Esc 在浏览器全屏时被拿去退出全屏；P、Backspace 在 shell.html 里转成 Esc，等于保留键）
+		return ("P" if Lang.web_keys() else "Esc") if col == 0 else "Start"
 	if col == 0:
 		var keys: Array = Controls.solo_keys(a)
 		var t := Controls.key_label(keys[0])
