@@ -1,4 +1,4 @@
-[gd_resource type="AudioBusLayout" load_steps=5 format=3]
+[gd_resource type="AudioBusLayout" format=3 uid="uid://dkelidy0jkj68"]
 
 [sub_resource type="AudioEffectLowPassFilter" id="lp_music"]
 resource_name = "LowPassFilter"
@@ -14,7 +14,6 @@ cutoff_hz = 700.0
 
 [sub_resource type="AudioEffectReverb" id="rv_amb"]
 resource_name = "Reverb"
-dry = 1.0
 wet = 0.0
 
 [resource]

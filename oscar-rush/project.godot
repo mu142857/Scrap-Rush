@@ -11,10 +11,9 @@ config_version=5
 [application]
 
 config/name="Rewind Rush"
+run/main_scene="res://scenes/title.tscn"
 config/use_custom_user_dir=true
 config/custom_user_dir_name="Godot/app_userdata/Scrap Rush"
-config/custom_user_dir_name.linuxbsd="godot/app_userdata/Scrap Rush"
-run/main_scene="res://scenes/title.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 boot_splash/bg_color=Color(0.031, 0.031, 0.039, 1)
 boot_splash/use_filter=false
@@ -22,11 +21,11 @@ boot_splash/image="res://art/ui/boot_splash.png"
 config/icon="res://art/icon/icon_128.png"
 config/macos_native_icon="res://art/icon/icon.icns"
 config/windows_native_icon="res://art/icon/icon.ico"
+config/custom_user_dir_name.linuxbsd="godot/app_userdata/Scrap Rush"
 
 [audio]
 
 driver/output_latency.web=200
-general/default_playback_type.web=1
 
 [autoload]
 
